@@ -1,0 +1,223 @@
+{
+"response": {
+"total": 24,
+"data": [
+{
+"period": "2021-02-15T00",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1194",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T01",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1194",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T02",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1194",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T03",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1195",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T04",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1195",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T05",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1196",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T06",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1196",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T07",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1196",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T08",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1197",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T09",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1196",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T10",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1196",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T11",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1196",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T12",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-1096",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T13",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-815",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T14",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-814",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T15",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-814",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T16",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-814",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T17",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-815",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T18",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-815",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T19",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-696",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T20",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-547",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T21",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-755",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T22",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-764",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T23",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "TI",
+"type-name": "Total interchange",
+"value": "-764",
+"value-units": "megawatthours"
+}
+]
+}
+}

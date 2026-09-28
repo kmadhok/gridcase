@@ -10,7 +10,22 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyarrow>=17.0",
     "pandas>=2.2",
+    "pyyaml>=6.0",
 ]
+
+[project.optional-dependencies]
+# gridstatus pulls ~40 packages (plotly, pdfplumber...); keep it opt-in. Pinned per CLAUDE.md.
+gridstatus = ["gridstatus==0.36.0"]
+
+[project.scripts]
+gridcase = "gridcase.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gridcase"]
 
 [dependency-groups]
 dev = [
@@ -19,6 +34,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "pandas-stubs>=2.2",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.ruff]
@@ -32,5 +48,10 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 strict = true
 python_version = "3.12"
 
+[[tool.mypy.overrides]]
+module = ["gridstatus", "gridstatus.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["live: hits real APIs / needs the full store; run on the VPS with GRIDCASE_LIVE=1"]

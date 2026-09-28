@@ -1,0 +1,223 @@
+{
+"response": {
+"total": 24,
+"data": [
+{
+"period": "2021-02-15T00",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "67643",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T01",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "69175",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T02",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "69215",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T03",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "68862",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T04",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "67999",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T05",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "66689",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T06",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "65766",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T07",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "65255",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T08",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "63395",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T09",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "54178",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T10",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "54173",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T11",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "54504",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T12",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "52185",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T13",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "51388",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T14",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "51402",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T15",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "49849",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T16",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "49597",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T17",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "48747",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T18",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "47698",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T19",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "46247",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T20",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "45356",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T21",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "44963",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T22",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "45055",
+"value-units": "megawatthours"
+},
+{
+"period": "2021-02-15T23",
+"respondent": "ERCO",
+"respondent-name": "Electric Reliability Council of Texas, Inc.",
+"type": "D",
+"type-name": "Demand",
+"value": "45365",
+"value-units": "megawatthours"
+}
+]
+}
+}
