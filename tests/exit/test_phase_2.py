@@ -5,6 +5,7 @@ handles fuel-category versioning; eight hypothesis templates validate against th
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from typing import Any
 
 import duckdb
 import pytest
@@ -23,7 +24,7 @@ NORMAL_WEEK = (datetime(2023, 5, 1), datetime(2023, 5, 8))
 AS_OF = datetime(2023, 6, 1)
 
 
-def _run(conn: duckdb.DuckDBPyConnection, q: MetricQuery) -> list[tuple[object, ...]]:
+def _run(conn: duckdb.DuckDBPyConnection, q: MetricQuery) -> list[tuple[Any, ...]]:
     compiled = compile_query(q)
     return [tuple(r) for r in conn.execute(compiled.sql).fetchall()]
 

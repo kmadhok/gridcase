@@ -1,4 +1,4 @@
-"""Export the three fixture windows from the local store to tests/fixtures/store/observations.parquet.
+"""Export the three fixture windows from the local store to tests/fixtures/store/.
 
 Run after `gridcase ingest` has loaded 2021-02-13..22, 2023-05-01..08 and 2023-07-15..08-16
 for all sources. Output is deterministic (sorted, zstd) so the file is stable in git.

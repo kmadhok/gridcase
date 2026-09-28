@@ -25,6 +25,9 @@ def connect(path: Path | str, read_only: bool = False) -> duckdb.DuckDBPyConnect
         p.parent.mkdir(parents=True, exist_ok=True)
     conn = duckdb.connect(str(p), read_only=read_only)
     conn.execute("SET TimeZone = 'UTC'")
+    # One thread: parallel aggregates change floating-point summation order between runs,
+    # and receipts must be byte-identical. Our queries are small; this costs nothing visible.
+    conn.execute("SET threads = 1")
     if not read_only:
         create_schema(conn)
         seed_series(conn)

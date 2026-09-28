@@ -1,0 +1,134 @@
+# Hypothesis templates. Each names a causal mechanism, the ordered tool calls that test it,
+# and a falsifier: a rule over tool outputs that, when TRUE, refutes the hypothesis.
+# Falsifier grammar: gridcase/planner/falsifier.py. Output field names are the Phase 3 tool
+# contracts. `prior` is the default Beta prior; ontology/priors.yaml overrides per BA/season.
+# Placeholders in inputs ({entity}, {window}, {metric}, {t0}, {t1}, {as_of}, {peers}, {hub})
+# are filled by the planner from the case context.
+#
+# REVIEW: wording, tests and falsifiers are Claude's proposal (2026-09-28). The spec says
+# this is the highest-leverage hour of the project; reverse anything you disagree with.
+
+templates:
+  - id: H0_DATA_ARTIFACT
+    mandatory: true
+    mechanism: >-
+      The miss is not real: missing or duplicated hours, an outlier row, a balance identity
+      that no longer closes, or a revision that changed history after the forecast was made.
+    preconditions: [any_anomaly]
+    tests:
+      - tool: identity.balance
+        inputs: {entity: "{entity}", window: "{window}"}
+      - tool: revision.diff
+        inputs: {series: eia.D, entity: "{entity}", t_a: "{as_of_minus_48h}", t_b: "{as_of}"}
+      - tool: anomaly.detect
+        inputs: {metric: demand, entity: "{entity}", window: "{window}"}
+    # Refuted when the identity holds, no hour is missing, and nothing was revised by >5%.
+    falsifier: >-
+      identity.balance.max_abs_z < 3 and anomaly.detect.missing_hours == 0
+      and revision.diff.max_rel_change < 0.05
+    prior: {a: 1.5, b: 8.5}
+
+  - id: H1_WEATHER_DEMAND
+    mechanism: >-
+      Weather departed from the forecast weather: the demand miss tracks the temperature
+      surprise in the BA's load centres, and neighbouring BAs under the same front miss the
+      same way.
+    preconditions: [forecast_error_anomaly]
+    tests:
+      - tool: regress.temperature
+        inputs: {entity: "{entity}", window: "{window}"}
+      - tool: peer.compare
+        inputs: {entity: "{entity}", peers: "{peers}", window: "{window}"}
+    # Refuted when temperature explains little of the error and peers do not co-move.
+    falsifier: regress.temperature.share_explained < 0.3 and peer.compare.max_corr < 0.5
+    prior: {a: 3.5, b: 6.5}
+
+  - id: H2_SUPPLY_SHORTFALL
+    mechanism: >-
+      Generation fell because one fuel's fleet lost output (freeze-offs, fuel supply,
+      forced outages); the fuel bridge is dominated by a single fuel and prices spike.
+    preconditions: [net_generation_anomaly, forecast_error_anomaly]
+    tests:
+      - tool: bridge.fuel
+        inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}"}
+      - tool: price.co_movement
+        inputs: {hub: "{hub}", window: "{window}"}
+    # Refuted when no single fuel explains most of the drop (prices alone cannot rescue it).
+    falsifier: bridge.fuel.top_share < 0.5 or bridge.fuel.total_change_mw > 0
+    prior: {a: 2.0, b: 8.0}
+
+  - id: H3_IMPORT_CONSTRAINT
+    mechanism: >-
+      The BA could not import what it needed: interchange is pinned at its historical limit
+      while prices separate from the neighbour's.
+    preconditions: [net_interchange_anomaly, forecast_error_anomaly]
+    tests:
+      - tool: anomaly.detect
+        inputs: {metric: net_interchange, entity: "{entity}", window: "{window}"}
+      - tool: price.co_movement
+        inputs: {hub: "{hub}", window: "{window}"}
+    # Refuted when interchange stays well inside its historical range.
+    falsifier: anomaly.detect.max_abs_z < 2 and anomaly.detect.share_at_limit < 0.2
+    prior: {a: 1.0, b: 9.0}
+
+  - id: H4_LOAD_SHED
+    mechanism: >-
+      Reported demand is served load: the operator shed firm load, so demand is flat or
+      falling while temperature-implied demand keeps rising and prices sit at the cap.
+    preconditions: [forecast_error_anomaly]
+    tests:
+      - tool: variance.plan_vs_actual
+        inputs: {entity: "{entity}", window: "{window}"}
+      - tool: regress.temperature
+        inputs: {entity: "{entity}", window: "{window}"}
+      - tool: price.co_movement
+        inputs: {hub: "{hub}", window: "{window}"}
+    # Refuted when demand did not fall below forecast while temperature implied more load.
+    falsifier: >-
+      variance.plan_vs_actual.min_error_pct > -5
+      or regress.temperature.implied_minus_actual_mw < 2000
+    prior: {a: 0.5, b: 9.5}
+
+  - id: H5_SUBREGION_CONCENTRATION
+    mechanism: >-
+      The miss is local: one subregion (zone, utility area) explains most of it, pointing to
+      a local outage, a large customer, or a zonal forecast error.
+    preconditions: [forecast_error_anomaly]
+    tests:
+      - tool: contribution.subregion
+        inputs: {entity: "{entity}", window: "{window}"}
+    # Refuted when no subregion carries more than 60% of the miss.
+    falsifier: contribution.subregion.top_share < 0.6
+    prior: {a: 1.5, b: 8.5}
+
+  - id: H6_RENEWABLE_FORECAST_MISS
+    mechanism: >-
+      Wind or solar output departed from its recent profile, and the residual (net) demand
+      error absorbed the difference; the demand forecast itself was fine.
+    preconditions: [net_generation_anomaly]
+    tests:
+      - tool: anomaly.detect
+        inputs: {metric: wind_capacity_factor_proxy, entity: "{entity}", window: "{window}"}
+      - tool: anomaly.detect
+        inputs: {metric: solar_capacity_factor_proxy, entity: "{entity}", window: "{window}"}
+      - tool: bridge.fuel
+        inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}"}
+    # Refuted when neither renewable proxy is anomalous and the bridge is not led by wind/solar.
+    falsifier: anomaly.detect.max_abs_z < 3 and bridge.fuel.renewable_share < 0.5
+    prior: {a: 2.0, b: 8.0}
+
+  - id: H7_CALENDAR
+    mechanism: >-
+      A holiday or daylight-saving boundary is missing from the forecast baseline, so the
+      forecast is shaped like an ordinary day and the error follows the calendar, not the weather.
+    preconditions: [forecast_error_anomaly]
+    tests:
+      - tool: variance.plan_vs_actual
+        inputs: {entity: "{entity}", window: "{window}"}
+      - tool: regress.temperature
+        inputs: {entity: "{entity}", window: "{window}"}
+    # Refuted when the window holds no calendar event, or temperature already explains the error.
+    falsifier: >-
+      variance.plan_vs_actual.calendar_event_in_window == 0
+      or regress.temperature.share_explained > 0.6
+    prior: {a: 1.0, b: 9.0}
