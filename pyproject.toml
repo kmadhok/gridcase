@@ -1,0 +1,36 @@
+[project]
+name = "gridcase"
+version = "0.1.0"
+description = "Governed investigation engine for plan-vs-actual metrics on US grid data"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic>=2.9",
+    "duckdb>=1.1",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "pyarrow>=17.0",
+    "pandas>=2.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "hypothesis>=6.112",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pandas-stubs>=2.2",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
