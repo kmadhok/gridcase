@@ -25,3 +25,8 @@ Dated log of judgment calls. Newest at the bottom. Anything here can be reversed
 - **Fuel-type categories.** February 2021 rows use the pre-2024 codes (COL, NG, NUC, OIL, OTH, SUN, WAT, WND); no BAT rows. Category mapping is deferred to the Phase 2 ontology as the spec requires.
 - **Static analysis.** ruff (E,F,I,UP,B,SIM, line 100) and mypy --strict pass. pandas-stubs makes `idxmax`/`sum` return `Hashable`/`complex`; worked around with explicit numpy conversions rather than `# type: ignore`.
 - **Routing.** Written inline rather than via Codex: the script reads the secret and is the data-correctness gate for the whole project.
+
+## 2026-09-28 — Phase 0 gate (human review)
+
+- **Uri accepted as ground truth** by the human, based on `docs/phase0_report.md`.
+- **Replay events chosen:** eclipse 2024-04-08 (ERCOT/CAISO), Winter Storm Elliott 2022-12 (PJM), Texas heat dome 2023-06 (ERCOT), CAISO rolling blackouts 2020-08. The human delegated rankings and one-line causes to Claude's drafts; see `bench/replay/README.md`. The eclipse is kept deliberately as a hard negative (well-forecast event, small miss) to test false-alarm behaviour on a real day.
