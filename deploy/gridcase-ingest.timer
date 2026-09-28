@@ -1,0 +1,11 @@
+[Unit]
+Description=Run GridCase ingest every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+Unit=gridcase-ingest.service
+
+[Install]
+WantedBy=timers.target

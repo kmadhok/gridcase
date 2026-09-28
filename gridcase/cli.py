@@ -25,6 +25,21 @@ def _parse_date(s: str) -> datetime:
     )
 
 
+def live_window(now: datetime) -> tuple[datetime, datetime]:
+    """Hourly mode: re-observe the last 3 days (revisions) and pull forecasts 2 days ahead."""
+    top = now.replace(minute=0, second=0, microsecond=0)
+    return top - timedelta(days=3), top + timedelta(days=2)
+
+
+def resolve_window(start: str | None, end: str | None, now: datetime) -> tuple[datetime, datetime]:
+    """Backfill window from CLI strings; defaults to the spec's history start and now."""
+    s = _parse_date(start) if start else config.HISTORY_START
+    e = _parse_date(end) if end else now
+    if e <= s:
+        raise SystemExit(f"--end {e} must be after --start {s}")
+    return s, e
+
+
 def build_source(name: str, live: bool) -> Source:
     client = httpx.Client(headers={"User-Agent": "gridcase"})
     if name == "eia":
@@ -44,12 +59,8 @@ def build_source(name: str, live: bool) -> Source:
 
 def cmd_ingest(args: argparse.Namespace) -> int:
     mode: Mode = "live" if args.live else "backfill"
-    if args.live:
-        now = datetime.now(UTC).replace(tzinfo=None, minute=0, second=0, microsecond=0)
-        start, end = now - timedelta(days=3), now + timedelta(days=2)
-    else:
-        start = _parse_date(args.start) if args.start else config.HISTORY_START
-        end = _parse_date(args.end) if args.end else datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    start, end = live_window(now) if args.live else resolve_window(args.start, args.end, now)
     names = SOURCES if args.source == "all" else [args.source]
     conn = connect(config.DB_PATH)
     rc = 0

@@ -1,0 +1,15 @@
+# User unit: hourly live ingest on the VPS. Install with deploy/install.sh.
+# Secrets come from .env in WorkingDirectory via python-dotenv; nothing is set here.
+[Unit]
+Description=GridCase hourly ingest (EIA + Open-Meteo, live vintages)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/Claude/Projects/gridcase
+ExecStart=%h/.local/bin/uv run gridcase ingest --source eia --live
+ExecStart=%h/.local/bin/uv run gridcase ingest --source openmeteo --live
+TimeoutStartSec=20min
+Restart=no
+Nice=10
