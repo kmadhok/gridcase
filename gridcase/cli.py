@@ -241,6 +241,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         ingest_interval_s=opts.ingest_interval_s,
         drain_interval_s=opts.drain_interval_s,
         watch=opts.watch,
+        polymarket_interval_s=300.0,
     )
     uvicorn.run(app, host=opts.host, port=opts.port, log_level="info")
     return 0

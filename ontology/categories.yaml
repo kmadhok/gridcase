@@ -1,0 +1,39 @@
+# Market categories for MarketCase (governed: a change re-labels history; log it in DECISIONS).
+# A market takes the first category whose tags match one of its event's Polymarket tags
+# (case-insensitive); failing that, the first whose keywords appear in the event or market
+# title; failing that, Other. Order matters: specific before general.
+categories:
+  - name: Crypto
+    tags: [crypto, bitcoin, ethereum, solana, crypto prices, xrp, dogecoin, memecoins, stablecoins]
+    keywords: [bitcoin, btc, ethereum, eth, solana, xrp, crypto, doge]
+  - name: Sports
+    tags: [sports, soccer, football, nfl, nba, mlb, nhl, tennis, golf, ufc, mma, boxing, f1, formula 1,
+           cricket, esports, champions league, premier league, epl, la liga, serie a, bundesliga,
+           ncaa, cfb, college football, olympics, wnba, mls, uefa, games]
+    keywords: [" vs ", " vs. ", win on 20, " fc ", nba, nfl, mlb, nhl, match, grand prix, open champion,
+               "exact score", "spread:", "o/u", moneyline, "total goals", "both teams", "to score",
+               strikeouts, "walks allowed", touchdowns, rebounds, "home runs", "set winner", halftime,
+               " points?", playoffs, "stanley cup", "world series", "super bowl"]
+  - name: Politics
+    tags: [politics, elections, us election, world elections, geopolitics, trump, congress, senate,
+           primaries, world, middle east, ukraine, china, government, courts, supreme court]
+    keywords: [election, president, trump, senate, congress, prime minister, nominee, " war", ceasefire,
+               putin, zelensk, khamenei, netanyahu, "xi jinping", nato, iran, israel, ukraine, russia,
+               parliament, governor, mayor]
+  - name: Economy & Finance
+    tags: [economy, finance, fed, fed rates, business, stocks, earnings, inflation, macro, commodities,
+           ipos, gdp, tariffs, equities, indices]
+    keywords: [fed, interest rate, inflation, cpi, gdp, recession, s&p, nasdaq, stock, earnings, tariff,
+               "(high)", "(low)", crude oil, gold, "deliver", "inc.", "etf", "up or down on"]
+  - name: Tech & Science
+    tags: [tech, ai, science, space, openai, big tech, spacex, apple]
+    keywords: [openai, gpt, ai model, spacex, launch, apple, google, nvidia]
+  - name: Weather
+    tags: [weather, climate, temperature, hurricanes, climate & science]
+    keywords: [temperature, rainfall, hurricane, snow, highest temperature]
+  - name: Culture
+    tags: [culture, pop culture, music, movies, awards, celebrities, tv, entertainment, mentions,
+           tweets markets, elon tweets, youtube, gaming]
+    keywords: [tweets, " posts ", album, box office, oscar, grammy, billboard, youtube, netflix,
+               taylor swift, mrbeast, "say ", "mention"]
+default: Other

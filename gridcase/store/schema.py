@@ -120,11 +120,65 @@ DDL = [
 ]
 
 
+# Polymarket (MarketCase). trades: one row per fill, deduplicated on trade_id = hash of
+# (transactionHash, asset, side, size, price); ts is when it traded, collected_at when our
+# collector saw it (what trades_as_of filters on, so a replay never sees later knowledge).
+POLYMARKET_DDL = [
+    """
+    CREATE TABLE IF NOT EXISTS trades (
+        trade_id      VARCHAR NOT NULL,
+        ts            TIMESTAMP NOT NULL,
+        wallet        VARCHAR NOT NULL,
+        side          VARCHAR,
+        size          DOUBLE NOT NULL,
+        price         DOUBLE NOT NULL,
+        usd           DOUBLE NOT NULL,
+        asset         VARCHAR,
+        condition_id  VARCHAR NOT NULL,
+        market_slug   VARCHAR,
+        event_slug    VARCHAR,
+        outcome       VARCHAR,
+        title         VARCHAR,
+        tx_hash       VARCHAR,
+        collected_at  TIMESTAMP NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS markets (
+        condition_id  VARCHAR PRIMARY KEY,
+        question      VARCHAR,
+        event_slug    VARCHAR,
+        event_title   VARCHAR,
+        category      VARCHAR NOT NULL,
+        tags          VARCHAR,
+        fetched_at    TIMESTAMP NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS collector_gaps (
+        gap_from     TIMESTAMP NOT NULL,
+        gap_to       TIMESTAMP NOT NULL,
+        detected_at  TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS raw_files (
+        path   VARCHAR PRIMARY KEY,
+        size   BIGINT NOT NULL,
+        mtime  DOUBLE NOT NULL
+    )
+    """,
+    """
+    CREATE OR REPLACE MACRO trades_as_of(t) AS TABLE
+    SELECT * FROM trades WHERE collected_at <= t AND ts <= t
+    """,
+]
+
 MIGRATIONS = [
     "ALTER TABLE cases ADD COLUMN IF NOT EXISTS step_errors_json VARCHAR",
 ]
 
 
 def create_schema(conn: duckdb.DuckDBPyConnection) -> None:
-    for stmt in [*DDL, *MIGRATIONS]:
+    for stmt in [*DDL, *POLYMARKET_DDL, *MIGRATIONS]:
         conn.execute(stmt)

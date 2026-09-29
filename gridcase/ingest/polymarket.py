@@ -67,6 +67,14 @@ def poll_once(
         return PollResult(0)
     oldest = min(int(t["timestamp"]) for t in page)
     gap = state.last_ts is not None and oldest > state.last_ts
+    if gap:  # trades between the last saved one and this page's oldest are lost for good
+        root.mkdir(parents=True, exist_ok=True)
+        with (root / "gaps.jsonl").open("a") as f:
+            detected = datetime.now(UTC).isoformat(timespec="seconds")
+            f.write(
+                json.dumps({"from_ts": state.last_ts, "to_ts": oldest, "detected_at": detected})
+                + "\n"
+            )
     fresh = [t for t in page if trade_key(t) not in state.seen]
     fresh.sort(key=lambda t: int(t["timestamp"]))
     now = datetime.now(UTC).isoformat(timespec="seconds")

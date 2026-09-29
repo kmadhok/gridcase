@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import duckdb
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -39,6 +40,7 @@ from gridcase.ask.engine import Asker, answer_question, case_checker
 from gridcase.ask.llm import default_asker_factory
 from gridcase.bench.run import SuiteResult
 from gridcase.bench.score import score
+from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
 from gridcase.planner.llm import LLM, AnthropicLLM, FakeLLM
@@ -136,6 +138,7 @@ def create_app(
     drain_interval_s: float | None = 600.0,
     ingest_interval_s: float | None = None,
     watch: bool = False,
+    polymarket_interval_s: float | None = None,
     asker_factory: Callable[[], Asker] | None = None,
     ask_per_window: int = 10,
     ask_window_s: float = 600.0,
@@ -250,8 +253,22 @@ def create_app(
     def background() -> None:
         next_ingest = time.monotonic()
         next_drain = time.monotonic()
+        next_polymarket = time.monotonic()
+        gamma = httpx.Client(base_url=GAMMA_URL, headers={"User-Agent": "marketcase"})
         while not stop.is_set():
             now = time.monotonic()
+            if polymarket_interval_s and now >= next_polymarket:
+                c = cur()
+                try:
+                    r = refresh(c, config.RAW_DIR / "polymarket", gamma)
+                    log.info(
+                        "polymarket refresh: %d new trades, %d new markets", r.new, r.markets_added
+                    )
+                except Exception as e:  # noqa: BLE001
+                    log.warning("polymarket refresh failed: %s", e)
+                finally:
+                    c.close()
+                next_polymarket = now + polymarket_interval_s
             if ingest_interval_s and now >= next_ingest:
                 try:
                     _live_ingest(cur())
@@ -283,7 +300,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         worker = None
-        if drain_interval_s or ingest_interval_s:
+        if drain_interval_s or ingest_interval_s or polymarket_interval_s:
             worker = threading.Thread(target=background, daemon=True, name="gridcase-bg")
             worker.start()
         async with mcp.session_manager.run():

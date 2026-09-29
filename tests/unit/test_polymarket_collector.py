@@ -94,3 +94,14 @@ def test_a_failed_request_is_reported_not_raised(tmp_path: Path) -> None:
     )
     r = poll_once(c, tmp_path, CollectorState())
     assert r.new == 0 and r.error is not None
+
+
+def test_a_gap_is_written_down_for_the_loader(tmp_path: Path) -> None:
+    state = CollectorState()
+    c = client_serving(
+        [[trade(1790711000, "t1")], [trade(1790711900, "t9"), trade(1790711800, "t8")]]
+    )
+    poll_once(c, tmp_path, state)
+    poll_once(c, tmp_path, state)
+    gap = json.loads((tmp_path / "gaps.jsonl").read_text().splitlines()[0])
+    assert (gap["from_ts"], gap["to_ts"]) == (1790711000, 1790711800)
