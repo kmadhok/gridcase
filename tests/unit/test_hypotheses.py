@@ -1,4 +1,4 @@
-"""Hypothesis templates: the eight mechanisms, their tests, falsifiers and priors."""
+"""Drivers (ontology/hypotheses.yaml) and priors (ontology/priors.yaml)."""
 
 from __future__ import annotations
 
@@ -7,65 +7,56 @@ from datetime import date
 import pytest
 
 from gridcase.planner.falsifier import parse
-from gridcase.planner.hypotheses import load_templates, prior_for, season_of
+from gridcase.planner.hypotheses import load_templates, mandatory_ids, prior_for, season_of
+from gridcase.planner.validate import falsifier_tools
 from gridcase.tools.registry import TOOL_NAMES
 
-EXPECTED = [
-    "H0_DATA_ARTIFACT",
-    "H1_WEATHER_DEMAND",
-    "H2_SUPPLY_SHORTFALL",
-    "H3_IMPORT_CONSTRAINT",
-    "H4_LOAD_SHED",
-    "H5_SUBREGION_CONCENTRATION",
-    "H6_RENEWABLE_FORECAST_MISS",
-    "H7_CALENDAR",
-]
+
+def test_the_seven_product_drivers_in_order() -> None:
+    assert [t.id for t in load_templates()] == [
+        "D0_DATA_PROBLEM",
+        "D1_ONE_MARKET",
+        "D2_ONE_CATEGORY",
+        "D3_NEW_TRADERS",
+        "D4_WHALES",
+        "D5_LONGSHOTS",
+        "D6_BROAD_BASED",
+    ]
 
 
-def test_templates_are_the_eight_in_spec_order() -> None:
-    assert [t.id for t in load_templates()] == EXPECTED
-
-
-def test_every_falsifier_parses_and_every_test_names_a_registry_tool() -> None:
+def test_every_falsifier_parses_and_reads_a_tool_its_driver_runs() -> None:
     for t in load_templates():
-        parse(t.falsifier)
-        assert t.tests and all(s.tool in TOOL_NAMES for s in t.tests)
-        assert t.preconditions, t.id
+        rule = parse(t.falsifier)
+        tested = {s.tool for s in t.tests}
+        assert tested <= set(TOOL_NAMES)
+        assert falsifier_tools(rule) & tested, t.id
 
 
-def test_h0_is_mandatory_and_tests_data_quality_first() -> None:
-    h0 = load_templates()[0]
-    assert h0.mandatory is True
-    assert {s.tool for s in h0.tests} >= {"identity.balance", "revision.diff"}
-    assert all(t.mandatory is False for t in load_templates()[1:])
+def test_the_data_check_is_the_only_mandatory_driver() -> None:
+    assert mandatory_ids() == ["D0_DATA_PROBLEM"]
+    d0 = load_templates()[0]
+    assert [s.tool for s in d0.tests] == ["data.coverage"]
 
 
-def test_causal_edges_and_explains_fields_reference_real_things() -> None:
-    by_id = {t.id: t for t in load_templates()}
-    for t in by_id.values():
-        for cause in t.consequence_of:
-            assert cause in by_id and cause != t.id
+def test_consequences_and_explains_point_at_real_drivers_and_fields() -> None:
+    ids = {t.id for t in load_templates()}
+    for t in load_templates():
+        assert set(t.consequence_of) <= ids - {t.id}
         if t.explains:
             tool = ".".join(t.explains.split(".")[:2])
-            assert tool in {s.tool for s in t.tests}, f"{t.id}.explains names an untested tool"
-    assert by_id["H4_LOAD_SHED"].consequence_of == ["H2_SUPPLY_SHORTFALL", "H3_IMPORT_CONSTRAINT"]
-    assert by_id["H0_DATA_ARTIFACT"].explains is None
+            assert tool in {s.tool for s in t.tests}, t.id
+    by_id = {t.id: t for t in load_templates()}
+    assert "D1_ONE_MARKET" in by_id["D2_ONE_CATEGORY"].consequence_of
+    assert "D3_NEW_TRADERS" in by_id["D6_BROAD_BASED"].consequence_of
 
 
 def test_seasons() -> None:
-    assert season_of(date(2021, 2, 15)) == "winter"
-    assert season_of(date(2023, 7, 20)) == "summer"
-    assert season_of(date(2023, 5, 1)) == "spring"
-    assert season_of(date(2022, 10, 1)) == "fall"
+    assert season_of(date(2026, 1, 5)) == "winter"
+    assert season_of(date(2026, 7, 5)) == "summer"
 
 
-def test_priors_have_ba_season_overrides_and_a_default() -> None:
-    p = prior_for("H1_WEATHER_DEMAND", "ERCO", "summer")
-    d = prior_for("H1_WEATHER_DEMAND", "US48", "spring")
-    assert p.a > 0 and p.b > 0 and d.a > 0
-    assert p.mean() > prior_for("H7_CALENDAR", "ERCO", "summer").mean()
-
-
-def test_unknown_template_prior_raises() -> None:
+def test_priors_exist_for_every_driver_and_unknown_ones_raise() -> None:
+    for t in load_templates():
+        assert 0 < prior_for(t.id, "volume_usd", "all").mean() < 1
     with pytest.raises(KeyError):
-        prior_for("H9_NOPE", "ERCO", "summer")
+        prior_for("NOPE", "volume_usd", "all")

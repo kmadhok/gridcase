@@ -107,27 +107,57 @@ def test_the_alarm_that_opened_a_case_gets_a_plain_verified_sentence() -> None:
 
     r = Receipt.build(
         tool="kpi.alarm",
-        inputs={"entity": "ERCO"},
-        as_of=datetime(2021, 2, 16, 12),
+        inputs={"kpi": "volume_usd"},
+        as_of=datetime(2026, 10, 5, 16),
         output={
-            "entity": "ERCO",
-            "alarm": True,
-            "direction": "below",
-            "run_hours": 30,
-            "worst_value": -39.5,
-            "mean": 0.4,
-            "std": 2.1,
-            "k_sigma": 3.0,
-            "lookback_days": 28,
+            "kpi": "volume_usd",
+            "filters": {"category": "Sports"},
+            "status": "alarm",
+            "direction": "up",
+            "run_hours": 2,
+            "value": 1_250_000.0,
+            "expected": 400_000.0,
+            "ratio": 3.125,
+            "z": 22.8,
         },
         data_version=None,
-        effect_size=-18.6,
+        effect_size=22.8,
         runtime_ms=1,
         sql=[],
     )
     claim = _claim_for(r)
-    assert claim is not None and "opened automatically" in claim.text
+    assert claim is not None and "opened automatically" in claim.text and "Sports" in claim.text
     kept, dropped = verify(
         Conclusion(case_id="c", top_hypothesis=None, ranked=[], claims=[claim]), {r.receipt_id: r}
     )
     assert dropped == [] and len(kept.claims) == 1
+
+
+def test_numbers_inside_labels_copied_from_the_evidence_are_not_claims() -> None:
+    """A segment called '$100-1k' or a market called 'Ethereum above $5k' is quoted, not
+    asserted: only the sentence's own figures must match the evidence."""
+    from datetime import datetime
+
+    from gridcase.explain.schema import Claim, Conclusion
+    from gridcase.explain.verifier import verify
+    from gridcase.ledger.schema import Receipt
+
+    r = Receipt.build(
+        tool="by.size",
+        inputs={},
+        as_of=datetime(2026, 10, 1),
+        output={"top_segment": "$100-1k", "top_share": 0.72, "top_change": 13412.57},
+        data_version=None,
+        effect_size=0.72,
+        runtime_ms=1,
+        sql=[],
+    )
+    ok = Claim(
+        text="Trades of $100-1k account for 72% of the change ($13,413).",
+        receipt_ids=[r.receipt_id],
+    )
+    bad = Claim(text="Trades of $100-1k account for 95% of the change.", receipt_ids=[r.receipt_id])
+    kept, dropped = verify(
+        Conclusion(case_id="c", top_hypothesis=None, ranked=[], claims=[ok, bad]), {r.receipt_id: r}
+    )
+    assert [c.text for c in kept.claims] == [ok.text] and len(dropped) == 1

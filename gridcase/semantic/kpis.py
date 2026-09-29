@@ -43,6 +43,7 @@ class Derived(BaseModel):
     description: str
     unit: str
     expr: str
+    weight: str  # the measure a segment's weight is counted in (trades for an average size)
 
 
 class Dimension(BaseModel):
@@ -152,3 +153,14 @@ SELECT {", ".join([*out_keys, f"{value} AS v"])} FROM agg ORDER BY ALL"""
 
 def run_kpi(conn: duckdb.DuckDBPyConnection, q: KpiQuery) -> list[tuple[Any, ...]]:
     return [tuple(r) for r in conn.execute(compile_kpi(q).sql).fetchall()]
+
+
+def segment_label(filters: dict[str, str]) -> str:
+    """A case's `entity`: 'all', or 'category=Sports' (dimensions sorted, joined by '&')."""
+    return "&".join(f"{k}={v}" for k, v in sorted(filters.items())) or "all"
+
+
+def parse_segment(label: str) -> dict[str, str]:
+    if label in ("", "all"):
+        return {}
+    return dict(part.split("=", 1) for part in label.split("&"))

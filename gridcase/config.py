@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -16,8 +15,6 @@ DB_PATH = Path(os.environ.get("GRIDCASE_DB", DATA_DIR / "gridcase.duckdb"))
 RAW_DIR = DATA_DIR / "raw"
 ONTOLOGY_DIR = ROOT / "ontology"
 
-REGIONS = ["ERCO", "CISO", "PJM", "US48"]
-HISTORY_START = datetime(2018, 7, 1)
 
 # Models: names live in config, never in code. Prices are USD per million tokens (input, output).
 PLANNER_MODEL = os.environ.get("GRIDCASE_PLANNER_MODEL", "claude-opus-5")
@@ -50,10 +47,3 @@ def ask_daily_usd() -> float:
 def has_anthropic_api_key() -> bool:
     """Presence only; the SDK reads the value itself. Never surface the key."""
     return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
-
-
-def eia_api_key() -> str:
-    key = os.environ.get("EIA_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("EIA_API_KEY is not set; put it in .env")
-    return key

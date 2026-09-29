@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from gridcase.planner.context import PlanContext, fill_inputs
-from gridcase.planner.hypotheses import load_templates
+from gridcase.planner.hypotheses import load_templates, mandatory_ids
 from gridcase.planner.schema import InvestigationPlan, ToolStep
 from gridcase.planner.validate import validate_plan
 
@@ -28,11 +28,12 @@ def _key(inputs: dict[str, Any]) -> str:
 
 
 def default_plan(ctx: PlanContext, budget: int = 12) -> InvestigationPlan:
-    """H0 first, then templates greedily by (prior, fewest new steps); identical (tool,
-    inputs) steps are shared between hypotheses. A template that does not fit the budget is
-    skipped and later, cheaper ones are still tried."""
+    """The mandatory data check first, then drivers greedily by (prior, fewest new steps);
+    identical (tool, inputs) steps are shared between hypotheses. A template that does not
+    fit the budget is skipped and later, cheaper ones are still tried."""
     templates = {t.id: t for t in load_templates()}
-    remaining = [h for h in ctx.applicable if h in templates and h != "H0_DATA_ARTIFACT"]
+    first = [h for h in mandatory_ids() if h in templates]
+    remaining = [h for h in ctx.applicable if h in templates and h not in first]
     steps: list[ToolStep] = []
     index: dict[str, ToolStep] = {}
     hypotheses: list[str] = []
@@ -66,8 +67,8 @@ def default_plan(ctx: PlanContext, budget: int = 12) -> InvestigationPlan:
         hypotheses.append(h)
         return True
 
-    if "H0_DATA_ARTIFACT" in templates:
-        accept("H0_DATA_ARTIFACT")
+    for h in first:
+        accept(h)
     while remaining:
         best = min(remaining, key=lambda h: (-ctx.priors.get(h, 0.0), new_steps(h), h))
         remaining.remove(best)

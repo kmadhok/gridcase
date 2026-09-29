@@ -1,26 +1,11 @@
-# Beta priors per hypothesis: defaults, with (BA, season) overrides. Updated by case memory
-# (Beta-Binomial) when cases close. Strength ~10 pseudo-observations so a handful of real
-# cases can move them. REVIEW: initial values are Claude's judgment, not measured.
+# Beta priors per driver (REVIEW: initial values are Claude's judgment, not measured). Case
+# memory updates them per KPI as investigations close.
 defaults:
-  H0_DATA_ARTIFACT:          {a: 1.5, b: 8.5}
-  H1_WEATHER_DEMAND:         {a: 3.5, b: 6.5}
-  H2_SUPPLY_SHORTFALL:       {a: 2.0, b: 8.0}
-  H3_IMPORT_CONSTRAINT:      {a: 1.0, b: 9.0}
-  H4_LOAD_SHED:              {a: 0.5, b: 9.5}
-  H5_SUBREGION_CONCENTRATION: {a: 1.5, b: 8.5}
-  H6_RENEWABLE_FORECAST_MISS: {a: 2.0, b: 8.0}
-  H7_CALENDAR:               {a: 1.0, b: 9.0}
-overrides:
-  H1_WEATHER_DEMAND:
-    ERCO: {summer: {a: 6.0, b: 4.0}, winter: {a: 4.0, b: 6.0}}
-    PJM:  {winter: {a: 5.0, b: 5.0}, summer: {a: 5.0, b: 5.0}}
-    CISO: {summer: {a: 5.0, b: 5.0}}
-  H2_SUPPLY_SHORTFALL:
-    ERCO: {winter: {a: 3.5, b: 6.5}}
-    PJM:  {winter: {a: 3.0, b: 7.0}}
-  H4_LOAD_SHED:
-    ERCO: {winter: {a: 1.0, b: 9.0}}
-    CISO: {summer: {a: 1.0, b: 9.0}}
-  H6_RENEWABLE_FORECAST_MISS:
-    ERCO: {spring: {a: 3.0, b: 7.0}, fall: {a: 3.0, b: 7.0}}
-    CISO: {spring: {a: 3.5, b: 6.5}, summer: {a: 3.0, b: 7.0}}
+  D0_DATA_PROBLEM: {a: 1.0, b: 9.0}
+  D1_ONE_MARKET:   {a: 4.0, b: 6.0}
+  D2_ONE_CATEGORY: {a: 3.0, b: 7.0}
+  D3_NEW_TRADERS:  {a: 2.0, b: 8.0}
+  D4_WHALES:       {a: 3.0, b: 7.0}
+  D5_LONGSHOTS:    {a: 1.5, b: 8.5}
+  D6_BROAD_BASED:  {a: 3.0, b: 7.0}
+overrides: {}

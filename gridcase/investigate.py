@@ -1,4 +1,4 @@
-"""Case orchestration: detect -> plan -> execute -> explain -> act, and the later re-check.
+"""Case orchestration: compare -> plan -> execute -> explain -> act, and the later re-check.
 
 Two LLM calls at most per case in the happy path (plan, explain); up to two plan retries.
 The re-check is fully deterministic: every step re-runs at the new as_of and falsifiers are
@@ -8,7 +8,7 @@ re-applied; no model call.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import duckdb
@@ -27,54 +27,62 @@ from gridcase.memory.cases import (
     save_case,
     similar_cases,
 )
-from gridcase.planner.context import WINDOW_HOURS, build_context
+from gridcase.planner.context import BASELINE_DAYS, build_context, case_window
 from gridcase.planner.executor import ExecutionResult, evaluate_hypotheses, execute_plan
 from gridcase.planner.hypotheses import load_templates
 from gridcase.planner.llm import LLM
 from gridcase.planner.planner import make_plan
+from gridcase.semantic.kpis import segment_label
 from gridcase.tools.base import ToolError, run_tool
+
+PRIOR_SEASON = "all"  # learned priors are kept per (driver, KPI); markets have no seasons
 
 
 def investigate(
     conn: duckdb.DuckDBPyConnection,
     llm: LLM,
-    entity: str,
-    metric: str,
+    kpi: str,
     as_of: datetime,
-    dry_run: bool = True,
+    filters: dict[str, str] | None = None,
     trigger: Receipt | None = None,
+    dry_run: bool = True,
 ) -> CaseRecord:
-    case = new_case(conn, entity=entity, metric=metric, as_of=as_of)
+    """Why did `kpi` (in the segment `filters`) move? The window is the alarm's run of hours,
+    or the last complete hours before as_of when a person asks."""
+    filters = dict(filters or {})
+    case = new_case(conn, entity=segment_label(filters), metric=kpi, as_of=as_of)
     if trigger is not None:  # the alarm that opened this case is its first piece of evidence
         write_receipt(conn, case.case_id, trigger)
-    window = (as_of - timedelta(hours=WINDOW_HOURS), as_of)
-    anomaly = run_tool(
+    window = case_window(as_of, trigger.output if trigger is not None else None)
+    compare = run_tool(
         conn,
-        "anomaly.detect",
-        {"metric": metric, "entity": entity, "window": window},
+        "kpi.compare",
+        {"kpi": kpi, "filters": filters, "window": window, "baseline_days": BASELINE_DAYS},
         as_of,
         case_id=case.case_id,
     )
 
-    priors = {t.id: effective_prior(conn, t.id, entity, case.season) for t in load_templates()}
+    priors = {t.id: effective_prior(conn, t.id, kpi, PRIOR_SEASON) for t in load_templates()}
     similar = [
         {"case_id": c.case_id, "as_of": c.as_of.isoformat(), "top_hypothesis": c.top_hypothesis}
-        for c in similar_cases(conn, entity, metric, case.season)
+        for c in similar_cases(conn, case.entity, kpi, case.season)
     ]
     ctx = build_context(
         conn,
         case.case_id,
-        entity,
-        metric,
+        kpi,
+        filters,
         as_of,
-        anomaly.output,
+        window,
+        compare.output,
         priors={h: p.mean() for h, p in priors.items()},
+        trigger=trigger.output if trigger is not None else None,
         similar_cases=similar,
     )
     plan, attempts, usage = make_plan(llm, ctx)
     case.plan, case.plan_attempts = plan, attempts
     case.llm_usage = case.llm_usage + usage
-    case.llm_calls += attempts if plan.source == "llm" or attempts > 1 else attempts
+    case.llm_calls += attempts
     save_case(conn, case)
     advance(conn, case.case_id, "planned")
 
@@ -83,11 +91,13 @@ def investigate(
     case = get_case(conn, case.case_id)
     case.plan, case.plan_attempts = plan, attempts
 
-    miss_mw = float(anomaly.output.get("max_abs_dev") or 0.0)
-    ranked = rank_hypotheses(result, priors, miss_mw)
+    ranked = rank_hypotheses(result, priors, change_size(compare.output))
     conclusion, dropped, u2 = explain(
         llm, case.case_id, ranked, case.receipts, ctx.model_dump(mode="json")
     )
+    usual = within_usual_range(compare.output)
+    if usual:
+        conclusion = conclusion.model_copy(update={"caveats": [*conclusion.caveats, usual]})
     case.step_errors = dict(result.errors)
     if result.errors:
         failed = ", ".join(
@@ -112,6 +122,24 @@ def investigate(
     save_case(conn, case)
     advance(conn, case.case_id, "action_taken")
     return get_case(conn, case.case_id)
+
+
+def within_usual_range(o: dict[str, Any]) -> str | None:
+    """A note when the KPI sits inside the range of the same hours on previous days: there may
+    be nothing to explain (a person can ask about any window, not only alarmed ones)."""
+    lo, hi, now = o.get("lowest_past"), o.get("highest_past"), o.get("now")
+    if o.get("insufficient") or lo is None or hi is None or now is None or not lo <= now <= hi:
+        return None
+    return (
+        f"These hours are within the usual range: the same hours on each of the previous "
+        f"{o['baseline_days_used']} days ranged from {lo:,.2f} to {hi:,.2f}, and now it is "
+        f"{now:,.2f}. There may be nothing unusual to explain."
+    )
+
+
+def change_size(compare_output: dict[str, Any]) -> float:
+    """How big the change was (what the drivers' `explains` fields are divided by)."""
+    return abs(float(compare_output.get("change") or 0.0))
 
 
 @dataclass
@@ -149,10 +177,11 @@ def recheck(conn: duckdb.DuckDBPyConnection, case_id: str, as_of: datetime) -> R
         result.hypothesis_status[h] = "open"
     evaluate_hypotheses(plan, result)
 
-    priors = {t.id: effective_prior(conn, t.id, case.entity, case.season) for t in load_templates()}
-    first = next((r for r in case.receipts if r.tool == "anomaly.detect"), None)
-    miss_mw = float(first.output.get("max_abs_dev") or 0.0) if first else 0.0
-    ranked = rank_hypotheses(result, priors, miss_mw)
+    priors = {
+        t.id: effective_prior(conn, t.id, case.metric, PRIOR_SEASON) for t in load_templates()
+    }
+    first = next((r for r in case.receipts if r.tool == "kpi.compare"), None)
+    ranked = rank_hypotheses(result, priors, change_size(first.output) if first else 0.0)
     new_top = next((v.id for v in ranked if v.status != "refuted"), None)
     verdicts: dict[str, str] = {}
     for h in plan.hypotheses:

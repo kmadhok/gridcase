@@ -19,32 +19,6 @@ def _unit(name: str) -> dict[str, list[str]]:
     return out
 
 
-def test_ingest_timer_runs_hourly_with_small_jitter() -> None:
-    t = _unit("gridcase-ingest.timer")
-    assert t["OnCalendar"] == ["hourly"]
-    assert int(t["RandomizedDelaySec"][0]) <= 600
-    assert t["Persistent"] == ["true"]
-    assert "timers.target" in t["WantedBy"][0]
-
-
-def test_ingest_service_runs_live_ingest_for_eia_and_openmeteo() -> None:
-    s = _unit("gridcase-ingest.service")
-    execs = " ; ".join(s["ExecStart"])
-    assert "gridcase ingest --source eia --live" in execs
-    assert "gridcase ingest --source openmeteo --live" in execs
-    assert s["Type"] == ["oneshot"]
-    assert s["WorkingDirectory"][0].endswith("/gridcase")
-    # .env is read by python-dotenv from the working directory; no secrets in the unit
-    assert "Environment" not in s
-    assert not any("KEY" in v for vals in s.values() for v in vals)
-
-
-def test_ingest_service_does_not_fight_the_server_for_the_db_lock() -> None:
-    s = _unit("gridcase-ingest.service")
-    # A failed hourly run must not retry in a tight loop while the server holds the file.
-    assert s.get("Restart", ["no"]) == ["no"]
-
-
 def test_server_service_is_the_single_writer_and_binds_tailscale_only() -> None:
     s = _unit("gridcase-server.service")
     execs = " ; ".join(s["ExecStart"])
@@ -58,10 +32,11 @@ def test_server_service_is_the_single_writer_and_binds_tailscale_only() -> None:
     assert not any("KEY" in v or "TOKEN" in v for vals in s.values() for v in vals)
 
 
-def test_install_script_stops_the_timer_when_the_server_owns_ingest() -> None:
+def test_install_script_enables_the_server_and_retires_the_grid_ingest_timer() -> None:
     text = (DEPLOY / "install.sh").read_text()
-    assert "gridcase-server.service" in text
-    assert "disable --now gridcase-ingest.timer" in text
+    assert "enable --now gridcase-server.service" in text
+    assert "disable --now gridcase-ingest.timer" in text  # left over on hosts from the grid era
+    assert not (DEPLOY / "gridcase-ingest.timer").exists()
 
 
 def test_collector_runs_forever_and_restarts_on_failure() -> None:

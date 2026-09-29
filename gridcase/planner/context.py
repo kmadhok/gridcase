@@ -1,5 +1,6 @@
-"""What the planner sees: the anomaly, the entity's ontology slice, applicable templates with
-priors, similar closed cases, and the concrete windows/instants tools will need."""
+"""What the planner sees: the KPI and segment that moved, the window, how it compares with the
+same hours on previous days, the drivers that apply, their priors, and similar past cases.
+Template test inputs use placeholders filled here: {kpi} {filters} {window} {baseline_days}."""
 
 from __future__ import annotations
 
@@ -9,30 +10,22 @@ from typing import Any
 import duckdb
 from pydantic import BaseModel, Field
 
-from gridcase.config import REGIONS
-from gridcase.planner.hypotheses import load_templates, season_of
-from gridcase.semantic.compiler import compile_query
-from gridcase.semantic.ontology import load_ontology
-from gridcase.semantic.schema import MetricQuery
-from gridcase.store.series import SERIES_BY_ID
+from gridcase.planner.hypotheses import HypothesisTemplate, load_templates
 
-WINDOW_HOURS = 72
+BASELINE_DAYS = 7
+DEFAULT_WINDOW_HOURS = 6
 
 
 class PlanContext(BaseModel):
     case_id: str
-    entity: str
-    metric: str
+    kpi: str
+    filters: dict[str, str] = Field(default_factory=dict)
     as_of: datetime
     window: tuple[datetime, datetime]
-    t0: datetime
-    t1: datetime
-    event_start: datetime  # first hour of the flagged run holding the worst hour (or window start)
-    event_end: datetime  # hour after that run (or window end)
-    peers: list[str]
-    hub: str | None
-    season: str
-    anomaly: dict[str, Any]
+    baseline_days: int = BASELINE_DAYS
+    change: dict[str, Any] = Field(default_factory=dict)  # kpi.compare output for the window
+    trigger: dict[str, Any] = Field(default_factory=dict)  # the alarm that opened the case
+    record_days: int = 0
     applicable: list[str]
     priors: dict[str, float]
     similar_cases: list[dict[str, Any]] = Field(default_factory=list)
@@ -40,81 +33,62 @@ class PlanContext(BaseModel):
 
 def fill_inputs(inputs: dict[str, Any], ctx: PlanContext) -> dict[str, Any]:
     values: dict[str, Any] = {
-        "{entity}": ctx.entity,
-        "{metric}": ctx.metric,
+        "{kpi}": ctx.kpi,
+        "{filters}": dict(ctx.filters),
         "{window}": [ctx.window[0], ctx.window[1]],
-        "{t0}": ctx.t0,
-        "{t1}": ctx.t1,
+        "{baseline_days}": ctx.baseline_days,
         "{as_of}": ctx.as_of,
-        "{as_of_minus_48h}": ctx.as_of - timedelta(hours=48),
-        "{peers}": list(ctx.peers),
-        "{hub}": ctx.hub,
-        "{event_start}": ctx.event_start,
-        "{event_end}": ctx.event_end,
     }
     return {k: values.get(v, v) if isinstance(v, str) else v for k, v in inputs.items()}
 
 
-def default_windows(as_of: datetime) -> tuple[tuple[datetime, datetime], datetime, datetime]:
-    window = (as_of - timedelta(hours=WINDOW_HOURS), as_of)
-    t1 = as_of - timedelta(hours=SERIES_BY_ID["eia.fuel"].lag_hours)
-    return window, t1 - timedelta(hours=24), t1
+def applies(t: HypothesisTemplate, filters: dict[str, str], record_days: int) -> bool:
+    for pre in t.preconditions:
+        kind, _, arg = pre.partition(":")
+        if kind == "unfiltered" and arg in filters:
+            return False
+        if pre.startswith("record_days>=") and record_days < int(pre.split(">=")[1]):
+            return False
+    return True
 
 
-def worst_hour_with_fuel_data(
-    conn: duckdb.DuckDBPyConnection, entity: str, as_of: datetime, window: tuple[datetime, datetime]
-) -> datetime | None:
-    """The hour of largest supply gap (forecast minus generation) known at as_of. Served load
-    tracks generation during load shed, so the gap, not the generation level, locates the
-    shortfall; the bridge is anchored on it."""
-    gap = compile_query(
-        MetricQuery(metric="supply_gap_mw", entity=entity, window=window, as_of=as_of)
-    )
-    rows: list[tuple[datetime, float]] = [
-        (t, float(v)) for t, v in conn.execute(gap.sql).fetchall() if v is not None
-    ]
-    if not rows:
-        return None
-    worst: datetime = max(rows, key=lambda r: (r[1], r[0]))[0]
-    return worst
+def case_window(as_of: datetime, trigger: dict[str, Any] | None) -> tuple[datetime, datetime]:
+    """The alarm's run of hours, or the last complete hours before as_of."""
+    if trigger and trigger.get("run_start") and trigger.get("run_end"):
+        lo = datetime.fromisoformat(trigger["run_start"])
+        return lo, datetime.fromisoformat(trigger["run_end"]) + timedelta(hours=1)
+    hi = as_of.replace(minute=0, second=0, microsecond=0)
+    return hi - timedelta(hours=DEFAULT_WINDOW_HOURS), hi
+
+
+def record_days(conn: duckdb.DuckDBPyConnection, as_of: datetime) -> int:
+    row = conn.execute("SELECT min(ts) FROM trades_as_of(?)", [as_of]).fetchone()
+    return 0 if not row or row[0] is None else (as_of - row[0]).days
 
 
 def build_context(
     conn: duckdb.DuckDBPyConnection,
     case_id: str,
-    entity: str,
-    metric: str,
+    kpi: str,
+    filters: dict[str, str],
     as_of: datetime,
-    anomaly: dict[str, Any],
+    window: tuple[datetime, datetime],
+    change: dict[str, Any],
     priors: dict[str, float],
+    trigger: dict[str, Any] | None = None,
     similar_cases: list[dict[str, Any]] | None = None,
 ) -> PlanContext:
-    onto = load_ontology()
-    window, t0, t1 = default_windows(as_of)
-    worst = worst_hour_with_fuel_data(conn, entity, as_of, window)
-    if worst is not None:
-        t1 = worst
-        t0 = t1 - timedelta(hours=24)
-    hubs = onto.hubs(entity)
-    anchor = anomaly.get("event_start") or anomaly.get("first_flag_t")
-    event_start = datetime.fromisoformat(anchor) if isinstance(anchor, str) else window[0]
-    end_anchor = anomaly.get("event_end")
-    event_end = datetime.fromisoformat(end_anchor) if isinstance(end_anchor, str) else window[1]
+    days = record_days(conn, as_of)
     return PlanContext(
         case_id=case_id,
-        entity=entity,
-        metric=metric,
+        kpi=kpi,
+        filters=filters,
         as_of=as_of,
         window=window,
-        t0=t0,
-        t1=t1,
-        event_start=event_start,
-        event_end=event_end,
-        peers=[r for r in REGIONS if r not in (entity, "US48")],
-        hub=hubs[0] if hubs else None,
-        season=season_of(as_of.date()),
-        anomaly=anomaly,
-        applicable=[t.id for t in load_templates()],
+        change=change,
+        trigger=trigger or {},
+        record_days=days,
+        applicable=[t.id for t in load_templates() if applies(t, filters, days)],
         priors=priors,
         similar_cases=similar_cases or [],
     )

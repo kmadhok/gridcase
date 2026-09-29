@@ -1,9 +1,9 @@
-"""publish_case: write the case file and schedule a re-check when lagged data will have landed."""
+"""publish_case: write the case file and schedule a re-check a day later."""
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,26 +11,17 @@ import duckdb
 
 from gridcase.config import DATA_DIR
 from gridcase.memory.cases import CaseRecord
-from gridcase.store.series import SERIES_BY_ID
 
 ALLOWED_ACTIONS = {"publish_case"}
 CASES_DIR = DATA_DIR / "cases"
 
 
+RECHECK_AFTER = timedelta(hours=24)
+
+
 def recheck_delay(case: CaseRecord) -> timedelta:
-    """now + max(lag_hours of series used), with a 24 h floor."""
-    used = {s for r in case.receipts for s in _series_of(r.sql)}
-    lags = [SERIES_BY_ID[s].lag_hours for s in used if s in SERIES_BY_ID]
-    return timedelta(hours=max([*lags, 24]))
-
-
-def _series_of(sql_log: list[dict[str, str]]) -> set[str]:
-    out: set[str] = set()
-    for q in sql_log:
-        for s in SERIES_BY_ID:
-            if f"series_id = '{s}'" in q["sql"]:
-                out.add(s)
-    return out
+    """Re-run the evidence a day later: did the change persist, and does the answer hold?"""
+    return RECHECK_AFTER
 
 
 def publish_case(
@@ -47,7 +38,7 @@ def publish_case(
     conn.execute(
         "INSERT INTO scheduled_tasks (task_id, case_id, kind, run_at, status, created_at) "
         "VALUES (?, ?, 'recheck', ?, 'scheduled', ?)",
-        [task_id, case.case_id, run_at, datetime.utcnow().replace(microsecond=0)],
+        [task_id, case.case_id, run_at, datetime.now(UTC).replace(tzinfo=None, microsecond=0)],
     )
     path: str | None = None
     if not dry_run:

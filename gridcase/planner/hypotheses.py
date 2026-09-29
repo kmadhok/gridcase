@@ -58,6 +58,11 @@ def load_templates() -> list[HypothesisTemplate]:
     return [HypothesisTemplate(**t) for t in doc["templates"]]
 
 
+def mandatory_ids() -> list[str]:
+    """Drivers every plan must test, first (the data check)."""
+    return [t.id for t in load_templates() if t.mandatory]
+
+
 def template_by_id(hid: str) -> HypothesisTemplate:
     for t in load_templates():
         if t.id == hid:

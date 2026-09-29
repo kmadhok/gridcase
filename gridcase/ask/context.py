@@ -3,11 +3,9 @@ in plain names, without the SQL (which stays in the UI)."""
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
-from gridcase.ask.glossary import CAUSES, CHECKS, GLOSSARY, REGIONS, STATUS
-from gridcase.ledger.schema import Receipt
+from gridcase.ask.glossary import CAUSES, CHECKS, GLOSSARY, STATUS
 from gridcase.memory.cases import CaseRecord
 from gridcase.planner.hypotheses import load_templates
 
@@ -62,8 +60,11 @@ def case_context(case: CaseRecord) -> dict[str, Any]:
     ]
     return {
         "page": "investigation",
-        "region": REGIONS.get(case.entity, case.entity),
-        "question_investigated": "why demand differed from the day-ahead forecast",
+        "kpi": case.metric,
+        "segment": case.entity,
+        "question_investigated": (
+            f"why {case.metric} ({case.entity}) moved away from its usual level"
+        ),
         "point_in_time": case.as_of.isoformat(),
         "best_supported_cause": CAUSES.get(case.top_hypothesis or "", (None, ""))[0],
         "causes": causes,
@@ -77,41 +78,3 @@ def case_context(case: CaseRecord) -> dict[str, Any]:
         "follow_up": case.recheck,
         "glossary": GLOSSARY,
     }
-
-
-def bench_context(runs: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Receipt]]:
-    """The scorecard as citable evidence: one pseudo-receipt per benchmark run."""
-    receipts: dict[str, Receipt] = {}
-    rows = []
-    for run in runs:
-        output = {
-            "config": run.get("config", {}),
-            "summary": run.get("summary", {}),
-            "replay": run.get("replay", []),
-        }
-        r = Receipt.build(
-            tool="bench.summary",
-            inputs={"run": run.get("name")},
-            as_of=datetime(2000, 1, 1),
-            output=output,
-            data_version=None,
-            effect_size=None,
-            runtime_ms=0,
-            sql=[],
-        )
-        receipts[r.receipt_id] = r
-        rows.append({"cite_as": cite_code(r.receipt_id), "run": run.get("name"), **output})
-    context = {
-        "page": "scorecard",
-        "what_it_measures": (
-            "How often GridCase names the right cause. Real events are historical events with "
-            "a documented cause; test cases are faults injected into real data (they partly "
-            "measure the system agreeing with itself); quiet periods are windows with no known "
-            "event, where any alarm is a false alarm. 'plan checks off' is an ablation with the "
-            "plan validator disabled."
-        ),
-        "runs": rows,
-        "causes": {k: v[0] for k, v in CAUSES.items()},
-        "glossary": GLOSSARY,
-    }
-    return context, receipts

@@ -5,26 +5,31 @@
 from __future__ import annotations
 
 CAUSES: dict[str, tuple[str, str]] = {
-    "H0_DATA_ARTIFACT": ("bad data", "The numbers themselves are wrong, missing or later revised."),
-    "H1_WEATHER_DEMAND": (
-        "weather-driven demand",
-        "Temperature moved demand more than the forecast assumed.",
+    "D0_DATA_PROBLEM": (
+        "a data problem",
+        "Our collector missed trades or the feed stalled, so the numbers are not real movement.",
     ),
-    "H2_SUPPLY_SHORTFALL": ("supply shortfall", "Power plants delivered far less than planned."),
-    "H3_IMPORT_CONSTRAINT": (
-        "imports maxed out",
-        "The lines to neighbouring grids were at their limit.",
+    "D1_ONE_MARKET": (
+        "one market",
+        "A single market (an event) accounts for most of the change: news, a live match, a resolution.",
     ),
-    "H4_LOAD_SHED": ("load shed", "Customers were deliberately cut off to protect the grid."),
-    "H5_SUBREGION_CONCENTRATION": (
-        "one area drove it",
-        "The miss came from a single zone, not the whole grid.",
+    "D2_ONE_CATEGORY": (
+        "one category",
+        "One category (sports, politics, crypto…) accounts for most of the change.",
     ),
-    "H6_RENEWABLE_FORECAST_MISS": (
-        "wind or solar came in far off",
-        "Renewable output was far from what was forecast.",
+    "D3_NEW_TRADERS": (
+        "new traders",
+        "Wallets new to Polymarket drive the change: an acquisition wave or its absence.",
     ),
-    "H7_CALENDAR": ("holiday effect", "The forecast treated a holiday like a normal day."),
+    "D4_WHALES": (
+        "a few large trades",
+        "Trades of $1k and up drive the change, not ordinary traders.",
+    ),
+    "D5_LONGSHOTS": ("long-shot bets", "Bets on outcomes priced under 20% drive the change."),
+    "D6_BROAD_BASED": (
+        "a broad shift",
+        "The change is spread across many markets: a platform-wide shift.",
+    ),
 }
 
 STATUS = {
@@ -35,39 +40,33 @@ STATUS = {
     "open": "couldn't test yet",
 }
 
-REGIONS = {
-    "ERCO": "ERCOT (Texas)",
-    "CISO": "CAISO (California)",
-    "PJM": "PJM (Mid-Atlantic)",
-    "US48": "the US Lower 48",
-}
-
 CHECKS = {
-    "identity.balance": "Do the numbers add up? Checks demand = generation - net exports hour by hour.",
-    "revision.diff": "Was the data revised later? Compares two published versions of a series.",
-    "regress.temperature": "How much does weather explain? Relates demand and the miss to temperature.",
-    "peer.compare": "Did neighbouring grids see it too? Correlates the miss with other regions'.",
-    "bridge.fuel": "Which power sources moved? Breaks generation down by fuel.",
-    "price.co_movement": "Did prices spike? Wholesale prices near the cap.",
-    "variance.plan_vs_actual": "How big was the miss? Demand vs. the day-ahead forecast.",
-    "contribution.subregion": "Was one area driving it? Shares of the change by zone.",
-    "baseline.expected": "What was normal for this hour? The model of a typical hour.",
-    "kpi.alarm": "Why was this investigation opened? Demand vs. forecast (%) compared with its average and spread for the same hour of the day over the previous 28 days; 3 hours in a row beyond 3 standard deviations opens a case. Data glitches are set aside.",
-    "anomaly.detect": "Was a quantity abnormal? Compares it with its normal range hour by hour.",
+    "kpi.compare": "How big was the change? The KPI over these hours vs the same hours on previous days.",
+    "data.coverage": "Is our data complete? Collector gaps, hours with no trades, freshness.",
+    "by.market": "Which market drove it? The change broken down by market.",
+    "by.category": "Which category drove it? The change broken down by category.",
+    "by.size": "Big or small trades? The change broken down by trade size.",
+    "by.trader": "New or returning traders? The change broken down by trader type.",
+    "by.odds": "Long shots or favourites? The change broken down by the odds traded.",
+    "kpi.alarm": "Why was this investigation opened? The KPI for each hour vs the same hour of the day on previous days; 2 hours in a row beyond 3 standard deviations (or 1 beyond 5) opens a case.",
 }
 
 GLOSSARY = {
-    "evidence supports": "The check that could have ruled this cause out did not; the numbers are consistent with it.",
-    "ruled out": "A check found numbers that contradict this cause.",
-    "couldn't test yet": "The data needed was not published yet at the investigation's point in time.",
-    "likely": "How strongly the evidence and the region's history favour this cause, as a percentage.",
-    "explains X% of the gap": "How much of the shortfall between demand and forecast this cause could account for.",
+    "trading volume": "Dollars traded: shares times price, summed over trades.",
+    "active traders": "Distinct wallets that traded.",
+    "new traders": "Wallets whose first trade in our record was that day (our record starts 29 Sep 2026).",
+    "average trade size": "Trading volume divided by the number of trades.",
+    "returning-trader share": "The share of active traders who had traded on an earlier day.",
+    "usual level": "The average for the same hours of the day on previous days.",
+    "share of the change": "How much of the difference from the usual level a segment accounts for.",
+    "evidence supports": "The check that could have ruled this driver out did not.",
+    "ruled out": "A check found numbers that contradict this driver.",
+    "couldn't test yet": "Not enough history yet, or the data needed was missing.",
+    "likely": "How strongly the evidence and past cases favour this driver, as a percentage.",
     "measured": "A sentence whose number is read straight from the data, with the exact query attached.",
     "computed": "A sentence whose number is calculated from measured numbers.",
     "interpretation": "A sentence that is the writer's judgement; no evidence link.",
-    "follow-up check": "Some grid data arrives a day or two late; each case is re-checked once it lands.",
-    "usual gap": "The typical difference between demand and its forecast for this region over the past 28 days.",
-    "day-ahead forecast": "The grid operator's forecast of each hour's demand, published the day before.",
-    "served load": "During deliberate blackouts, reported demand is the power actually delivered, not what customers wanted.",
-    "point in time": "Investigations only use data that had been published by then, so they can be replayed honestly.",
+    "long shot": "An outcome priced under 20 cents (under a 20% chance).",
+    "whale": "A trade of $1,000 or more.",
+    "point in time": "Investigations use only trades our collector had seen by then, so they can be replayed honestly.",
 }

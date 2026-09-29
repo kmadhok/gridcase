@@ -35,6 +35,26 @@ def _flatten(obj: Any, out: list[float]) -> None:
             _flatten(v, out)
 
 
+def _labels(obj: Any, out: set[str]) -> None:
+    """Strings in the evidence that contain digits (segment and market names like '$100-1k')."""
+    if isinstance(obj, str):
+        if any(ch.isdigit() for ch in obj) and len(obj) <= 200:
+            out.add(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _labels(v, out)
+    elif isinstance(obj, list | tuple):
+        for v in obj:
+            _labels(v, out)
+
+
+def _without_labels(text: str, labels: set[str]) -> str:
+    """Quoting a label from the evidence is not asserting its numbers."""
+    for label in sorted(labels, key=len, reverse=True):
+        text = text.replace(label, " ")
+    return text
+
+
 def _matches(n: float, values: list[float]) -> bool:
     """Prose drops signs ("fell 8,236 MW" for -8236), so magnitudes are compared."""
     a = abs(n)
@@ -79,7 +99,11 @@ def verify(
             effect = receipts[rid].effect_size
             if effect is not None:
                 values.append(float(effect))
-        bad = [n for n in numbers_in(c.text) if not _matches(n, values)]
+        labels: set[str] = set()
+        for rid in c.receipt_ids:
+            _labels(receipts[rid].output, labels)
+        text = _without_labels(c.text, labels)
+        bad = [n for n in numbers_in(text) if not _matches(n, values)]
         if bad:
             dropped.append(f"{c.text[:60]}: number {_fmt(bad[0])} not in cited receipts")
             continue

@@ -1,171 +1,84 @@
-# Hypothesis templates. Each names a causal mechanism, the ordered tool calls that test it,
-# and a falsifier: a rule over tool outputs that, when TRUE, refutes the hypothesis.
-# Falsifier grammar: gridcase/planner/falsifier.py. Output field names are the Phase 3 tool
-# contracts. `prior` is the default Beta prior; ontology/priors.yaml overrides per BA/season.
-# `explains` names the tool output (MW) giving how much of the miss the mechanism accounts
-# for; `consequence_of` lists mechanisms it follows from (a supported cause outranks it).
-# Placeholders in inputs ({entity}, {window}, {metric}, {t0}, {t1}, {as_of}, {peers}, {hub})
-# are filled by the planner from the case context; t0/t1 bracket the hour of largest supply
-# gap (forecast minus generation) known at as_of.
-#
-# REVIEW: wording, tests, falsifiers and causal edges are Claude's proposal (2026-09-28). The
-# spec says this is the highest-leverage hour of the project; reverse anything you disagree with.
-
+# MarketCase drivers: the possible reasons a watched KPI moved (governed; a new driver needs a
+# DECISIONS line). A driver is refuted when its falsifier is TRUE. `explains` is the part of
+# the change it can account for (divided by the total change = its coverage).
+# Placeholders: {kpi} {filters} {window} {baseline_days}.
+# Preconditions: "unfiltered:<dim>" (skip when the series is already one segment of <dim>),
+# "record_days>=N" (skip until our record is N days old).
 templates:
-  - id: H0_DATA_ARTIFACT
+  - id: D0_DATA_PROBLEM
+    mechanism: >-
+      The movement is an artefact of our data, not of trading: the collector missed trades,
+      the public feed stalled, or the window starts before our record does.
+    preconditions: []
+    tests:
+      - {tool: data.coverage, inputs: {window: "{window}"}}
+    falsifier: data.coverage.complete == 1
+    prior: {a: 1.0, b: 9.0}
     mandatory: true
-    mechanism: >-
-      The miss is not real: missing or duplicated hours, an outlier row, a balance identity
-      that no longer closes, or a revision that changed history after the forecast was made.
-    preconditions: [any_anomaly]
-    tests:
-      - tool: identity.balance
-        inputs: {entity: "{entity}", window: "{window}"}
-      - tool: revision.diff
-        inputs: {series: eia.D, entity: "{entity}", t_a: "{as_of_minus_48h}", t_b: "{as_of}"}
-    # Refuted when the identity holds, no knowable D/NG/TI hour is missing, and nothing was
-    # revised by >5%. (The case-level anomaly receipt already covers the metric's own gaps.)
-    falsifier: >-
-      identity.balance.max_abs_z < 3 and identity.balance.n_missing == 0
-      and revision.diff.max_rel_change < 0.05
-    prior: {a: 1.5, b: 8.5}
 
-  - id: H1_WEATHER_DEMAND
+  - id: D1_ONE_MARKET
     mechanism: >-
-      Weather departed from the forecast weather: the demand miss tracks the temperature
-      surprise in the BA's load centres, and neighbouring BAs under the same front miss the
-      same way.
-    preconditions: [forecast_error_anomaly]
+      One market accounts for most of the change: news, a live match or a resolution drew
+      (or drained) trading in that market.
+    preconditions: []
     tests:
-      - tool: regress.temperature
-        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
-      - tool: peer.compare
-        inputs: {entity: "{entity}", peers: "{peers}", window: "{window}"}
-    # Refuted when the error moves the wrong way with the thermal surprise (colder than
-    # expected yet less load: that is shed load, not weather), or when the surprise explains
-    # little of the error and peers do not co-move.
-    falsifier: >-
-      regress.temperature.sign_consistent == 0
-      or (regress.temperature.share_explained < 0.3 and peer.compare.max_corr < 0.5)
-    explains: regress.temperature.error_explained_mw
-    prior: {a: 3.5, b: 6.5}
+      - {tool: by.market, inputs: {kpi: "{kpi}", filters: "{filters}", window: "{window}", baseline_days: "{baseline_days}"}}
+    falsifier: by.market.top_share < 0.5
+    prior: {a: 4.0, b: 6.0}
+    explains: by.market.top_change
 
-  - id: H2_SUPPLY_SHORTFALL
+  - id: D2_ONE_CATEGORY
     mechanism: >-
-      Generation could not meet expected load because one fuel's fleet lost output
-      (freeze-offs, fuel supply, forced outages): the forecast-minus-generation gap is
-      anomalous, the fuel bridge into the gap is dominated by a single fuel, and prices spike.
-    preconditions: [net_generation_anomaly, forecast_error_anomaly]
+      One category (sports, politics, crypto…) accounts for most of the change: a
+      category-wide event rather than a single market.
+    preconditions: ["unfiltered:category"]
     tests:
-      - tool: anomaly.detect
-        inputs: {metric: supply_gap_mw, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
-      - tool: regress.temperature
-        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
-      - tool: bridge.fuel
-        inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}", mode: expected, event_start: "{event_start}"}
-      - tool: price.co_movement
-        inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when the supply gap is not anomalous, when the weather surprise explains the
-    # window's forecast error (a demand-side miss), or when served load sits at what the
-    # weather implied (a shortfall that serves everyone is not a shortfall). Fuel attribution
-    # lags the gap by a day of EIA publication and is reported, not required: at Uri's first
-    # information state gas was still at its expected level (DECISIONS, Phase 4).
-    falsifier: >-
-      anomaly.detect.max_abs_z < 3
-      or (regress.temperature.share_explained_window > 0.5
-          and regress.temperature.sign_consistent_window == 1)
-      or regress.temperature.implied_minus_actual_mean_z < 1
-    explains: anomaly.detect.max_abs_dev
+      - {tool: by.category, inputs: {kpi: "{kpi}", filters: "{filters}", window: "{window}", baseline_days: "{baseline_days}"}}
+    falsifier: by.category.top_share < 0.6
+    prior: {a: 3.0, b: 7.0}
+    explains: by.category.top_change
+    consequence_of: [D1_ONE_MARKET]
+
+  - id: D3_NEW_TRADERS
+    mechanism: >-
+      Traders new to Polymarket drive the change: an acquisition wave (a campaign, press, a
+      viral market) or its absence.
+    preconditions: ["record_days>=7"]
+    tests:
+      - {tool: by.trader, inputs: {kpi: "{kpi}", filters: "{filters}", window: "{window}", baseline_days: "{baseline_days}"}}
+    falsifier: by.trader.top_segment != 'new' or by.trader.top_share < 0.5
     prior: {a: 2.0, b: 8.0}
+    explains: by.trader.top_change
 
-  - id: H3_IMPORT_CONSTRAINT
+  - id: D4_WHALES
     mechanism: >-
-      The BA could not import what it needed: interchange is pinned at its historical limit
-      while prices separate from the neighbour's.
-    preconditions: [net_interchange_anomaly, forecast_error_anomaly]
+      A few large trades ($1k and up) drive the change, not ordinary traders.
+    preconditions: []
     tests:
-      - tool: anomaly.detect
-        inputs: {metric: net_interchange, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
-      - tool: price.co_movement
-        inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when interchange stays well inside its historical range.
-    falsifier: anomaly.detect.max_abs_z < 2 and anomaly.detect.share_at_limit < 0.2
-    explains: anomaly.detect.max_abs_dev
-    consequence_of: [H2_SUPPLY_SHORTFALL]
-    prior: {a: 1.0, b: 9.0}
+      - {tool: by.size, inputs: {kpi: "{kpi}", filters: "{filters}", window: "{window}", baseline_days: "{baseline_days}"}}
+    falsifier: by.size.top_segment != '$1k+' or by.size.top_share < 0.5
+    prior: {a: 3.0, b: 7.0}
+    explains: by.size.top_change
 
-  - id: H4_LOAD_SHED
+  - id: D5_LONGSHOTS
     mechanism: >-
-      Reported demand is served load: the operator shed firm load, so demand is flat or
-      falling while temperature-implied demand keeps rising and prices sit at the cap.
-    preconditions: [forecast_error_anomaly]
+      Bets on long shots (outcomes priced under 20%) drive the change: speculative interest in
+      unlikely outcomes.
+    preconditions: []
     tests:
-      - tool: variance.plan_vs_actual
-        inputs: {entity: "{entity}", window: "{window}"}
-      - tool: regress.temperature
-        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
-      - tool: price.co_movement
-        inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when demand did not fall below forecast, when the weather surprise explains the
-    # window's error or demand moved *with* the weather (a weather miss, not shed load), or
-    # when served load sits at what the weather implied.
-    falsifier: >-
-      variance.plan_vs_actual.min_error_pct > -5
-      or (regress.temperature.share_explained_window > 0.5
-          and regress.temperature.sign_consistent_window == 1)
-      or regress.temperature.sign_consistent == 1
-      or regress.temperature.implied_minus_actual_mean_z < 1
-    explains: regress.temperature.implied_minus_actual_mw
-    consequence_of: [H2_SUPPLY_SHORTFALL, H3_IMPORT_CONSTRAINT]
-    prior: {a: 0.5, b: 9.5}
-
-  - id: H5_SUBREGION_CONCENTRATION
-    mechanism: >-
-      The miss is local: one subregion (zone, utility area) explains most of it, pointing to
-      a local outage, a large customer, or a zonal forecast error.
-    preconditions: [forecast_error_anomaly]
-    tests:
-      - tool: contribution.subregion
-        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
-    # Refuted when no subregion carries more than 60% of the miss.
-    falsifier: contribution.subregion.top_share < 0.6
-    explains: contribution.subregion.top_delta_mw
+      - {tool: by.odds, inputs: {kpi: "{kpi}", filters: "{filters}", window: "{window}", baseline_days: "{baseline_days}"}}
+    falsifier: by.odds.top_segment != 'longshot' or by.odds.top_share < 0.5
     prior: {a: 1.5, b: 8.5}
+    explains: by.odds.top_change
 
-  - id: H6_RENEWABLE_FORECAST_MISS
+  - id: D6_BROAD_BASED
     mechanism: >-
-      Wind or solar output departed from its recent profile, and the residual (net) demand
-      error absorbed the difference; the demand forecast itself was fine.
-    preconditions: [net_generation_anomaly]
+      The change is spread across many markets rather than driven by one: a platform-wide
+      shift (time of day, a product change, overall interest).
+    preconditions: []
     tests:
-      - tool: anomaly.detect
-        inputs: {metric: wind_capacity_factor_proxy, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
-      - tool: anomaly.detect
-        inputs: {metric: solar_capacity_factor_proxy, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
-      - tool: bridge.fuel
-        inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}", mode: expected, event_start: "{event_start}"}
-    # Refuted when the renewable proxies sit near their expected profile, or renewables did
-    # not fall materially (>= 3 GW) against expected output. The proxies are noisy
-    # (load-centre wind speed explains ~30% of fleet output), so this test has low recall;
-    # an ISO wind/solar forecast would make it sharp (DECISIONS, Phase 5).
-    falsifier: anomaly.detect.max_abs_z < 3 or bridge.fuel.renewable_delta_mw > -3000
-    explains: bridge.fuel.renewable_delta_mw
-    prior: {a: 2.0, b: 8.0}
-
-  - id: H7_CALENDAR
-    mechanism: >-
-      A holiday or daylight-saving boundary is missing from the forecast baseline, so the
-      forecast is shaped like an ordinary day and the error follows the calendar, not the weather.
-    preconditions: [forecast_error_anomaly]
-    tests:
-      - tool: variance.plan_vs_actual
-        inputs: {entity: "{entity}", window: "{window}"}
-      - tool: regress.temperature
-        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
-    # Refuted when the window holds no calendar event, or temperature already explains the
-    # window's errors (the whole window: a holiday miss is a day, not a run).
-    falsifier: >-
-      variance.plan_vs_actual.calendar_event_in_window == 0
-      or regress.temperature.share_explained_window > 0.6
-    explains: variance.plan_vs_actual.min_error_mw
-    prior: {a: 1.0, b: 9.0}
+      - {tool: by.market, inputs: {kpi: "{kpi}", filters: "{filters}", window: "{window}", baseline_days: "{baseline_days}"}}
+    falsifier: by.market.top_share >= 0.5
+    prior: {a: 3.0, b: 7.0}
+    # the explanation of last resort: a specific driver that also holds ranks first
+    consequence_of: [D2_ONE_CATEGORY, D3_NEW_TRADERS, D4_WHALES, D5_LONGSHOTS]

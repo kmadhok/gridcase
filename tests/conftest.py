@@ -1,26 +1,29 @@
-"""Shared fixtures. `fixture_store` is a real DuckDB built from committed parquet snapshots."""
+"""Shared fixtures: a synthetic 9-day Polymarket store (see tests/polymarket_synth.py), built
+once per session and copied for each test that needs its own."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import shutil
 from pathlib import Path
 
-import duckdb
 import pytest
 
 from gridcase.store.db import connect
-
-FIXTURE_PARQUET = Path(__file__).resolve().parent / "fixtures" / "store" / "observations.parquet"
+from tests.polymarket_synth import build_market_store
 
 
 @pytest.fixture(scope="session")
-def fixture_store(tmp_path_factory: pytest.TempPathFactory) -> Iterator[duckdb.DuckDBPyConnection]:
-    """Store with three windows for ERCO/CISO/PJM/US48: Uri 2021-02-13..22, a normal week
-    2023-05-01..08, and summer 2023-07-15..08-16, all EIA routes plus Open-Meteo.
-    Rebuild the parquet with scripts/make_fixture_store.py."""
-    if not FIXTURE_PARQUET.exists():
-        pytest.fail(f"missing {FIXTURE_PARQUET}; run scripts/make_fixture_store.py")
-    conn = connect(tmp_path_factory.mktemp("store") / "fixture.duckdb")
-    conn.execute("INSERT INTO observations SELECT * FROM read_parquet(?)", [str(FIXTURE_PARQUET)])
-    yield conn
+def market_store_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    path = tmp_path_factory.mktemp("market") / "template.duckdb"
+    conn = connect(path)
+    build_market_store(conn)
     conn.close()
+    return path
+
+
+@pytest.fixture()
+def market_store(market_store_template: Path, tmp_path: Path) -> Path:
+    """A private copy of the synthetic market store for one test."""
+    path = tmp_path / "market.duckdb"
+    shutil.copy(market_store_template, path)
+    return path

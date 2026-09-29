@@ -8,12 +8,10 @@ from typing import Any
 from pydantic import ValidationError
 
 from gridcase.planner.falsifier import Cmp, Rule, parse
-from gridcase.planner.hypotheses import load_templates
+from gridcase.planner.hypotheses import load_templates, mandatory_ids
 from gridcase.planner.schema import InvestigationPlan
-from gridcase.semantic.ontology import load_ontology
+from gridcase.semantic.kpis import load_kpis
 from gridcase.tools.registry import TOOL_INPUTS, TOOL_NAMES
-
-H0 = "H0_DATA_ARTIFACT"
 
 
 def _input_errors(tool: str, inputs: dict[str, Any]) -> str | None:
@@ -49,34 +47,33 @@ def falsifier_tools(rule: Rule) -> set[str]:
     return set().union(*(falsifier_tools(p) for p in rule.parts))
 
 
-def _known_entities() -> set[str]:
-    onto = load_ontology()
-    ents = set(onto.bas)
-    for ba in onto.bas:
-        ents.update(onto.hubs(ba))
-    return ents
-
-
-def _entity_refs(inputs: dict[str, Any]) -> list[str]:
-    refs: list[str] = []
-    for key in ("entity", "hub"):
-        if isinstance(inputs.get(key), str):
-            refs.append(inputs[key])
-    peers = inputs.get("peers")
-    if isinstance(peers, list):
-        refs.extend(p for p in peers if isinstance(p, str))
-    return refs
+def _segment_errors(inputs: dict[str, Any]) -> list[str]:
+    """Unknown KPIs, dimensions, or segment values a step refers to."""
+    kpis, dims = load_kpis()
+    out: list[str] = []
+    kpi = inputs.get("kpi")
+    if isinstance(kpi, str) and kpi not in kpis:
+        out.append(f"unknown KPI {kpi}")
+    filters = inputs.get("filters")
+    if isinstance(filters, dict):
+        for d, v in filters.items():
+            allowed = dims[d].values if d in dims else None
+            if d not in dims:
+                out.append(f"unknown dimension {d}")
+            elif allowed is not None and v not in allowed:
+                out.append(f"{d} has no segment {v}")
+    return out
 
 
 def validate_plan(plan: InvestigationPlan) -> list[PlanError]:
     errors: list[PlanError] = []
     templates = {t.id: t for t in load_templates()}
-    known = _known_entities()
 
-    if H0 not in plan.hypotheses:
-        errors.append(PlanError("E_NO_H0", f"{H0} must be tested"))
-    elif plan.hypotheses[0] != H0:
-        errors.append(PlanError("E_H0_NOT_FIRST", f"{H0} must be first"))
+    for m in mandatory_ids():  # the data check: always tested, always first
+        if m not in plan.hypotheses:
+            errors.append(PlanError("E_NO_DATA_CHECK", f"{m} must be tested"))
+        elif plan.hypotheses[0] != m:
+            errors.append(PlanError("E_DATA_CHECK_NOT_FIRST", f"{m} must be first"))
     if len(plan.hypotheses) < 2:
         errors.append(PlanError("E_TOO_FEW_HYP", "at least two hypotheses are required"))
     for h in plan.hypotheses:
@@ -98,9 +95,8 @@ def validate_plan(plan: InvestigationPlan) -> list[PlanError]:
             bad = _input_errors(s.tool, s.inputs)
             if bad:
                 errors.append(PlanError("E_BAD_INPUTS", f"inputs for {s.tool}: {bad}", s.step_id))
-        for ref in _entity_refs(s.inputs):
-            if ref not in known:
-                errors.append(PlanError("E_UNKNOWN_ENTITY", f"unknown entity {ref}", s.step_id))
+        for msg in _segment_errors(s.inputs):
+            errors.append(PlanError("E_UNKNOWN_SEGMENT", msg, s.step_id))
         for h in s.hypothesis_ids:
             if h not in plan.hypotheses:
                 errors.append(

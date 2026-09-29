@@ -33,11 +33,13 @@ derived:
     description: Trading volume divided by trades.
     unit: usd
     expr: volume_usd / trades
+    weight: trades
   returning_share:
     label: Returning-trader share
     description: Share of active traders who had traded on an earlier day.
     unit: share
     expr: 1 - new_traders / active_traders
+    weight: active_traders
 
 dimensions:
   category:

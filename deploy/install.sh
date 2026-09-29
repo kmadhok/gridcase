@@ -1,35 +1,26 @@
 #!/usr/bin/env bash
-# Install or refresh the GridCase user units on the VPS. Idempotent. Touches only gridcase-* units.
-#
-#   deploy/install.sh          # server mode (default): server owns ingest + rechecks; timer off
-#   deploy/install.sh timer    # ingest-only mode: hourly timer is the writer; no server
-#
-# DuckDB allows one writer process per file, so exactly one of the two is enabled.
+# Install or refresh the MarketCase user units on the VPS. Idempotent; touches only gridcase-*.
+#   gridcase-collector: saves every Polymarket trade (raw files only, never the database)
+#   gridcase-server:    loads trades, runs the hourly watch, serves MCP + API + UI (the only
+#                       process that writes the DuckDB store)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 dest="$HOME/.config/systemd/user"
-mode="${1:-server}"
 mkdir -p "$dest"
-for f in gridcase-ingest.service gridcase-ingest.timer gridcase-server.service gridcase-collector.service; do
+for f in gridcase-server.service gridcase-collector.service; do
   install -m 0644 "$here/$f" "$dest/$f"
 done
+# The power-grid version ran an hourly ingest timer; make sure it is gone.
+systemctl --user disable --now gridcase-ingest.timer 2>/dev/null || true
+rm -f "$dest/gridcase-ingest.timer" "$dest/gridcase-ingest.service"
 systemctl --user daemon-reload
-# The collector writes raw files only, so it runs in every mode.
-systemctl --user enable --now gridcase-collector.service
-
-if [ "$mode" = "server" ]; then
-  if command -v npm >/dev/null 2>&1; then
-    (cd "$root/web" && npm ci --no-audit --no-fund && npm run build)
-  else
-    echo "npm not found; the server will run without the UI bundle" >&2
-  fi
-  systemctl --user disable --now gridcase-ingest.timer 2>/dev/null || true
-  systemctl --user enable --now gridcase-server.service
-  systemctl --user restart gridcase-server.service
-  systemctl --user status gridcase-server.service --no-pager | head -5 || true
+if command -v npm >/dev/null 2>&1; then
+  (cd "$root/web" && npm ci --no-audit --no-fund && npm run build)
 else
-  systemctl --user disable --now gridcase-server.service 2>/dev/null || true
-  systemctl --user enable --now gridcase-ingest.timer
-  systemctl --user list-timers --no-pager | grep gridcase || true
+  echo "npm not found; the server will run without the UI bundle" >&2
 fi
+systemctl --user enable --now gridcase-collector.service
+systemctl --user enable --now gridcase-server.service
+systemctl --user restart gridcase-server.service
+systemctl --user status gridcase-server.service --no-pager | head -5 || true

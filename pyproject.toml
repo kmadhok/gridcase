@@ -1,26 +1,19 @@
 [project]
 name = "gridcase"
 version = "0.1.0"
-description = "Governed investigation engine for plan-vs-actual metrics on US grid data"
+description = "MarketCase: a governed analytics agent that explains why Polymarket KPIs move"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pydantic>=2.9",
     "duckdb>=1.1",
     "httpx>=0.27",
     "python-dotenv>=1.0",
-    "pyarrow>=17.0",
-    "pandas>=2.2",
     "pyyaml>=6.0",
-    "numpy>=2.0",
     "anthropic>=1.9",
     "mcp>=2.2",
     "fastapi>=0.115",
     "uvicorn>=0.30",
 ]
-
-[project.optional-dependencies]
-# gridstatus pulls ~40 packages (plotly, pdfplumber...); keep it opt-in. Pinned per CLAUDE.md.
-gridstatus = ["gridstatus==0.36.0"]
 
 [project.scripts]
 gridcase = "gridcase.cli:main"
@@ -38,7 +31,6 @@ dev = [
     "hypothesis>=6.112",
     "ruff>=0.6",
     "mypy>=1.11",
-    "pandas-stubs>=2.2",
     "types-pyyaml>=6.0",
 ]
 
@@ -53,10 +45,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 strict = true
 python_version = "3.12"
 
-[[tool.mypy.overrides]]
-module = ["gridstatus", "gridstatus.*"]
-ignore_missing_imports = true
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["live: hits real APIs / needs the full store; run on the VPS with GRIDCASE_LIVE=1"]
+markers = ["live: hits real APIs (Polymarket, Anthropic); run with GRIDCASE_LIVE=1"]

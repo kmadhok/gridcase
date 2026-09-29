@@ -1,11 +1,11 @@
-# User unit: the GridCase server (MCP at /mcp, JSON API at /api, UI at /). Install with
-# deploy/install.sh, which also stops the ingest timer: DuckDB allows one writer process per
-# file, and the server runs the hourly ingest and the re-check drain itself.
-# Bound to the Tailscale address only; public exposure is a separate decision (DECISIONS, Phase 6).
-# Secrets (.env: EIA_API_KEY, ANTHROPIC_API_KEY, GRIDCASE_API_TOKEN) are read by python-dotenv
+# User unit: the MarketCase server (MCP at /mcp, JSON API at /api, UI at /). Install with
+# deploy/install.sh. It is the only process that writes the DuckDB store: it loads collected
+# trades every 5 minutes, runs the hourly watch and the follow-up checks itself.
+# Bound to the Tailscale address only; public hosting (kanumadhok.com) is a later decision.
+# Secrets (.env: ANTHROPIC_API_KEY, GRIDCASE_API_TOKEN) are read by python-dotenv
 # from WorkingDirectory; nothing is set here.
 [Unit]
-Description=GridCase server (MCP + API + UI)
+Description=MarketCase server (MCP + API + UI)
 After=network-online.target
 Wants=network-online.target
 

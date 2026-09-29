@@ -1,6 +1,6 @@
 """Tool runner. A tool is `fn(ctx, inputs) -> (output, effect_size)`; everything it reads
-goes through ctx.query (governed metric SQL) or ctx.raw (audited raw SQL), both logged into
-the receipt with a hash of the rows they returned.
+goes through ctx.kpi (governed KPI SQL from the semantic layer) or ctx.raw (audited raw SQL),
+both logged into the receipt with a hash of the rows they returned.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import math
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import duckdb
@@ -20,26 +20,15 @@ from pydantic import BaseModel, ValidationError
 
 from gridcase.ledger.schema import Receipt
 from gridcase.ledger.store import write_receipt
-from gridcase.semantic.compiler import compile_query
-from gridcase.semantic.schema import MetricQuery
+from gridcase.semantic.kpis import KpiQuery, compile_kpi
 from gridcase.tools.registry import TOOL_INPUTS
 
 Rows = list[tuple[Any, ...]]
 ToolFn = Callable[["ToolCtx", Any], tuple[dict[str, Any], float | None]]
 
 TOOLS: dict[str, ToolFn] = {}
-_IMPLS = [
-    "gridcase.tools.baseline",
-    "gridcase.tools.anomaly",
-    "gridcase.tools.variance",
-    "gridcase.tools.bridge",
-    "gridcase.tools.contribution",
-    "gridcase.tools.regression",
-    "gridcase.tools.identity",
-    "gridcase.tools.revision",
-    "gridcase.tools.peers",
-    "gridcase.tools.price",
-]
+_IMPLS = ["gridcase.tools.compare", "gridcase.tools.breakdown", "gridcase.tools.coverage"]
+HOUR = timedelta(hours=1)
 
 
 class ToolError(ValueError):
@@ -71,48 +60,53 @@ class ToolCtx:
     conn: duckdb.DuckDBPyConnection
     as_of: datetime
     sql_log: list[dict[str, str]] = field(default_factory=list)
-    series_used: set[str] = field(default_factory=set)
-    t_min: datetime | None = None
-    t_max: datetime | None = None
 
-    def query(self, q: MetricQuery) -> Rows:
+    def kpi(self, q: KpiQuery) -> Rows:
         if q.as_of != self.as_of:
             raise ToolError("tools must query at their own as_of")
-        c = compile_query(q)
-        rows = self.raw(c.sql)
-        self.series_used.update(c.series_used)
-        self._extend(q.window)
-        return rows
+        return self.raw(compile_kpi(q).sql)
 
-    def metric(
-        self, metric: str, entity: str, window: tuple[datetime, datetime], **kw: Any
-    ) -> Rows:
-        return self.query(
-            MetricQuery(metric=metric, entity=entity, window=window, as_of=self.as_of, **kw)
-        )
-
-    def raw(self, sql: str) -> Rows:
-        rows = [tuple(r) for r in self.conn.execute(sql).fetchall()]
+    def raw(self, sql: str, params: list[Any] | None = None) -> Rows:
+        rows = [tuple(r) for r in self.conn.execute(sql, params or []).fetchall()]
         self.sql_log.append({"sql": sql, "rows_hash": rows_hash(rows)})
         return rows
 
-    def _extend(self, window: tuple[datetime, datetime]) -> None:
-        self.t_min = window[0] if self.t_min is None else min(self.t_min, window[0])
-        self.t_max = window[1] if self.t_max is None else max(self.t_max, window[1])
+    def record_start(self) -> datetime | None:
+        """First complete hour of our record as known at as_of (collection began mid-hour)."""
+        row = self.conn.execute("SELECT min(ts) FROM trades_as_of(?)", [self.as_of]).fetchone()
+        first: datetime | None = row[0] if row else None
+        if first is None:
+            return None
+        hour = first.replace(minute=0, second=0, microsecond=0)
+        return hour if hour == first else hour + HOUR
+
+    def gap_overlaps(self, lo: datetime, hi: datetime) -> bool:
+        row = self.conn.execute(
+            "SELECT count(*) FROM collector_gaps WHERE gap_to > ? AND gap_from < ? "
+            "AND coalesce(detected_at, gap_to) <= ?",
+            [lo, hi, self.as_of],
+        ).fetchone()
+        return bool(row and row[0])
+
+    def baseline_windows(
+        self, window: tuple[datetime, datetime], days: int
+    ) -> list[tuple[datetime, datetime]]:
+        """The same hours on each of the previous `days` days that our record fully covers."""
+        start = self.record_start()
+        out = []
+        for d in range(1, days + 1):
+            lo, hi = window[0] - timedelta(days=d), window[1] - timedelta(days=d)
+            if start is not None and lo >= start and not self.gap_overlaps(lo, hi):
+                out.append((lo, hi))
+        return out
 
     def data_version(self) -> datetime | None:
-        """Latest knowledge time (available_at) among the rows read: the vintage of the
-        evidence. observed_at would be the ingest clock, which for backfilled history is
-        always later than as_of."""
-        if not self.series_used or self.t_min is None or self.t_max is None:
-            return None
-        series = ", ".join(f"'{s}'" for s in sorted(self.series_used))
+        """When the newest trade we could see at as_of was collected."""
         row = self.conn.execute(
-            f"SELECT max(available_at) FROM as_of(?::TIMESTAMP) WHERE series_id IN ({series}) "
-            "AND valid_time >= ? AND valid_time < ?",
-            [self.as_of, self.t_min, self.t_max],
+            "SELECT max(collected_at) FROM trades_as_of(?)", [self.as_of]
         ).fetchone()
-        return row[0] if row else None
+        newest: datetime | None = row[0] if row else None
+        return newest
 
 
 def _round(obj: Any, nd: int = 6) -> Any:
@@ -166,26 +160,3 @@ def run_tool(
     if case_id is not None:
         write_receipt(conn, case_id, receipt)
     return receipt
-
-
-def expected_hours(window: tuple[datetime, datetime]) -> int:
-    return int((window[1] - window[0]).total_seconds() // 3600)
-
-
-def knowable_horizon(series: set[str], as_of: datetime) -> datetime:
-    """Latest valid_time whose values for every listed series could exist at as_of."""
-    from datetime import timedelta
-
-    from gridcase.store.series import SERIES_BY_ID
-
-    lag = max((SERIES_BY_ID[s].lag_hours for s in series if s in SERIES_BY_ID), default=0)
-    return as_of - timedelta(hours=lag) + timedelta(hours=1)
-
-
-def knowable_hours(window: tuple[datetime, datetime], series: set[str], as_of: datetime) -> int:
-    """Hours in the window whose values for every listed series could exist at as_of, given
-    each series' publication lag. Hours beyond that horizon are not 'missing'."""
-    horizon = min(window[1], knowable_horizon(series, as_of))
-    if horizon <= window[0]:
-        return 0
-    return int((horizon - window[0]).total_seconds() // 3600)

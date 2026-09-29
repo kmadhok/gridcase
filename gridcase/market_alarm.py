@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from gridcase.config import ONTOLOGY_DIR
 from gridcase.ledger.schema import Receipt
-from gridcase.semantic.kpis import KpiQuery, Measure, compile_kpi, load_kpis
+from gridcase.semantic.kpis import KpiQuery, Measure, compile_kpi, load_kpis, segment_label
 from gridcase.tools.base import rows_hash
 
 HOUR = timedelta(hours=1)
@@ -34,7 +34,7 @@ class WatchedSeries(BaseModel):
     @property
     def segment(self) -> str:
         """The case's `entity`: 'all' or 'category=Sports'."""
-        return "&".join(f"{k}={v}" for k, v in sorted(self.filters.items())) or "all"
+        return segment_label(self.filters)
 
     @property
     def label(self) -> str:

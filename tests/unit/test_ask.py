@@ -4,7 +4,7 @@ case's as_of) and pass through the same verifier as the conclusion (hard rule 6,
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -13,11 +13,10 @@ import pytest
 from anthropic import transform_schema
 from fastapi.testclient import TestClient
 
-from gridcase.ask.context import bench_context, case_context
+from gridcase.ask.context import case_context
 from gridcase.ask.engine import MAX_CHECKS, answer_question, case_checker
 from gridcase.ask.llm import AnthropicAsker, FakeAsker, check_tools
 from gridcase.ask.schema import Answer
-from gridcase.bench.inject import build_scratch
 from gridcase.explain.schema import Claim
 from gridcase.investigate import investigate
 from gridcase.ledger.store import read_receipts
@@ -25,17 +24,27 @@ from gridcase.memory.cases import CaseRecord
 from gridcase.planner.llm import FakeLLM
 from gridcase.server.app import create_app
 from gridcase.store.db import connect
-from tests.conftest import FIXTURE_PARQUET
+from tests.polymarket_synth import (
+    AS_OF,
+    WINDOW_START,
+    add_trades,
+    build_market_store,
+    one_market_tripled,
+)
 
-AS_OF = datetime(2021, 2, 16, 12)
+WINDOW = {
+    "start": WINDOW_START.isoformat(),
+    "end": (WINDOW_START + timedelta(hours=6)).isoformat(),
+}
 
 
 @pytest.fixture(scope="module")
 def store(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("ask") / "s.duckdb"
-    build_scratch(FIXTURE_PARQUET, path)
     conn = connect(path)
-    investigate(conn, FakeLLM(), "ERCO", "forecast_error_mw", AS_OF)
+    build_market_store(conn)
+    add_trades(conn, one_market_tripled())
+    investigate(conn, FakeLLM(), "volume_usd", AS_OF)
     conn.close()
     return path
 
@@ -62,13 +71,13 @@ def _receipt(case: CaseRecord, tool: str) -> Any:
 
 
 def test_an_answer_citing_real_evidence_with_its_numbers_is_kept(case: CaseRecord) -> None:
-    r = _receipt(case, "variance.plan_vs_actual")
-    worst = abs(r.output["min_error_mw"])
+    r = _receipt(case, "kpi.compare")
+    now = r.output["now"]
     asker = FakeAsker(
         answer=lambda _: Answer(
             sentences=[
                 Claim(
-                    text=f"At the worst hour demand was {worst:,.0f} MW below forecast.",
+                    text=f"Over these hours trading volume was ${now:,.0f}.",
                     receipt_ids=[r.receipt_id],
                     tier="governed",
                 )
@@ -82,18 +91,16 @@ def test_an_answer_citing_real_evidence_with_its_numbers_is_kept(case: CaseRecor
         receipts={x.receipt_id: x for x in case.receipts},
         run_check=None,
     )
-    assert [s.text for s in res.sentences] == [
-        f"At the worst hour demand was {worst:,.0f} MW below forecast."
-    ]
+    assert [s.text for s in res.sentences] == [f"Over these hours trading volume was ${now:,.0f}."]
     assert res.dropped == 0
 
 
 def test_a_sentence_with_a_number_not_in_its_evidence_is_dropped(case: CaseRecord) -> None:
-    r = _receipt(case, "variance.plan_vs_actual")
+    r = _receipt(case, "kpi.compare")
     asker = FakeAsker(
         answer=lambda _: Answer(
             sentences=[
-                Claim(text="Demand was 123,456 MW below forecast.", receipt_ids=[r.receipt_id]),
+                Claim(text="Trading volume was $123,456.", receipt_ids=[r.receipt_id]),
                 Claim(text="Nothing in the evidence contradicts that.", receipt_ids=[]),
             ]
         )
@@ -131,13 +138,15 @@ def test_a_check_runs_at_the_cases_as_of_and_is_not_written_to_the_case(
 ) -> None:
     before = len(read_receipts(conn, case.case_id))
     check = case_checker(conn, case)
-    # the model asks for a window reaching past the case's as_of; the check still cannot see it
+    # a window reaching past the case's as_of still cannot see anything collected later
     rec = check(
-        "anomaly.detect",
+        "by.category",
         {
-            "metric": "net_interchange",
-            "entity": "ERCO",
-            "window": {"start": "2021-02-14T12:00:00Z", "end": "2021-02-20T00:00:00Z"},
+            "kpi": "volume_usd",
+            "window": {
+                "start": WINDOW_START.isoformat(),
+                "end": (AS_OF + timedelta(days=2)).isoformat(),
+            },
         },
     )
     assert rec.as_of == case.as_of
@@ -153,10 +162,8 @@ def test_new_evidence_from_a_check_can_be_cited(
         return Answer(
             sentences=[
                 Claim(
-                    text=(
-                        f"Power flowing over the ties reached {rec.output['max_abs_z']:.1f} "
-                        "times its normal variation."
-                    ),
+                    text=f"Broken down by category, {rec.output['top_segment']} moved by "
+                    f"${rec.output['top_change']:,.0f}.",
                     receipt_ids=[rec.receipt_id],
                     tier="governed",
                 )
@@ -166,11 +173,13 @@ def test_new_evidence_from_a_check_can_be_cited(
     asker = FakeAsker(
         checks=[
             (
-                "anomaly.detect",
+                "by.category",
                 {
-                    "metric": "net_interchange",
-                    "entity": "ERCO",
-                    "window": {"start": "2021-02-13T12:00:00", "end": "2021-02-16T12:00:00"},
+                    "kpi": "volume_usd",
+                    "window": {
+                        "start": WINDOW_START.isoformat(),
+                        "end": (WINDOW_START + timedelta(hours=6)).isoformat(),
+                    },
                 },
             )
         ],
@@ -178,21 +187,24 @@ def test_new_evidence_from_a_check_can_be_cited(
     )
     res = answer_question(
         asker,
-        "Were imports maxed out?",
+        "Which category drove it?",
         context=case_context(case),
         receipts={x.receipt_id: x for x in case.receipts},
         run_check=case_checker(conn, case),
     )
     assert len(res.new_receipts) == 1 and len(res.sentences) == 1
     assert res.sentences[0].receipt_ids == [res.new_receipts[0].receipt_id]
+    assert "Sports" in res.sentences[0].text
 
 
 def test_checks_are_capped_per_question(conn: duckdb.DuckDBPyConnection, case: CaseRecord) -> None:
     ask = (
-        "identity.balance",
+        "data.coverage",
         {
-            "entity": "ERCO",
-            "window": {"start": "2021-02-13T12:00:00", "end": "2021-02-16T12:00:00"},
+            "window": {
+                "start": WINDOW_START.isoformat(),
+                "end": (WINDOW_START + timedelta(hours=6)).isoformat(),
+            }
         },
     )
     asker = FakeAsker(checks=[ask] * (MAX_CHECKS + 2), answer=lambda ran: Answer(sentences=[]))
@@ -207,11 +219,13 @@ def test_a_failing_check_is_reported_to_the_model_not_raised(
     conn: duckdb.DuckDBPyConnection, case: CaseRecord
 ) -> None:
     bad = (
-        "anomaly.detect",
+        "by.market",
         {
-            "metric": "demand",
-            "entity": "ERCO",
-            "window": {"start": "2015-01-01T00:00:00", "end": "2015-01-02T00:00:00"},
+            "kpi": "revenue",
+            "window": {
+                "start": WINDOW_START.isoformat(),
+                "end": (WINDOW_START + timedelta(hours=6)).isoformat(),
+            },
         },
     )
     asker = FakeAsker(checks=[bad], answer=lambda ran: Answer(sentences=[]))
@@ -221,56 +235,22 @@ def test_a_failing_check_is_reported_to_the_model_not_raised(
     assert res.new_receipts == [] and len(asker.check_errors) == 1
 
 
-# ------------------------------------------------------------------ context and the real asker
-
-
 def test_case_context_carries_causes_falsifiers_evidence_and_glossary(case: CaseRecord) -> None:
     ctx = case_context(case)
     assert {c["id"] for c in ctx["causes"]} == {v.id for v in case.conclusion.ranked}  # type: ignore[union-attr]
     assert all(c["name"] and c["what_rules_it_out"] for c in ctx["causes"])
     assert {e["cite_as"] for e in ctx["evidence"]} == {r.receipt_id[:8] for r in case.receipts}
     assert all("sql" not in e for e in ctx["evidence"])  # queries stay in the UI, not the prompt
-    assert "usual gap" in ctx["glossary"] and "ruled out" in ctx["glossary"]
-
-
-def test_bench_context_turns_results_into_citable_evidence() -> None:
-    runs = [
-        {
-            "name": "r1",
-            "config": {"model": "fake", "validator": True},
-            "summary": {
-                "synthetic": {"n": 200, "top1": 0.48, "top3": 0.73},
-                "replay": {"n": 5, "top1": 0.6},
-                "null": {"n": 100, "false_alarm_rate": 0.24},
-            },
-            "replay": [],
-        }
-    ]
-    ctx, receipts = bench_context(runs)
-    asker = FakeAsker(
-        answer=lambda _: Answer(
-            sentences=[
-                Claim(
-                    text="It named the right cause for 60% of the 5 real events.",
-                    receipt_ids=[next(iter(receipts))],
-                    tier="governed",
-                )
-            ]
-        )
-    )
-    res = answer_question(
-        asker, "How accurate is it?", context=ctx, receipts=receipts, run_check=None
-    )
-    assert len(res.sentences) == 1
+    assert "usual level" in ctx["glossary"] and "ruled out" in ctx["glossary"]
 
 
 def test_every_check_tool_has_a_strict_schema_with_real_properties() -> None:
     tools = check_tools()
-    assert len(tools) == 10
+    assert len(tools) == 7
     for t in tools:
         assert t["strict"] is True and t["name"].startswith("check_")
         props = t["input_schema"]["properties"]
-        assert len(props) >= 2
+        assert "window" in props and (t["name"] == "check_data_coverage" or "kpi" in props)
     answer_schema = transform_schema(Answer.model_json_schema())
     assert "sentences" in answer_schema["properties"]
     assert AnthropicAsker.max_checks == MAX_CHECKS
@@ -335,29 +315,29 @@ def test_an_uncited_sentence_that_states_a_number_is_dropped(case: CaseRecord) -
     asker = FakeAsker(
         answer=lambda _: Answer(
             sentences=[
-                Claim(text="Demand came in 28,885 MW below plan.", receipt_ids=[], tier="inferred"),
-                Claim(text="That is a very large miss for this grid.", receipt_ids=[]),
+                Claim(text="Trading volume came to $34,920.", receipt_ids=[], tier="inferred"),
+                Claim(text="That is a lot for a Tuesday afternoon.", receipt_ids=[]),
             ]
         )
     )
     res = answer_question(asker, "q", context=case_context(case), receipts={}, run_check=None)
     assert res.dropped == 1
-    assert [s.text for s in res.sentences] == ["That is a very large miss for this grid."]
+    assert [s.text for s in res.sentences] == ["That is a lot for a Tuesday afternoon."]
 
 
 def test_short_evidence_codes_resolve_to_full_receipt_ids(case: CaseRecord) -> None:
     """The model cites 8-character codes (easier to copy than 24-character ids); the engine
     maps them back before verification, and the context offers only the short codes."""
-    r = _receipt(case, "variance.plan_vs_actual")
+    r = _receipt(case, "kpi.compare")
     ctx = case_context(case)
     assert all(len(e["cite_as"]) == 8 and "receipt_id" not in e for e in ctx["evidence"])
     assert all("cites" in s for s in ctx["conclusion_sentences"])
-    worst = abs(r.output["min_error_mw"])
+    now = r.output["now"]
     asker = FakeAsker(
         answer=lambda _: Answer(
             sentences=[
                 Claim(
-                    text=f"Demand came in {worst:,.0f} MW below plan.",
+                    text=f"Trading volume came to ${now:,.0f}.",
                     receipt_ids=[r.receipt_id[:8]],
                     tier="governed",
                 )
