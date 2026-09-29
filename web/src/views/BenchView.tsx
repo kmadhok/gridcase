@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type BenchRun } from "../api";
 import { Panel, pct } from "../components";
 import { HYPOTHESES, REGION_NAMES, hypothesisName, stepQuestion } from "../labels";
+import { AskPanel } from "./AskPanel";
 
 interface TraceEvent { kind: string; data: Record<string, unknown> }
 
@@ -68,6 +69,7 @@ export function BenchView() {
           </table>
         )}
       </Panel>
+      <AskPanel target={{ page: "bench" }} receipts={{}} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="What it confused with what" hint="Rows: the cause we injected. Columns: what GridCase said. Green on the diagonal is right.">
           {hyps.length === 0 ? <p className="muted text-sm">–</p> : (

@@ -94,6 +94,24 @@ export interface BenchRun {
   replay: { scenario_id: string; entity: string; ground_truth: string[]; predicted: string[]; top1: boolean; error: string | null }[];
 }
 
+export interface AskResponse {
+  sentences: Claim[];
+  refused: boolean;
+  new_receipts: Receipt[];
+  dropped: number;
+  cost_usd: number;
+}
+
+export type AskTarget = { caseId: string } | { page: "bench" };
+
+async function ask(target: AskTarget, question: string): Promise<AskResponse> {
+  const body = "caseId" in target ? { case_id: target.caseId, question } : { page: target.page, question };
+  const r = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(typeof data?.detail === "string" ? data.detail : `The question box failed (${r.status}).`);
+  return data as AskResponse;
+}
+
 async function get<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
@@ -105,6 +123,7 @@ export const api = {
   cases: () => get<CaseSummary[]>("/api/cases"),
   case: (id: string) => get<CaseFull>(`/api/cases/${encodeURIComponent(id)}`),
   bench: () => get<{ runs: BenchRun[] }>("/api/bench"),
+  ask,
 };
 
 export { HYPOTHESES, REGION_NAMES } from "./labels";
