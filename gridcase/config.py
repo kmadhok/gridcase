@@ -22,6 +22,7 @@ HISTORY_START = datetime(2018, 7, 1)
 # Models: names live in config, never in code. Prices are USD per million tokens (input, output).
 PLANNER_MODEL = os.environ.get("GRIDCASE_PLANNER_MODEL", "claude-opus-5")
 CHEAP_MODEL = os.environ.get("GRIDCASE_CHEAP_MODEL", "claude-sonnet-5")
+ASK_MODEL = os.environ.get("GRIDCASE_ASK_MODEL", CHEAP_MODEL)
 MODEL_PRICES: dict[str, tuple[float, float]] = {
     "claude-opus-5": (5.0, 25.0),
     "claude-sonnet-5": (2.0, 10.0),
@@ -33,6 +34,11 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
 def api_token() -> str | None:
     """Token the `investigate` MCP tool requires; None means the tool refuses every call."""
     return os.environ.get("GRIDCASE_API_TOKEN", "").strip() or None
+
+
+def ask_daily_usd() -> float:
+    """Spending cap for the question box per UTC day; questions are refused once it is spent."""
+    return float(os.environ.get("GRIDCASE_ASK_DAILY_USD", "5.0"))
 
 
 def has_anthropic_api_key() -> bool:

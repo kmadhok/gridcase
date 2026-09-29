@@ -53,11 +53,20 @@ def _fmt(n: float) -> str:
     return str(int(n)) if n.is_integer() else str(n)
 
 
-def verify(conclusion: Conclusion, receipts: dict[str, Receipt]) -> tuple[Conclusion, list[str]]:
+def verify(
+    conclusion: Conclusion,
+    receipts: dict[str, Receipt],
+    drop_uncited_numbers: bool = False,
+) -> tuple[Conclusion, list[str]]:
+    """drop_uncited_numbers: an uncited sentence that states a figure is dropped instead of
+    kept as inferred (the question box: interpretation may explain, not assert numbers)."""
     kept: list[Claim] = []
     dropped: list[str] = []
     for c in conclusion.claims:
         if not c.receipt_ids:
+            if drop_uncited_numbers and numbers_in(c.text):
+                dropped.append(f"{c.text[:60]}: states a number without evidence")
+                continue
             kept.append(c.model_copy(update={"tier": "inferred"}))
             continue
         missing = [rid for rid in c.receipt_ids if rid not in receipts]

@@ -18,20 +18,25 @@ import json
 import logging
 import threading
 import time
+from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server import MCPServer
+from pydantic import BaseModel, Field
 from starlette.routing import Route
 
 from gridcase import config
+from gridcase.ask.context import bench_context, case_context
+from gridcase.ask.engine import Asker, answer_question, case_checker
+from gridcase.ask.llm import default_asker_factory
 from gridcase.bench.run import SuiteResult
 from gridcase.bench.score import score
 from gridcase.investigate import investigate
@@ -88,16 +93,61 @@ def _case_full(c: CaseRecord) -> dict[str, Any]:
     }
 
 
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    case_id: str | None = None
+    page: Literal["bench"] | None = None
+
+
+class AskLimiter:
+    """Per-visitor sliding window plus a daily spending cap, in memory (reset on restart)."""
+
+    def __init__(self, per_window: int, window_s: float, daily_usd: float) -> None:
+        self.per_window, self.window_s, self.daily_usd = per_window, window_s, daily_usd
+        self.hits: dict[str, deque[float]] = defaultdict(deque)
+        self.spent: dict[str, float] = defaultdict(float)
+        self.lock = threading.Lock()
+
+    def admit(self, visitor: str) -> None:
+        now = time.monotonic()
+        today = datetime.now(UTC).date().isoformat()
+        with self.lock:
+            if self.spent[today] >= self.daily_usd:
+                raise HTTPException(
+                    429, "The question box has used today's budget; try again tomorrow."
+                )
+            q = self.hits[visitor]
+            while q and now - q[0] > self.window_s:
+                q.popleft()
+            if len(q) >= self.per_window:
+                raise HTTPException(429, "Too many questions; please wait a few minutes.")
+            q.append(now)
+
+    def charge(self, usd: float) -> None:
+        with self.lock:
+            self.spent[datetime.now(UTC).date().isoformat()] += usd
+
+
 def create_app(
     db_path: Path | None = None,
     token: str | None = None,
     llm_factory: Callable[[], LLM] | None = None,
     drain_interval_s: float | None = 600.0,
     ingest_interval_s: float | None = None,
+    asker_factory: Callable[[], Asker] | None = None,
+    ask_per_window: int = 10,
+    ask_window_s: float = 600.0,
+    ask_daily_usd: float | None = None,
 ) -> FastAPI:
     db_path = db_path or config.DB_PATH
     token = token if token is not None else config.api_token()
     llm_factory = llm_factory or AnthropicLLM
+    asker_factory = asker_factory or default_asker_factory()
+    limiter = AskLimiter(
+        ask_per_window,
+        ask_window_s,
+        config.ask_daily_usd() if ask_daily_usd is None else ask_daily_usd,
+    )
     conn = connect(db_path)
     registry = TaskRegistry()
     stop = threading.Event()
@@ -254,6 +304,44 @@ def create_app(
             raise HTTPException(404, f"unknown case {case_id}") from e
         finally:
             c.close()
+
+    @app.post("/api/ask")
+    def api_ask(req: AskRequest, request: Request) -> dict[str, Any]:
+        """Evidence-only answers (hard rule 6): about a case, with read-only checks at its
+        as_of, or about the scorecard. Every sentence is verified like the conclusion."""
+        if not req.case_id and req.page != "bench":
+            raise HTTPException(422, "ask about an investigation (case_id) or the scorecard")
+        c = cur()
+        try:
+            if req.case_id:
+                try:
+                    case = get_case(c, req.case_id)
+                except KeyError as e:
+                    raise HTTPException(404, f"unknown case {req.case_id}") from e
+                limiter.admit(request.client.host if request.client else "?")
+                res = answer_question(
+                    asker_factory(),
+                    req.question,
+                    context=case_context(case),
+                    receipts={r.receipt_id: r for r in case.receipts},
+                    run_check=case_checker(c, case),
+                )
+            else:
+                limiter.admit(request.client.host if request.client else "?")
+                ctx, receipts = bench_context(_bench_runs())
+                res = answer_question(
+                    asker_factory(), req.question, context=ctx, receipts=receipts, run_check=None
+                )
+        finally:
+            c.close()
+        limiter.charge(res.usage.cost_usd)
+        return {
+            "sentences": [cl.model_dump() for cl in res.sentences],
+            "refused": res.refused,
+            "new_receipts": [r.model_dump(mode="json") for r in res.new_receipts],
+            "dropped": res.dropped,
+            "cost_usd": round(res.usage.cost_usd, 4),
+        }
 
     @app.get("/api/map")
     def api_map() -> dict[str, Any]:

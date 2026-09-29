@@ -127,6 +127,14 @@ def _window_out(v: Any) -> Any:
     return [v["start"], v["end"]] if isinstance(v, dict) and set(v) == {"start", "end"} else v
 
 
+def tool_inputs(tool: str, raw: dict[str, Any]) -> dict[str, Any]:
+    """Model-shaped inputs for one tool (as a tool call's JSON) -> registry-shaped inputs."""
+    parsed = LLM_INPUTS[tool].model_validate(raw)
+    return {
+        k: _window_out(v) for k, v in parsed.model_dump(mode="json", exclude_unset=True).items()
+    }
+
+
 def to_plan(plan: LLMPlan, case_id: str, as_of: datetime) -> InvestigationPlan:
     steps = []
     for s in plan.steps:
