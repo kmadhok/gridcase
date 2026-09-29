@@ -112,3 +112,9 @@ Dated log of judgment calls. Newest at the bottom. Anything here can be reversed
 - **`REVIEW:` landing copy and headline number.** The nav strapline is "plan-vs-actual investigations, every sentence with a receipt" and the map panel explains the loop in three sentences. The headline number the benchmark page leads with is *replay top-1* (real events), with synthetic top-1 second and its self-agreement caveat in the footnote; the spec asks you to choose. The map tiles show the latest hour's forecast error, which on the laptop copy is stale (2023-08); on the VPS it is live.
 - **Public exposure.** The server binds the Tailscale IP only (`deploy/gridcase-server.service`, port 8710; 3773 and 9119 are taken by T3 and Hermes). Putting it on 40.160.135.55 needs a domain, TLS and a decision about `investigate` costs; deferred to you.
 - **VPS state at the time of writing.** `gridcase` is cloned at `~/Documents/Claude/Projects/gridcase`, node 24 and uv are present, port 8710 is free, and `.env` does not exist yet: the backfill, live tests, full benchmark and the server all wait on `EIA_API_KEY` (and `ANTHROPIC_API_KEY`, `GRIDCASE_API_TOKEN`) being pasted there.
+
+## 2026-09-28 — Review outcome
+
+- All `REVIEW:` items from Phases 2–6 accepted as proposed by the user (defaults: Tailscale-only exposure for now, replay top-1 as the headline number, landing copy as shipped, eight hypothesis templates, the cause-before-consequence rule, the 12% synthetic fault floor with the H4 top-3 ceiling, the as_of information-state rule, weather at a 1 h lag; no PJM key or ISO forecasts yet).
+- Public hosting, when wanted, will go under the user's own domain (kanumadhok.com) with a reverse proxy to the VPS server; not scheduled.
+- The laptop `.env` was copied to the VPS with `scp` at the user's request; the EIA key is to be rotated because it appeared in a since-deleted VPS log (httpx URL logging, fixed in `18f00d3`).
