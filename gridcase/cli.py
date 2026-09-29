@@ -231,8 +231,15 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # httpx logs every request URL at INFO; EIA's key travels as a query parameter.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def main(argv: list[str] | None = None) -> int:
+    configure_logging()
     p = argparse.ArgumentParser(prog="gridcase")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init", help="create the store and seed series/entities").set_defaults(

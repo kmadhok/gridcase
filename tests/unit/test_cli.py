@@ -73,3 +73,14 @@ def test_serve_auto_uses_the_fake_llm_only_when_no_api_key_is_present() -> None:
     assert choose_llm_factory("auto", has_key=True) is AnthropicLLM
     assert choose_llm_factory("fake", has_key=True) is FakeLLM
     assert choose_llm_factory("anthropic", has_key=False) is AnthropicLLM
+
+
+def test_logging_never_echoes_request_urls_that_carry_api_keys() -> None:
+    """httpx logs the full request URL (EIA's api_key is a query param) at INFO; it must be off."""
+    import logging
+
+    from gridcase.cli import configure_logging
+
+    configure_logging()
+    assert logging.getLogger("httpx").level >= logging.WARNING
+    assert logging.getLogger("httpcore").level >= logging.WARNING
