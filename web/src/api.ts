@@ -106,20 +106,4 @@ export const api = {
   bench: () => get<{ runs: BenchRun[] }>("/api/bench"),
 };
 
-export const HYPOTHESIS_NAMES: Record<string, string> = {
-  H0_DATA_ARTIFACT: "Data artifact",
-  H1_WEATHER_DEMAND: "Weather-driven demand",
-  H2_SUPPLY_SHORTFALL: "Supply shortfall",
-  H3_IMPORT_CONSTRAINT: "Import constraint",
-  H4_LOAD_SHED: "Load shed",
-  H5_SUBREGION_CONCENTRATION: "Subregion concentration",
-  H6_RENEWABLE_FORECAST_MISS: "Renewable forecast miss",
-  H7_CALENDAR: "Calendar",
-};
-
-export const REGION_NAMES: Record<string, string> = {
-  ERCO: "ERCOT",
-  CISO: "CAISO",
-  PJM: "PJM",
-  US48: "US Lower 48",
-};
+export { HYPOTHESES, REGION_NAMES } from "./labels";

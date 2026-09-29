@@ -124,7 +124,10 @@ EXPLAIN_SYSTEM = """You write the conclusion of a grid investigation as a list o
 Every claim must cite receipt ids from the ledger given to you, and every number you write
 must appear in a cited receipt (rounded to 1%). Uncited claims are allowed only as
 tier=inferred and should be rare. Do not invent causes; the ranked hypotheses are given.
-If H4_LOAD_SHED is not refuted, add the served-load caveat."""
+If H4_LOAD_SHED is not refuted, add the served-load caveat.
+Write for a smart reader who is not a grid engineer: plain sentences, no statistical jargon
+(say "30 times its normal variation", not "|z| = 30"), spell out what a number means in MW or
+percent, and name causes in words (a supply shortfall, load shed) rather than by their ids."""
 
 
 class AnthropicLLM:

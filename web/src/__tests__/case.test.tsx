@@ -42,11 +42,11 @@ describe("CaseView", () => {
   it("renders the hypothesis tree, claims by tier, and expands a claim to its receipt and SQL", async () => {
     render(<CaseView id={CASE.case_id} initial={CASE} />);
     expect(screen.getByTestId("hypothesis-tree")).toHaveTextContent("Supply shortfall");
-    expect(screen.getAllByText("governed").length).toBeGreaterThan(0);
-    expect(screen.getByText("inferred")).toBeInTheDocument();
+    expect(screen.getAllByText("measured").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("interpretation").length).toBeGreaterThan(0);
     expect(screen.queryByTestId("receipt-sql")).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId("claim-0"));
-    expect(screen.getByTestId("receipt")).toHaveTextContent("anomaly.detect");
+    expect(screen.getByTestId("receipt")).toHaveTextContent("Was generation short of the forecast?");
     await userEvent.click(screen.getByTestId("toggle-sql"));
     expect(screen.getByTestId("receipt-sql")).toHaveTextContent("WITH m_demand AS");
     expect(screen.getByText(/served load/)).toBeInTheDocument();
@@ -55,6 +55,6 @@ describe("CaseView", () => {
   it("marks uncited claims as inferred with no receipt", async () => {
     render(<CaseView id={CASE.case_id} initial={CASE} />);
     await userEvent.click(screen.getByTestId("claim-1"));
-    expect(screen.getByText(/no receipt backs this sentence/)).toBeInTheDocument();
+    expect(screen.getByText(/nothing in the data backs this sentence/)).toBeInTheDocument();
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { api, REGION_NAMES, type Region } from "../api";
+import { api, type Region } from "../api";
 import { Panel, fmt } from "../components";
+import { REGION_NAMES, errorPhrase, fmtTime, hypothesisName } from "../labels";
 import { navigate } from "../router";
 import { regionGeoJSON } from "../data/regions";
 
@@ -63,11 +64,12 @@ export function MapView() {
     return () => { cancelled = true; map?.remove(); };
   }, [regions]);
 
-  const us48 = regions?.find((r) => r.entity === "US48");
+  const latest = regions?.find((r) => r.latest_hour)?.latest_hour;
 
   return (
     <div className="grid gap-4 md:grid-cols-[1fr_320px]">
       <div>
+        <p className="muted mb-2 text-xs">Actual electricity demand vs. the operator's day-ahead forecast, latest published hour{latest ? ` (${fmtTime(latest)})` : ""}. Orange = less than forecast, green = more.</p>
         <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
           {(regions ?? []).map((r) => (
             <button
@@ -80,11 +82,11 @@ export function MapView() {
               <div className="text-xl font-semibold" style={{ color: r.forecast_error_pct !== null && r.forecast_error_pct < -5 ? "var(--gc-accent)" : undefined }}>
                 {r.forecast_error_pct === null ? "–" : `${r.forecast_error_pct > 0 ? "+" : ""}${fmt(r.forecast_error_pct, 1)}%`}
               </div>
-              <div className="text-xs muted">vs forecast · {r.latest_hour ? r.latest_hour.slice(0, 13).replace("T", " ") + "Z" : "no data"}</div>
+              <div className="text-xs muted">{errorPhrase(r.forecast_error_pct)}</div>
             </button>
           ))}
         </div>
-        <div ref={mapEl} className="panel h-[440px] w-full overflow-hidden" aria-label="Map of balancing authorities coloured by forecast error" />
+        <div ref={mapEl} className="panel h-[440px] w-full overflow-hidden" aria-label="Map of grid regions coloured by how far demand was from forecast" />
         {error && <p className="accent mt-2 text-sm">{error}</p>}
         {!regions && !error && <p className="muted mt-2 text-sm">Loading regions…</p>}
       </div>
@@ -94,26 +96,26 @@ export function MapView() {
             <div className="space-y-2">
               <div className="text-lg font-semibold">{REGION_NAMES[selected.entity] ?? selected.entity}</div>
               <dl className="grid grid-cols-2 gap-1 text-sm">
-                <dt className="muted">Demand</dt><dd>{fmt(selected.demand_mw)} MW</dd>
+                <dt className="muted">Actual demand</dt><dd>{fmt(selected.demand_mw)} MW</dd>
                 <dt className="muted">Forecast</dt><dd>{fmt(selected.forecast_mw)} MW</dd>
-                <dt className="muted">Error</dt><dd>{selected.forecast_error_pct === null ? "–" : `${fmt(selected.forecast_error_pct, 1)}%`}</dd>
-                <dt className="muted">Case</dt><dd>{selected.case_state ?? "none"}</dd>
+                <dt className="muted">Difference</dt><dd>{errorPhrase(selected.forecast_error_pct)}</dd>
+                <dt className="muted">Investigation</dt><dd>{selected.case_id ? "yes" : "none yet"}</dd>
               </dl>
               {selected.case_id ? (
                 <button data-testid="open-case" onClick={() => navigate({ view: "case", id: selected.case_id! })} className="mt-2 w-full rounded bg-amber-700 px-3 py-2 text-sm font-medium text-white hover:bg-amber-800">
-                  Open case → {selected.top_hypothesis ?? "investigating"}
+                  Open the investigation → {selected.top_hypothesis ? hypothesisName(selected.top_hypothesis) : "in progress"}
                 </button>
               ) : (
-                <p className="muted text-sm">No case for this region yet.</p>
+                <p className="muted text-sm">Nothing to investigate here yet: demand has stayed close to forecast.</p>
               )}
             </div>
           ) : (
-            <p className="muted text-sm">Click a region tile or the map. {us48 ? `US48 error ${fmt(us48.forecast_error_pct, 1)}%.` : ""}</p>
+            <p className="muted text-sm">Click a region tile or the map to see its numbers and open its investigation.</p>
           )}
         </Panel>
         <Panel title="What this is">
           <p className="text-sm">
-            When a region misses its demand forecast, GridCase detects the miss, plans an investigation as a DAG of deterministic tools, tests competing causes, and writes a conclusion where every sentence cites a receipt. Colours show the latest hour's error versus the day-ahead forecast.
+            When a grid region uses noticeably more or less power than its operator forecast, GridCase works out why. It checks the data, tests the likely causes against the numbers, and writes a short conclusion in which every sentence links to the exact evidence behind it. Its accuracy is scored on real historical events — see the Scorecard.
           </p>
         </Panel>
       </aside>

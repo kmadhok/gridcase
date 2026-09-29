@@ -89,79 +89,115 @@ def rank_hypotheses(
     return ordered
 
 
+ENTITY_WORDS = {"ERCO": "ERCOT", "CISO": "CAISO", "PJM": "PJM", "US48": "the US Lower 48"}
+METRIC_WORDS = {
+    "forecast_error_mw": "the gap between demand and its forecast",
+    "forecast_error_pct": "the gap between demand and its forecast",
+    "demand": "demand",
+    "supply_gap_mw": "the gap between generation and the forecast",
+    "net_interchange": "power flowing in and out over the ties",
+    "balance_residual": "the supply/demand balance",
+    "wind_capacity_factor_proxy": "wind output",
+    "solar_capacity_factor_proxy": "solar output",
+}
+
+
+def _who(entity: str) -> str:
+    return ENTITY_WORDS.get(entity, entity)
+
+
+def _what(metric: str) -> str:
+    return METRIC_WORDS.get(metric, metric.replace("_", " "))
+
+
 def _claim_for(r: Receipt) -> Claim | None:
+    """One plain-English sentence per receipt. Every number is copied from the receipt so the
+    verifier can match it; the wording is for a reader who is not a grid engineer."""
     o = r.output
     t = r.tool
-    if t == "anomaly.detect":
+    if o.get("insufficient"):
+        until = str(o.get("knowable_until", ""))[:16].replace("T", " ")
         text = (
-            f"{o['metric']} for {o['entity']} reached |z| = {o['max_abs_z']:.1f} against its "
-            f"baseline; {o['n_flagged_hours']} hours were flagged and {o['missing_hours']} hours "
-            "were missing."
+            f"This check could not see the event hours yet: the data it needs is published with "
+            f"a delay and was only available up to {until} UTC."
+        )
+    elif t == "anomaly.detect":
+        text = (
+            f"In {_who(o['entity'])}, {_what(o['metric'])} reached {o['max_abs_z']:.1f} times "
+            f"its normal variation; {o['n_flagged_hours']} hours were abnormal and "
+            f"{o['missing_hours']} hours of data were missing."
         )
     elif t == "variance.plan_vs_actual":
         text = (
-            f"Demand for {o['entity']} was {o['min_error_mw']:,.0f} MW below forecast at the "
-            f"worst hour ({o['min_error_pct']:.1f}% of forecast); the mean error over the window "
-            f"was {o['mean_error_mw']:,.0f} MW."
+            f"At the worst hour, {_who(o['entity'])} used {abs(o['min_error_mw']):,.0f} MW less "
+            f"power than forecast ({abs(o['min_error_pct']):.1f}% of the forecast); over the "
+            f"whole window the average shortfall was {abs(o['mean_error_mw']):,.0f} MW."
         )
     elif t == "bridge.fuel":
         top = o["fuels"][0]
         share = (
-            f"{o['top_share'] * 100:.0f}%"
+            f"{o['top_share'] * 100:.0f}% of the movement"
             if o.get("top_share") is not None
             else "an undefined share"
         )
         basis = (
-            "against each fuel's expected output"
+            "compared with what each power source was expected to produce"
             if o.get("mode") == "expected"
             else "between the two hours"
         )
         text = (
-            f"Net generation for {o['entity']} was {o['total_change_mw']:,.0f} MW {basis}; "
-            f"{o['top_fuel']} accounted for {top['delta_mw']:,.0f} MW ({share} of the movement)."
+            f"Generation in {_who(o['entity'])} moved {o['total_change_mw']:,.0f} MW {basis}; "
+            f"{o['top_fuel'].replace('_', ' ')} accounted for {top['delta_mw']:,.0f} MW ({share})."
         )
     elif t == "identity.balance":
         text = (
-            f"The balance identity for {o['entity']} had a maximum |z| of {o['max_abs_z']:.1f} "
-            f"with {o['n_missing']} missing hours."
+            f"The numbers for {_who(o['entity'])} add up: demand, generation and imports "
+            f"disagree by at most {o['max_abs_z']:.1f} times the usual rounding, with "
+            f"{o['n_missing']} missing hours."
         )
     elif t == "revision.diff":
         hist = (
-            "no real revision history exists for this range"
+            "though this range was backfilled, so no real revision history exists for it"
             if o["history"] != "observed"
-            else "revision history is real"
+            else "and this revision history is real"
         )
         text = (
-            f"{o['n_changed']} rows of {o['series']} were revised between the two vintages; {hist}."
+            f"{o['n_changed']} values of {
+                _what(o['series'].split('.')[-1].lower())
+                if o['series'].startswith('eia.')
+                else o['series']
+            } were changed by later "
+            f"revisions, {hist}."
         )
     elif t == "regress.temperature":
         text = (
-            f"Temperature explained R² = {o['r2']:.2f} of demand for {o['entity']}; "
-            f"temperature-implied demand exceeded actual by up to "
-            f"{o['implied_minus_actual_mw']:,.0f} MW."
+            f"Temperature explains {o['r2'] * 100:.0f}% of the variation in demand for "
+            f"{_who(o['entity'])}; given the weather, demand should have been up to "
+            f"{o['implied_minus_actual_mw']:,.0f} MW higher than it actually was."
         )
     elif t == "contribution.subregion":
         text = (
-            f"{o['top_subregion']} carried {o['top_share'] * 100:.0f}% of the change in demand "
-            "across subregions."
+            f"The {o['top_subregion'].split('/')[-1]} zone accounted for "
+            f"{o['top_share'] * 100:.0f}% of the change in demand across zones."
         )
     elif t == "peer.compare":
         mc = o.get("max_corr")
         text = (
-            f"The forecast error's highest correlation with a peer BA was {mc:.2f}."
+            f"The most similar neighbouring grid moved with a correlation of {mc:.2f}."
             if mc is not None
-            else "No peer BA had enough overlapping data to correlate forecast errors."
+            else "No neighbouring grid had enough overlapping data to compare."
         )
     elif t == "price.co_movement":
         text = (
-            f"Hub prices were at or near the cap for {o['cap_hours']} hours."
+            f"Wholesale prices sat at or near the cap for {o['cap_hours']} hours."
             if o["has_data"]
-            else "No hub price data was available for the window, so price evidence is absent."
+            else "No wholesale price data was available for this window, so prices could not be "
+            "used as evidence."
         )
     elif t == "baseline.expected":
         text = (
-            f"The baseline model for {o['metric']} was fit on {o['n_train']} hours with "
-            f"R² = {o['r2']:.2f}."
+            f"The model of a normal hour for {_what(o['metric'])} was fitted on "
+            f"{o['n_train']} hours of history and explains {o['r2'] * 100:.0f}% of its variation."
         )
     else:
         return None

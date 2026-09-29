@@ -13,8 +13,8 @@ export default function App() {
       <nav className="mb-4 flex items-center gap-2">
         <span className="mr-4 text-lg font-semibold">GridCase</span>
         {tab("Map", route.view === "map", href({ view: "map" }), "nav-map")}
-        {tab("Benchmark", route.view === "bench", href({ view: "bench" }), "nav-bench")}
-        <span className="muted ml-auto text-xs">plan-vs-actual investigations, every sentence with a receipt</span>
+        {tab("Scorecard", route.view === "bench", href({ view: "bench" }), "nav-bench")}
+        <span className="muted ml-auto text-xs">When the grid misses its forecast, GridCase finds out why — and shows its work.</span>
       </nav>
       <main>
         {route.view === "map" && <MapView />}

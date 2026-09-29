@@ -1,39 +1,35 @@
 import type { ReactNode } from "react";
-import { HYPOTHESIS_NAMES, type Status, type Tier } from "./api";
+import type { Tier } from "./api";
+import { HYPOTHESES, STATUS, TIERS } from "./labels";
+
+const TONE = {
+  good: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200",
+  bad: "bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200",
+  neutral: "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200",
+  info: "bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-200",
+};
 
 export function TierBadge({ tier }: { tier: Tier }) {
-  const cls =
-    tier === "governed"
-      ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200"
-      : tier === "derived"
-        ? "bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-200"
-        : "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200";
-  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>{tier}</span>;
+  const t = TIERS[tier] ?? { label: tier, blurb: "" };
+  const cls = tier === "governed" ? TONE.good : tier === "derived" ? TONE.info : TONE.neutral;
+  return <span title={`${t.blurb} (${tier})`} className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>{t.label}</span>;
 }
 
-export function StatusBadge({ status }: { status: Status | string }) {
-  const cls =
-    status === "supported" || status === "confirmed"
-      ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200"
-      : status === "refuted"
-        ? "bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200"
-        : "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200";
-  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
+export function StatusBadge({ status }: { status: string }) {
+  const s = STATUS[status] ?? { label: status, tone: "neutral" as const };
+  return <span title={status} className={`whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${TONE[s.tone]}`}>{s.label}</span>;
 }
 
 export function HypothesisName({ id }: { id: string }) {
-  return (
-    <span>
-      <span className="font-medium">{HYPOTHESIS_NAMES[id] ?? id}</span>{" "}
-      <span className="muted mono text-xs">{id}</span>
-    </span>
-  );
+  const h = HYPOTHESES[id];
+  return <span title={id} className="font-medium">{h?.name ?? id}</span>;
 }
 
-export function Panel({ title, children, className = "" }: { title?: string; children: ReactNode; className?: string }) {
+export function Panel({ title, children, className = "", hint }: { title?: string; children: ReactNode; className?: string; hint?: string }) {
   return (
     <section className={`panel p-4 ${className}`}>
-      {title && <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide muted">{title}</h2>}
+      {title && <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide muted">{title}</h2>}
+      {hint && <p className="muted mb-3 text-xs">{hint}</p>}
       {children}
     </section>
   );
