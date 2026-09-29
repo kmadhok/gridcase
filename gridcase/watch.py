@@ -31,13 +31,17 @@ def watch(
 ) -> list[str]:
     as_of = now.replace(minute=0, second=0, microsecond=0)
     opened: list[str] = []
+    seen: dict[str, str] = {}
     for entity in entities or config.REGIONS:
         try:
             receipt = check_kpi(conn, entity, as_of, alarm_params(entity))
         except Exception as e:  # noqa: BLE001 - one region's failure must not stop the rest
             log.warning("alarm check failed for %s: %s", entity, e)
+            seen[entity] = "error"
             continue
-        if not receipt.output["alarm"]:
+        o = receipt.output
+        seen[entity] = "ALARM" if o["alarm"] else f"quiet (worst {o['worst_value']}%)"
+        if not o["alarm"]:
             continue
         cases = list_cases(conn)
         if any(
@@ -57,4 +61,5 @@ def watch(
             continue
         log.info("alarm on %s: opened %s (%s)", entity, case.case_id, case.top_hypothesis)
         opened.append(case.case_id)
+    log.info("watch %s: %s", as_of.isoformat(), seen)
     return opened
