@@ -12,53 +12,44 @@ Historical replays see revised EIA data and no price data (see docs/DECISIONS.md
 
 | run | model | validator | replay top-1 | synthetic top-1 | top-3 | Brier | false alarms | cost/case | latency/case |
 |---|---|---|---|---|---|---|---|---|---|
-| 2026-09-29_fake | fake | on | 40% (5) | 54% (24) | 79% | 0.325 | 17% (12) | $0.0000 | 3.4 s |
+| 2026-09-29_fake | fake | on | 60% (5) | 48% (200) | 73% | 0.286 | 24% (100) | $0.0000 | 24.6 s |
+| 2026-09-29_fake_novalidator | fake | off | – (0) | 32% (200) | 50% | 0.620 | – (0) | $0.0000 | 23.4 s |
 
-## Per hypothesis (2026-09-29_fake)
+## Per hypothesis (2026-09-29_fake_novalidator)
 
 | generator | n | top-1 | top-3 |
 |---|---|---|---|
-| H0_DATA_ARTIFACT | 3 | 100% | 100% |
-| H1_WEATHER_DEMAND | 3 | 67% | 67% |
-| H2_SUPPLY_SHORTFALL | 3 | 33% | 100% |
-| H3_IMPORT_CONSTRAINT | 3 | 67% | 100% |
-| H4_LOAD_SHED | 3 | 0% | 67% |
-| H5_SUBREGION_CONCENTRATION | 3 | 100% | 100% |
-| H6_RENEWABLE_FORECAST_MISS | 3 | 0% | 0% |
-| H7_CALENDAR | 3 | 67% | 100% |
+| H0_DATA_ARTIFACT | 25 | 44% | 44% |
+| H1_WEATHER_DEMAND | 25 | 12% | 12% |
+| H2_SUPPLY_SHORTFALL | 25 | 8% | 44% |
+| H3_IMPORT_CONSTRAINT | 25 | 56% | 68% |
+| H4_LOAD_SHED | 25 | 0% | 20% |
+| H5_SUBREGION_CONCENTRATION | 25 | 68% | 100% |
+| H6_RENEWABLE_FORECAST_MISS | 25 | 0% | 20% |
+| H7_CALENDAR | 25 | 68% | 88% |
 
-## Per region (2026-09-29_fake)
+## Per region (2026-09-29_fake_novalidator)
 
 | region | n | top-1 | top-3 |
 |---|---|---|---|
-| ERCO | 24 | 54% | 79% |
+| ERCO | 200 | 32% | 50% |
 
-## Confusion matrix (2026-09-29_fake; rows = truth, columns = predicted top)
+## Confusion matrix (2026-09-29_fake_novalidator; rows = truth, columns = predicted top)
 
-| truth \ predicted | H0_DATA_ARTIFACT | H1_WEATHER_DEMAND | H2_SUPPLY_SHORTFALL | H3_IMPORT_CONSTRAINT | H4_LOAD_SHED | H5_SUBREGION_CONCENTRATION | H6_RENEWABLE_FORECAST_MISS | H7_CALENDAR |
-|---|---|---|---|---|---|---|---|---|
-| H0_DATA_ARTIFACT | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| H1_WEATHER_DEMAND | 0 | 2 | 1 | 0 | 0 | 0 | 0 | 0 |
-| H2_SUPPLY_SHORTFALL | 0 | 1 | 1 | 1 | 0 | 0 | 0 | 0 |
-| H3_IMPORT_CONSTRAINT | 0 | 0 | 0 | 2 | 0 | 0 | 1 | 0 |
-| H4_LOAD_SHED | 0 | 1 | 2 | 0 | 0 | 0 | 0 | 0 |
-| H5_SUBREGION_CONCENTRATION | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 |
-| H6_RENEWABLE_FORECAST_MISS | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 2 |
-| H7_CALENDAR | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
+| truth \ predicted | H0_DATA_ARTIFACT | H1_WEATHER_DEMAND | H2_SUPPLY_SHORTFALL | H3_IMPORT_CONSTRAINT | H4_LOAD_SHED | H5_SUBREGION_CONCENTRATION | H6_RENEWABLE_FORECAST_MISS | H7_CALENDAR | none |
+|---|---|---|---|---|---|---|---|---|---|
+| H0_DATA_ARTIFACT | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 14 |
+| H1_WEATHER_DEMAND | 0 | 3 | 1 | 1 | 0 | 1 | 0 | 0 | 19 |
+| H2_SUPPLY_SHORTFALL | 0 | 2 | 2 | 4 | 0 | 6 | 1 | 1 | 9 |
+| H3_IMPORT_CONSTRAINT | 0 | 3 | 0 | 14 | 0 | 0 | 0 | 0 | 8 |
+| H4_LOAD_SHED | 0 | 0 | 5 | 0 | 0 | 1 | 0 | 0 | 19 |
+| H5_SUBREGION_CONCENTRATION | 0 | 7 | 0 | 0 | 0 | 17 | 0 | 1 | 0 |
+| H6_RENEWABLE_FORECAST_MISS | 0 | 5 | 0 | 4 | 0 | 2 | 0 | 2 | 12 |
+| H7_CALENDAR | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 17 | 3 |
 
-## Trajectory (2026-09-29_fake)
+## Trajectory (2026-09-29_fake_novalidator)
 
-- H0 tested first: 100%
-- ≥ 2 hypotheses tested: 100%
-- mean steps run: 10.0; mean skipped (already refuted): 2.0
-- mean LLM calls per case: 2.0
-
-## Replay cases (2026-09-29_fake)
-
-| case | entity | truth | predicted top | top-1 | recheck |
-|---|---|---|---|---|---|
-| caiso_2020 | CISO | H4_LOAD_SHED | error: ToolError: insufficient history for fore | ✗ | – |
-| eclipse_2024 | ERCO | H6_RENEWABLE_FORECAST_MISS | error: ToolError: no forecast_error_mw data for | ✗ | – |
-| elliott_2022 | PJM | H2_SUPPLY_SHORTFALL | error: ToolError: insufficient history for fore | ✗ | – |
-| tx_heat_2023 | ERCO | H1_WEATHER_DEMAND | H1_WEATHER_DEMAND | ✓ | {'H0_DATA_ARTIFACT': 'refuted', 'H1_WEATHER_DEMAND': 'open', 'H2_SUPPLY_SHORTFALL': 'refuted', 'H6_RENEWABLE_FORECAST_MISS': 'refuted', 'H5_SUBREGION_CONCENTRATION': 'refuted', 'H3_IMPORT_CONSTRAINT': 'refuted', 'H7_CALENDAR': 'refuted', 'H4_LOAD_SHED': 'open'} |
-| uri_2021 | ERCO | H2_SUPPLY_SHORTFALL | H2_SUPPLY_SHORTFALL | ✓ | {'H0_DATA_ARTIFACT': 'refuted', 'H1_WEATHER_DEMAND': 'refuted', 'H2_SUPPLY_SHORTFALL': 'confirmed', 'H6_RENEWABLE_FORECAST_MISS': 'refuted', 'H5_SUBREGION_CONCENTRATION': 'refuted', 'H3_IMPORT_CONSTRAINT': 'confirmed', 'H4_LOAD_SHED': 'confirmed', 'H7_CALENDAR': 'refuted'} |
+- H0 tested first: 58%
+- ≥ 2 hypotheses tested: 58%
+- mean steps run: 5.4; mean skipped (already refuted): 1.6
+- mean LLM calls per case: 1.2
