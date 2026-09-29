@@ -24,6 +24,10 @@ class MetricEntityWindow(BaseModel):
 class EntityWindow(BaseModel):
     entity: str
     window: tuple[datetime, datetime]
+    # Tools that compare "the event" with a reference period use [event_start, event_end),
+    # the anomalous run the case was opened on; absent, the whole window.
+    event_start: datetime | None = None
+    event_end: datetime | None = None
 
 
 class BridgeInputs(BaseModel):

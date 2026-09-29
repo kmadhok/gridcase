@@ -25,11 +25,11 @@ EVENTS = {
 
 def main() -> None:
     logging.basicConfig(level=logging.ERROR)
-    src = GridstatusSource(raw_dir=None)
+    from gridcase.ingest.gridstatus_src import HUBS
+
     for name, (ba, day) in EVENTS.items():
-        hubs = [h for h in src.hubs if h.startswith(ba + "/")]
-        src.hubs = hubs
-        src.partial_errors.clear()
+        hubs = [h for h in HUBS if h.startswith(ba + "/")]
+        src = GridstatusSource(raw_dir=None, hubs=hubs)
         rows = src.fetch(day, day + timedelta(days=1))
         per_hub = {h: sum(1 for r in rows if r.entity_id == h) for h in hubs}
         errs = "; ".join(src.partial_errors) or "-"

@@ -14,6 +14,13 @@ if TYPE_CHECKING:
     from gridcase.planner.llm import LLM, LLMUsage
 
 MAX_ATTEMPTS = 3
+_VALIDATE = True
+
+
+def set_validation(enabled: bool) -> None:
+    """Benchmark ablation only: with validation off, the first schema-valid plan is executed."""
+    global _VALIDATE
+    _VALIDATE = enabled
 
 
 def _key(inputs: dict[str, Any]) -> str:
@@ -87,7 +94,7 @@ def make_plan(llm: LLM, ctx: PlanContext) -> tuple[InvestigationPlan, int, LLMUs
             feedback = ["response did not match the InvestigationPlan schema"]
             continue
         plan = plan.model_copy(update={"case_id": ctx.case_id, "as_of": ctx.as_of, "source": "llm"})
-        errors = validate_plan(plan)
+        errors = validate_plan(plan) if _VALIDATE else []
         if not errors:
             return plan, attempt, usage
         feedback = [f"{e.code}: {e.message}" for e in errors]

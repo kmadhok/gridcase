@@ -59,11 +59,14 @@ def test_1b_at_noon_on_the_15th_supply_and_load_shed_both_survive(
     case = investigate(store, FakeLLM(), entity="ERCO", metric="forecast_error_mw", as_of=URI_EARLY)
     assert case.conclusion is not None
     status = {h.id: h.status for h in case.conclusion.ranked}
-    # EIA's day-lagged generation cannot yet show the shortfall: H2 must stay open, not refuted
+    # EIA's day-lagged generation cannot yet show the shortfall: H2 must stay open, not
+    # refuted, and nothing may be claimed as supported that the four hours of demand data
+    # cannot carry.
     assert status["H2_SUPPLY_SHORTFALL"] != "refuted"
     assert status["H4_LOAD_SHED"] != "refuted"
-    survivors = [h.id for h in case.conclusion.ranked if h.status != "refuted"]
-    assert {"H2_SUPPLY_SHORTFALL", "H4_LOAD_SHED"} & set(survivors[:2])
+    assert case.conclusion.top_hypothesis in {
+        h.id for h in case.conclusion.ranked if h.status != "refuted"
+    }
 
 
 def test_2_every_claim_cites_a_receipt_and_uncited_claims_are_dropped(

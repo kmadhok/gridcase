@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from gridcase.planner.executor import ExecutionResult
     from gridcase.planner.llm import LLM, LLMUsage
 
+SUBSTANTIAL_COVERAGE = 0.3
+
 SERVED_LOAD_CAVEAT = (
     "EIA demand during a load-shed event is served load, not true demand: a fall in reported "
     "demand does not mean consumers wanted less power."
@@ -42,8 +44,28 @@ def rank_hypotheses(
                 id=h, status=cast(Status, status), confidence=conf, margin=m, coverage=cov
             )
         )
-    verdicts.sort(key=lambda v: (v.status == "refuted", -v.confidence, v.id))
-    supported = {v.id for v in verdicts if v.status == "supported"}
+
+    # Tiers: a supported data artifact pre-empts everything (broken data explains any miss);
+    # then mechanisms that are supported *and substantial* (cover >= SUBSTANTIAL_COVERAGE of
+    # the miss, or coverage unknown); then thinly supported and untested ones by confidence
+    # (untested ones sit at their prior); refuted last.
+    def tier(v: HypothesisVerdict) -> int:
+        if v.id == "H0_DATA_ARTIFACT" and v.status == "supported":
+            return 0
+        if v.status == "refuted":
+            return 3
+        if v.status == "supported" and (v.coverage is None or v.coverage >= SUBSTANTIAL_COVERAGE):
+            return 1
+        return 2
+
+    verdicts.sort(key=lambda v: (tier(v), -v.confidence, v.id))
+    # A cause pre-empts its consequence only when it is supported *and* substantial: it must
+    # account for at least SUBSTANTIAL_COVERAGE of the miss (unknown coverage counts).
+    supported = {
+        v.id
+        for v in verdicts
+        if v.status == "supported" and (v.coverage is None or v.coverage >= SUBSTANTIAL_COVERAGE)
+    }
     ordered: list[HypothesisVerdict] = []
     deferred: list[HypothesisVerdict] = []
     for v in verdicts:

@@ -71,6 +71,7 @@ def default_plan_response(case_id: str, entity: str, as_of: Any) -> Investigatio
         t0=t0,
         t1=t1,
         event_start=window[0],
+        event_end=window[1],
         peers=[r for r in config.REGIONS if r not in (entity, "US48")],
         hub=hubs[0] if hubs else None,
         season="winter",

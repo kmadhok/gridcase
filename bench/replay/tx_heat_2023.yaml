@@ -1,0 +1,16 @@
+# Replay case: the June 2023 Texas heat dome. Sustained record heat pushed demand above
+# forecast day after day; supply held and prices spiked on the evening ramp. No load shed.
+id: tx_heat_2023
+name: Texas heat dome, June 2023
+entity: ERCO
+metric: forecast_error_mw
+as_of: 2023-06-28T12:00:00
+recheck_as_of: 2023-07-01T12:00:00
+ground_truth:
+  ranked: [H1_WEATHER_DEMAND, H5_SUBREGION_CONCENTRATION]
+  cause: >-
+    Sustained record heat pushed demand above forecast; supply held, prices spiked on the
+    evening ramp.
+sources:
+  - https://www.ercot.com/news/release/2023-06-27-ercot-sets-new
+  - https://www.eia.gov/todayinenergy/detail.php?id=57080

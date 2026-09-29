@@ -67,6 +67,18 @@ metrics:
     kind: aggregate
     series: om.temp_2m
     agg: mean
+  wind_load_center:
+    description: Mean 10 m wind speed across the BA's load-centre weather zones (a wind-output regressor).
+    unit: km/h
+    kind: aggregate
+    series: om.wind_10m
+    agg: mean
+  cloud_load_center:
+    description: Mean cloud cover across the BA's load-centre weather zones (a solar-output regressor).
+    unit: pct
+    kind: aggregate
+    series: om.cloud_cover
+    agg: mean
   hdd:
     description: Heating degree-hours/24 (base 18.3 C); daily grain sums to degree-days.
     unit: degday

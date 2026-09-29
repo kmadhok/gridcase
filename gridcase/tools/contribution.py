@@ -1,8 +1,15 @@
-"""contribution.subregion: share of the change in demand vs the preceding week, by subregion.
+"""contribution.subregion: which subregion the miss concentrates in.
 
-EIA publishes no sub-BA forecast, so the "miss" is proxied by the change in each subregion's
-mean demand between the window and the seven days before it. Shares are additive by
-construction (they sum to 1 when the total change is non-zero).
+EIA publishes no sub-BA forecast, so the miss is proxied against the same hours a week
+earlier. Two views are reported:
+
+* `level_shares`: each subregion's share of the change in mean demand (additive; weather moves
+  every subregion, so this is confounded by weather).
+* `shares` (the governed one): each subregion's share of the *redistribution* of load, i.e.
+  positive change in its share of BA demand times BA demand. Weather leaves shares roughly
+  alone; a local outage, large customer or zonal forecast error moves them. Below a
+  materiality floor (2% of BA demand) there is no concentration to speak of and every share
+  is 0.
 """
 
 from __future__ import annotations
@@ -13,6 +20,8 @@ from typing import Any
 
 from gridcase.tools.base import ToolCtx, ToolError, tool
 from gridcase.tools.registry import EntityWindow
+
+MATERIALITY = 0.02
 
 
 def _means(rows: list[tuple[Any, ...]]) -> dict[str, float]:
@@ -28,30 +37,42 @@ def contribution_subregion(
     ctx: ToolCtx, inputs: EntityWindow
 ) -> tuple[dict[str, Any], float | None]:
     start, end = inputs.window
-    now = _means(ctx.metric("demand_by_subregion", inputs.entity, inputs.window))
-    prev = _means(
-        ctx.metric("demand_by_subregion", inputs.entity, (start - timedelta(days=7), start))
-    )
+    if inputs.event_start is not None and start < inputs.event_start < end:
+        start = inputs.event_start  # compare the event hours, not the whole window
+    week = timedelta(days=7)
+    now = _means(ctx.metric("demand_by_subregion", inputs.entity, (start, end)))
+    prev = _means(ctx.metric("demand_by_subregion", inputs.entity, (start - week, end - week)))
     if not now or not prev:
         raise ToolError(f"no subregion demand for {inputs.entity} in window or the week before")
     subs = sorted(set(now) & set(prev))
+    total_now, total_prev = sum(now[s] for s in subs), sum(prev[s] for s in subs)
     delta = {s: now[s] - prev[s] for s in subs}
     total = sum(delta.values())
-    if total != 0:
-        shares = {s: delta[s] / total for s in subs}
-    else:
-        abs_total = sum(abs(d) for d in delta.values())
-        shares = {s: (abs(delta[s]) / abs_total if abs_total else 0.0) for s in subs}
-    top = max(subs, key=lambda s: (abs(shares[s]), s))
+    level_shares = {s: (delta[s] / total if total else 0.0) for s in subs}
+
+    redistribution = {
+        s: (now[s] / total_now - prev[s] / total_prev) * total_now
+        if total_now and total_prev
+        else 0.0
+        for s in subs
+    }
+    positive = {s: max(0.0, v) for s, v in redistribution.items()}
+    moved = sum(positive.values())
+    material = moved >= MATERIALITY * total_now
+    shares = {s: (positive[s] / moved if material and moved else 0.0) for s in subs}
+    top = max(subs, key=lambda s: (shares[s], s))
     return {
         "entity": inputs.entity,
+        "window_start": start,
         "total_change_mw": total,
         "delta_mw": delta,
+        "level_shares": level_shares,
+        "redistribution_mw": redistribution,
+        "moved_mw": moved,
+        "material": material,
         "shares": shares,
         "top_subregion": top,
-        "top_share": abs(shares[top]),
-        "top_delta_mw": delta[top],
-        "basis": "change vs preceding 7 days"
-        if total != 0
-        else "abs change (total change is zero)",
-    }, abs(shares[top])
+        "top_share": shares[top],
+        "top_delta_mw": redistribution[top],
+        "basis": "share of BA load redistributed vs the same hours a week earlier",
+    }, shares[top]

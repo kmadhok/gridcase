@@ -109,6 +109,44 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from gridcase.bench.readme import render_readme
+    from gridcase.bench.run import run_suite
+    from gridcase.planner.llm import AnthropicLLM, FakeLLM
+
+    fixture_parquet = config.ROOT / "tests" / "fixtures" / "store" / "observations.parquet"
+    model = args.model or (config.PLANNER_MODEL if args.llm == "anthropic" else "fake")
+    factory = (lambda: AnthropicLLM(model=model)) if args.llm == "anthropic" else FakeLLM
+    work = Path(args.work_dir) if args.work_dir else config.DATA_DIR / "bench_work"
+    source_db = config.DB_PATH if args.source == "store" else None
+    result = run_suite(
+        suite=args.suite,
+        work_dir=work,
+        llm_factory=factory,
+        model_name=model,
+        source_parquet=None if source_db else fixture_parquet,
+        source_db=source_db,
+        per_generator=args.per_generator,
+        null_windows=args.null_windows,
+        seed0=args.seed,
+        validator=not args.no_validator,
+    )
+    out_dir = config.ROOT / "bench" / "results"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tag = f"{datetime.now(UTC):%Y-%m-%d}_{model}" + ("_novalidator" if args.no_validator else "")
+    (out_dir / f"{tag}.json").write_text(result.model_dump_json(indent=1))
+    render_readme(out_dir, config.ROOT / "bench" / "README.md")
+    s = result.summary
+    print(
+        f"{tag}: synthetic top-1 {s['synthetic']['top1']} top-3 {s['synthetic']['top3']} "
+        f"(n={s['synthetic']['n']}), replay top-1 {s['replay']['top1']} (n={s['replay']['n']}), "
+        f"false alarms {s['null']['false_alarm_rate']} (n={s['null']['n']})"
+    )
+    return 0
+
+
 def cmd_init(_: argparse.Namespace) -> int:
     conn = connect(config.DB_PATH)
     n_series, n_ent = one(
@@ -141,6 +179,22 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument("--model", help="model id for --llm anthropic; default from config")
     rep.add_argument("--recheck", help="'spec' to use the case's recheck_as_of, or a UTC datetime")
     rep.set_defaults(fn=cmd_replay)
+    ben = sub.add_parser("bench", help="run the benchmark and regenerate bench/README.md")
+    ben.add_argument("--suite", choices=["replay", "synthetic", "null", "all"], default="all")
+    ben.add_argument("--llm", choices=["fake", "anthropic"], default="fake")
+    ben.add_argument("--model", help="model id for --llm anthropic")
+    ben.add_argument(
+        "--source",
+        choices=["fixture", "store"],
+        default="store",
+        help="scratch stores from the committed fixture or the full store",
+    )
+    ben.add_argument("--per-generator", type=int, default=25)
+    ben.add_argument("--null-windows", type=int, default=100)
+    ben.add_argument("--seed", type=int, default=1)
+    ben.add_argument("--no-validator", action="store_true", help="ablation: skip plan validation")
+    ben.add_argument("--work-dir", help="where scratch stores are built (default data/bench_work)")
+    ben.set_defaults(fn=cmd_bench)
     args = p.parse_args(argv)
     return int(args.fn(args))
 

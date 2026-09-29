@@ -45,6 +45,7 @@ def ctx() -> PlanContext:
         t0=datetime(2021, 2, 14, 18),
         t1=datetime(2021, 2, 15, 18),
         event_start=datetime(2021, 2, 15, 7),
+        event_end=AS_OF,
         peers=["CISO", "PJM"],
         hub="ERCO/HB_HUBAVG",
         season="winter",

@@ -1,0 +1,18 @@
+# Replay case: Winter Storm Elliott, PJM, 2022-12-23/24. Gas and coal units failed to start
+# or run in extreme cold (~46 GW forced outages at the peak) while demand ran far above
+# forecast; PJM avoided firm load shed, neighbours (TVA, Duke) did not. as_of is a day after
+# the worst morning so EIA's day-lagged generation covers it.
+id: elliott_2022
+name: Winter Storm Elliott
+entity: PJM
+metric: forecast_error_mw
+as_of: 2022-12-25T12:00:00
+recheck_as_of: 2022-12-28T12:00:00
+ground_truth:
+  ranked: [H2_SUPPLY_SHORTFALL, H1_WEATHER_DEMAND, H4_LOAD_SHED]
+  cause: >-
+    Gas and coal units failed to start or run in extreme cold (~46 GW forced outages) while
+    demand exceeded forecast; PJM avoided load shed, neighbours did not.
+sources:
+  - https://www.pjm.com/-/media/library/reports-notices/special-reports/2023/20230717-winter-storm-elliott-event-analysis-and-recommendation-report.ashx
+  - https://www.ferc.gov/news-events/news/ferc-nerc-staff-release-final-report-winter-storm-elliott

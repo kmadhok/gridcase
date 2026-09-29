@@ -38,7 +38,7 @@ templates:
     preconditions: [forecast_error_anomaly]
     tests:
       - tool: regress.temperature
-        inputs: {entity: "{entity}", window: "{window}"}
+        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
       - tool: peer.compare
         inputs: {entity: "{entity}", peers: "{peers}", window: "{window}"}
     # Refuted when the error moves the wrong way with the thermal surprise (colder than
@@ -59,15 +59,22 @@ templates:
     tests:
       - tool: anomaly.detect
         inputs: {metric: supply_gap_mw, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
+      - tool: regress.temperature
+        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
       - tool: bridge.fuel
         inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}", mode: expected, event_start: "{event_start}"}
       - tool: price.co_movement
         inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when the supply gap is not anomalous, or generation sits at or above each
-    # fuel's expected output (no fleet fell short). Fuel attribution lags the gap by a day of
-    # EIA publication and is reported, not required: at Uri's first information state gas
-    # was still at its expected level at the gap hour (see DECISIONS, Phase 4).
-    falsifier: anomaly.detect.max_abs_z < 3 or bridge.fuel.total_change_mw > 0
+    # Refuted when the supply gap is not anomalous, when the weather surprise explains the
+    # window's forecast error (a demand-side miss), or when served load sits at what the
+    # weather implied (a shortfall that serves everyone is not a shortfall). Fuel attribution
+    # lags the gap by a day of EIA publication and is reported, not required: at Uri's first
+    # information state gas was still at its expected level (DECISIONS, Phase 4).
+    falsifier: >-
+      anomaly.detect.max_abs_z < 3
+      or (regress.temperature.share_explained_window > 0.5
+          and regress.temperature.sign_consistent_window == 1)
+      or regress.temperature.implied_minus_actual_mean_z < 1
     explains: anomaly.detect.max_abs_dev
     prior: {a: 2.0, b: 8.0}
 
@@ -96,13 +103,18 @@ templates:
       - tool: variance.plan_vs_actual
         inputs: {entity: "{entity}", window: "{window}"}
       - tool: regress.temperature
-        inputs: {entity: "{entity}", window: "{window}"}
+        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
       - tool: price.co_movement
         inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when demand did not fall below forecast while temperature implied more load.
+    # Refuted when demand did not fall below forecast, when the weather surprise explains the
+    # window's error or demand moved *with* the weather (a weather miss, not shed load), or
+    # when served load sits at what the weather implied.
     falsifier: >-
       variance.plan_vs_actual.min_error_pct > -5
-      or regress.temperature.implied_minus_actual_mw < 2000
+      or (regress.temperature.share_explained_window > 0.5
+          and regress.temperature.sign_consistent_window == 1)
+      or regress.temperature.sign_consistent == 1
+      or regress.temperature.implied_minus_actual_mean_z < 1
     explains: regress.temperature.implied_minus_actual_mw
     consequence_of: [H2_SUPPLY_SHORTFALL, H3_IMPORT_CONSTRAINT]
     prior: {a: 0.5, b: 9.5}
@@ -114,7 +126,7 @@ templates:
     preconditions: [forecast_error_anomaly]
     tests:
       - tool: contribution.subregion
-        inputs: {entity: "{entity}", window: "{window}"}
+        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
     # Refuted when no subregion carries more than 60% of the miss.
     falsifier: contribution.subregion.top_share < 0.6
     explains: contribution.subregion.top_delta_mw
@@ -132,8 +144,11 @@ templates:
         inputs: {metric: solar_capacity_factor_proxy, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
       - tool: bridge.fuel
         inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}", mode: expected, event_start: "{event_start}"}
-    # Refuted when neither renewable proxy is anomalous and the bridge is not led by wind/solar.
-    falsifier: anomaly.detect.max_abs_z < 3 and bridge.fuel.renewable_share < 0.5
+    # Refuted when the renewable proxies sit near their expected profile, or renewables did
+    # not fall materially (>= 3 GW) against expected output. The proxies are noisy
+    # (load-centre wind speed explains ~30% of fleet output), so this test has low recall;
+    # an ISO wind/solar forecast would make it sharp (DECISIONS, Phase 5).
+    falsifier: anomaly.detect.max_abs_z < 3 or bridge.fuel.renewable_delta_mw > -3000
     explains: bridge.fuel.renewable_delta_mw
     prior: {a: 2.0, b: 8.0}
 
@@ -146,10 +161,11 @@ templates:
       - tool: variance.plan_vs_actual
         inputs: {entity: "{entity}", window: "{window}"}
       - tool: regress.temperature
-        inputs: {entity: "{entity}", window: "{window}"}
-    # Refuted when the window holds no calendar event, or temperature already explains the error.
+        inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
+    # Refuted when the window holds no calendar event, or temperature already explains the
+    # window's errors (the whole window: a holiday miss is a day, not a run).
     falsifier: >-
       variance.plan_vs_actual.calendar_event_in_window == 0
-      or regress.temperature.share_explained > 0.6
+      or regress.temperature.share_explained_window > 0.6
     explains: variance.plan_vs_actual.min_error_mw
     prior: {a: 1.0, b: 9.0}

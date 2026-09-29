@@ -14,7 +14,7 @@ import math
 from gridcase.planner.hypotheses import Prior
 
 K = 1.0
-C = 0.5
+C = 1.0  # a mechanism that explains a tenth of the miss loses ~2.3 logits
 COVERAGE_FLOOR = 0.02
 
 

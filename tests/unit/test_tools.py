@@ -287,11 +287,31 @@ def test_contribution_shares_change_vs_previous_week_additively(
     append_observations(db, rows, dedupe_unchanged=False)
     window = (T0 + timedelta(weeks=1), T0 + timedelta(weeks=2))
     out = run_tool(db, "contribution.subregion", {"entity": "ERCO", "window": window}, AS_OF).output
-    assert out["shares"]["COAS"] == pytest.approx(0.75)
-    assert out["shares"]["EAST"] == pytest.approx(0.25)
-    assert out["shares"]["WEST"] == pytest.approx(0.0)
-    assert out["top_subregion"] == "COAS" and out["top_share"] == pytest.approx(0.75)
+    # levels: COAS +3000 and EAST +1000 of a +4000 change
+    assert out["level_shares"]["COAS"] == pytest.approx(0.75)
+    assert out["level_shares"]["EAST"] == pytest.approx(0.25)
     assert out["total_change_mw"] == pytest.approx(4_000)
+    # redistribution: only COAS gained share of BA load (17 GW -> 21 GW), so it takes all of it
+    assert out["shares"]["COAS"] == pytest.approx(1.0)
+    assert out["shares"]["EAST"] == pytest.approx(0.0) and out["shares"]["WEST"] == pytest.approx(
+        0.0
+    )
+    assert out["top_subregion"] == "COAS" and out["top_share"] == pytest.approx(1.0)
+    assert out["material"] is True
+
+
+def test_contribution_ignores_uniform_weather_growth(db: duckdb.DuckDBPyConnection) -> None:
+    rows = []
+    for t in hours(24 * 14):
+        f = 1.1 if t >= T0 + timedelta(weeks=1) else 1.0  # everything up 10%: weather, not local
+        rows.append(obs("eia.subba_demand", "ERCO/COAS", t, 10_000 * f))
+        rows.append(obs("eia.subba_demand", "ERCO/EAST", t, 5_000 * f))
+        rows.append(obs("eia.subba_demand", "ERCO/WEST", t, 2_000 * f))
+    append_observations(db, rows, dedupe_unchanged=False)
+    window = (T0 + timedelta(weeks=1), T0 + timedelta(weeks=2))
+    out = run_tool(db, "contribution.subregion", {"entity": "ERCO", "window": window}, AS_OF).output
+    assert out["material"] is False and out["top_share"] == 0.0
+    assert out["level_shares"]["COAS"] == pytest.approx(10 / 17)
 
 
 # ------------------------------------------------- regression / peers / revisions / price

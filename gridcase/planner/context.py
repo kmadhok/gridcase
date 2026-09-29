@@ -27,7 +27,8 @@ class PlanContext(BaseModel):
     window: tuple[datetime, datetime]
     t0: datetime
     t1: datetime
-    event_start: datetime  # first flagged hour of the case anomaly (window start if none)
+    event_start: datetime  # first hour of the flagged run holding the worst hour (or window start)
+    event_end: datetime  # hour after that run (or window end)
     peers: list[str]
     hub: str | None
     season: str
@@ -49,6 +50,7 @@ def fill_inputs(inputs: dict[str, Any], ctx: PlanContext) -> dict[str, Any]:
         "{peers}": list(ctx.peers),
         "{hub}": ctx.hub,
         "{event_start}": ctx.event_start,
+        "{event_end}": ctx.event_end,
     }
     return {k: values.get(v, v) if isinstance(v, str) else v for k, v in inputs.items()}
 
@@ -96,6 +98,8 @@ def build_context(
     hubs = onto.hubs(entity)
     anchor = anomaly.get("event_start") or anomaly.get("first_flag_t")
     event_start = datetime.fromisoformat(anchor) if isinstance(anchor, str) else window[0]
+    end_anchor = anomaly.get("event_end")
+    event_end = datetime.fromisoformat(end_anchor) if isinstance(end_anchor, str) else window[1]
     return PlanContext(
         case_id=case_id,
         entity=entity,
@@ -105,6 +109,7 @@ def build_context(
         t0=t0,
         t1=t1,
         event_start=event_start,
+        event_end=event_end,
         peers=[r for r in REGIONS if r not in (entity, "US48")],
         hub=hubs[0] if hubs else None,
         season=season_of(as_of.date()),
