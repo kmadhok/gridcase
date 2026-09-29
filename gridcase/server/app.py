@@ -42,6 +42,7 @@ from gridcase.bench.run import SuiteResult
 from gridcase.bench.score import score
 from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
+from gridcase.market_watch import watch_markets
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
 from gridcase.planner.llm import LLM, AnthropicLLM, FakeLLM
 from gridcase.server.scheduler import drain_scheduled
@@ -49,7 +50,6 @@ from gridcase.server.tasks import TaskRegistry
 from gridcase.store.db import connect
 from gridcase.tools.base import run_tool
 from gridcase.tools.registry import TOOL_INPUTS, TOOL_NAMES
-from gridcase.watch import watch as run_watch
 
 log = logging.getLogger("gridcase")
 WEB_DIST = config.ROOT / "web" / "dist"
@@ -254,6 +254,7 @@ def create_app(
         next_ingest = time.monotonic()
         next_drain = time.monotonic()
         next_polymarket = time.monotonic()
+        last_market_watch = [datetime.min]
         gamma = httpx.Client(base_url=GAMMA_URL, headers={"User-Agent": "marketcase"})
         while not stop.is_set():
             now = time.monotonic()
@@ -269,25 +270,24 @@ def create_app(
                 finally:
                     c.close()
                 next_polymarket = now + polymarket_interval_s
+                wall = datetime.now(UTC).replace(tzinfo=None)
+                settled = (wall - timedelta(minutes=15)).replace(minute=0, second=0, microsecond=0)
+                if watch and settled > last_market_watch[0]:  # a new hour has settled
+                    last_market_watch[0] = settled
+                    c = cur()
+                    try:
+                        watch_markets(
+                            c, wall, llm_factory, FakeLLM, config.auto_paid_cases_per_day()
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("market watch failed: %s", e)
+                    finally:
+                        c.close()
             if ingest_interval_s and now >= next_ingest:
                 try:
                     _live_ingest(cur())
                 except Exception as e:  # noqa: BLE001
                     log.warning("live ingest failed: %s", e)
-                if watch:  # fresh data in: does any region's KPI alarm fire?
-                    c = cur()
-                    try:
-                        run_watch(
-                            c,
-                            datetime.now(UTC).replace(tzinfo=None),
-                            llm_factory,
-                            FakeLLM,
-                            config.auto_paid_cases_per_day(),
-                        )
-                    except Exception as e:  # noqa: BLE001
-                        log.warning("watch failed: %s", e)
-                    finally:
-                        c.close()
                 next_ingest = now + ingest_interval_s
             if drain_interval_s and now >= next_drain:
                 try:

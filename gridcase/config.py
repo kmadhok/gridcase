@@ -39,7 +39,7 @@ def api_token() -> str | None:
 def auto_paid_cases_per_day() -> int:
     """Automatic investigations per UTC day that may use the paid model; the rest use the
     free standard playbook."""
-    return int(os.environ.get("GRIDCASE_AUTO_PAID_PER_DAY", "6"))
+    return int(os.environ.get("GRIDCASE_AUTO_PAID_PER_DAY", "10"))
 
 
 def ask_daily_usd() -> float:
