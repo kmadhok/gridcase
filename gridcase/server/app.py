@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 import httpx
@@ -32,11 +32,12 @@ from pydantic import BaseModel, Field
 from starlette.routing import Route
 
 from gridcase import config
-from gridcase.ask.context import case_context
-from gridcase.ask.engine import Asker, answer_question, case_checker
+from gridcase.ask.context import case_context, now_context
+from gridcase.ask.engine import Asker, answer_question, case_checker, checker_at
 from gridcase.ask.llm import default_asker_factory
 from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
+from gridcase.market_alarm import load_watch, series_view
 from gridcase.market_watch import watch_markets
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
 from gridcase.planner.llm import LLM, AnthropicLLM, FakeLLM
@@ -91,6 +92,7 @@ def _case_full(c: CaseRecord) -> dict[str, Any]:
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     case_id: str | None = None
+    page: Literal["now"] | None = None
 
 
 class AskLimiter:
@@ -129,6 +131,7 @@ def create_app(
     drain_interval_s: float | None = 600.0,
     watch: bool = False,
     polymarket_interval_s: float | None = None,
+    clock: Callable[[], datetime] | None = None,
     asker_factory: Callable[[], Asker] | None = None,
     ask_per_window: int = 10,
     ask_window_s: float = 600.0,
@@ -144,6 +147,10 @@ def create_app(
         config.ask_daily_usd() if ask_daily_usd is None else ask_daily_usd,
     )
     conn = connect(db_path)
+
+    def now() -> datetime:
+        return clock() if clock else datetime.now(UTC).replace(tzinfo=None)
+
     registry = TaskRegistry()
     stop = threading.Event()
 
@@ -319,12 +326,44 @@ def create_app(
         finally:
             c.close()
 
+    @app.get("/api/now")
+    def api_now() -> dict[str, Any]:
+        """The Now page: every watched KPI's last 48 hours against its usual band, how fresh
+        our data is, and the latest investigations."""
+        at = now()
+        c = cur()
+        try:
+            watched, _ = load_watch()
+            series = [series_view(c, w, at) for w in watched]
+            row = c.execute(
+                "SELECT max(ts), max(collected_at), min(ts) FROM trades_as_of(?)", [at]
+            ).fetchone()
+            newest, collected, first = row if row else (None, None, None)
+            cases = [_case_summary(x) for x in list_cases(c)[:10]]
+        finally:
+            c.close()
+        for x in cases:
+            x["segment"] = x["entity"]
+        return {
+            "as_of": at.isoformat(),
+            "series": series,
+            "freshness": {
+                "newest_trade": newest.isoformat() if newest else None,
+                "record_starts": first.isoformat() if first else None,
+                "minutes_behind": round((at - collected).total_seconds() / 60, 1)
+                if collected
+                else None,
+            },
+            "cases": cases,
+        }
+
     @app.post("/api/ask")
     def api_ask(req: AskRequest, request: Request) -> dict[str, Any]:
-        """Evidence-only answers (hard rule 6): about a case, with read-only checks at its
-        as_of. Every sentence is verified like the conclusion."""
-        if not req.case_id:
-            raise HTTPException(422, "ask about an investigation (case_id)")
+        """Evidence-only answers (hard rule 6): about a case (read-only checks at its as_of)
+        or the Now page (checks at the current time). Every sentence is verified like the
+        conclusion."""
+        if not req.case_id and req.page != "now":
+            raise HTTPException(422, "ask about an investigation (case_id) or the Now page")
         c = cur()
         try:
             if req.case_id:
@@ -340,8 +379,17 @@ def create_app(
                     receipts={r.receipt_id: r for r in case.receipts},
                     run_check=case_checker(c, case),
                 )
-            else:  # pragma: no cover - unreachable, kept for the "now" page (M5)
-                raise HTTPException(422, "ask about an investigation (case_id)")
+            else:
+                limiter.admit(request.client.host if request.client else "?")
+                at = now()
+                ctx, receipts = now_context(c, at)
+                res = answer_question(
+                    asker_factory(),
+                    req.question,
+                    context=ctx,
+                    receipts=receipts,
+                    run_check=checker_at(c, at),
+                )
         finally:
             c.close()
         limiter.charge(res.usage.cost_usd)

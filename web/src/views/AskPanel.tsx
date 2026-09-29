@@ -5,15 +5,15 @@ import { fmtTime } from "../labels";
 import { ReceiptCard } from "./ReceiptCard";
 
 const CASE_SUGGESTIONS = [
-  "Why was weather ruled out?",
-  "What does \"explains X% of the gap\" mean?",
-  "Were imports maxed out?",
-  "What would have changed the conclusion?",
+  "Why was a broad shift ruled out?",
+  "What does \"explains X% of the change\" mean?",
+  "Were new traders involved?",
+  "What should the team check next?",
 ];
-const BENCH_SUGGESTIONS = [
-  "How accurate is GridCase on real events?",
-  "What is a quiet period wrongly flagged?",
-  "Why are test cases less convincing than real events?",
+const NOW_SUGGESTIONS = [
+  "What's driving trading volume right now?",
+  "Which category is busiest compared with usual?",
+  "Are big trades unusually active this afternoon?",
 ];
 
 interface Turn { question: string; answer?: AskResponse; error?: string }
@@ -42,7 +42,7 @@ export function AskPanel({ target, receipts, asOf }: { target: AskTarget; receip
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
   const isCase = "caseId" in target;
-  const suggestions = isCase ? CASE_SUGGESTIONS : BENCH_SUGGESTIONS;
+  const suggestions = isCase ? CASE_SUGGESTIONS : NOW_SUGGESTIONS;
 
   const submit = async () => {
     const q = question.trim();
@@ -61,10 +61,10 @@ export function AskPanel({ target, receipts, asOf }: { target: AskTarget; receip
 
   return (
     <Panel
-      title={isCase ? "Ask about this investigation" : "Ask about the scorecard"}
+      title={isCase ? "Ask about this investigation" : "Ask about what's happening"}
       hint={isCase
         ? `Answers use only this investigation's evidence, plus the same read-only checks run on the data as it was known on ${fmtTime(asOf)}. Every sentence is checked against the numbers.`
-        : "Answers use only the benchmark results shown on this page. Every sentence is checked against the numbers."}
+        : "Answers use only live Polymarket data, compared with the same hours on previous days. Every sentence is checked against the numbers."}
     >
       <ol className="space-y-3" data-testid="ask-turns">
         {turns.map((t, i) => {
@@ -73,7 +73,7 @@ export function AskPanel({ target, receipts, asOf }: { target: AskTarget; receip
             <li key={i} className="rounded border border-[var(--gc-line)] p-3">
               <p className="mb-1 text-sm font-medium">{t.question}</p>
               {t.error && <p className="accent text-sm">{t.error}</p>}
-              {t.answer?.refused && <p className="muted text-sm">I can only answer questions about this {isCase ? "investigation" : "scorecard"}.</p>}
+              {t.answer?.refused && <p className="muted text-sm">I can only answer questions about {isCase ? "this investigation" : "Polymarket trading"}.</p>}
               {t.answer && !t.answer.refused && t.answer.sentences.length === 0 && <p className="muted text-sm">The evidence here doesn't answer that.</p>}
               <ul>{t.answer?.sentences.map((s, j) => <AnswerSentence key={j} s={s} receipts={pool} />)}</ul>
               {t.answer && t.answer.new_receipts.length > 0 && (
@@ -100,7 +100,7 @@ export function AskPanel({ target, receipts, asOf }: { target: AskTarget; receip
           rows={2}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
-          placeholder={isCase ? "e.g. Why wasn't this the weather?" : "e.g. How often is it right?"}
+          placeholder={isCase ? "e.g. Was it one market or many?" : "e.g. Why is sports volume up today?"}
           className="panel min-w-0 flex-1 p-2 text-sm"
         />
         <button type="submit" disabled={busy || !question.trim()} className="rounded bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800 disabled:opacity-50">

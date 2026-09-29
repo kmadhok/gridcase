@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "marketcase-web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "maplibre-gl": "^6.11.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tailwindcss": "^4.3.3"

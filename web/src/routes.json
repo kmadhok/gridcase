@@ -1,7 +1,6 @@
 {
   "landing": "/",
   "case": "/case/",
-  "bench": "/bench",
-  "clicks_to_conclusion": 2,
-  "notes": "landing map -> click a region (1) -> Open case (2): the conclusion is the centre column of the case page; a third click expands a claim to its receipt and SQL."
+  "clicks_to_conclusion": 1,
+  "notes": "Now page -> click an investigation (1): the answer is the first sentence of the case page; a second click expands a sentence to its evidence and query."
 }

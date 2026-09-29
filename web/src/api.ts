@@ -71,27 +71,34 @@ export interface CaseFull extends CaseSummary {
   } | null;
 }
 
-export interface Region {
-  entity: string;
-  latest_hour: string | null;
-  demand_mw: number | null;
-  forecast_mw: number | null;
-  forecast_error_pct: number | null;
-  typical_error_pct: number | null;
-  case_id: string | null;
-  case_state: string | null;
-  top_hypothesis: string | null;
+export interface SeriesPoint {
+  t: string;
+  value: number | null;
+  usual: number | null;
+  low: number | null;
+  high: number | null;
 }
 
-export interface BenchRun {
-  name: string;
-  config: Record<string, unknown>;
-  summary: {
-    synthetic: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-    replay: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-    null: { n: number; false_alarm_rate: number | null };
-  };
-  replay: { scenario_id: string; entity: string; ground_truth: string[]; predicted: string[]; top1: boolean; error: string | null }[];
+export interface SeriesView {
+  series: string;
+  kpi: string;
+  label: string;
+  unit: "usd" | "count" | "share" | string;
+  segment: string;
+  filters: Record<string, string>;
+  status: "alarm" | "normal" | "learning";
+  direction: "up" | "down" | null;
+  ratio: number | null;
+  history_days: number;
+  latest: { t: string; value: number | null; usual: number | null } | null;
+  points: SeriesPoint[];
+}
+
+export interface NowResponse {
+  as_of: string;
+  series: SeriesView[];
+  freshness: { newest_trade: string | null; record_starts: string | null; minutes_behind: number | null };
+  cases: (CaseSummary & { segment: string })[];
 }
 
 export interface AskResponse {
@@ -102,7 +109,7 @@ export interface AskResponse {
   cost_usd: number;
 }
 
-export type AskTarget = { caseId: string } | { page: "bench" };
+export type AskTarget = { caseId: string } | { page: "now" };
 
 async function ask(target: AskTarget, question: string): Promise<AskResponse> {
   const body = "caseId" in target ? { case_id: target.caseId, question } : { page: target.page, question };
@@ -119,11 +126,9 @@ async function get<T>(url: string): Promise<T> {
 }
 
 export const api = {
-  map: () => get<{ regions: Region[]; generated_at: string }>("/api/map"),
+  now: () => get<NowResponse>("/api/now"),
   cases: () => get<CaseSummary[]>("/api/cases"),
   case: (id: string) => get<CaseFull>(`/api/cases/${encodeURIComponent(id)}`),
-  bench: () => get<{ runs: BenchRun[] }>("/api/bench"),
   ask,
 };
 
-export { HYPOTHESES, REGION_NAMES } from "./labels";

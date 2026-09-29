@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cache
 from typing import Any
@@ -72,14 +73,27 @@ def _gap_hours(conn: duckdb.DuckDBPyConnection, lo: datetime, hi: datetime) -> s
     return out
 
 
-def check_series(
+@dataclass
+class Hourly:
+    """Each complete hour's value next to its usual level for that hour of the day."""
+
+    rows: list[dict[str, Any]]  # t, v, expected, low, high, z (None when not judgeable)
+    sql: str
+    raw: list[tuple[Any, ...]]
+    history_days: int
+    gap_hours_skipped: int
+    judged_from: datetime
+    judged_until: datetime
+    log_scale: bool
+
+
+def hourly(
     conn: duckdb.DuckDBPyConnection,
     series: WatchedSeries,
     as_of: datetime,
-    params: WatchParams | None = None,
-) -> Receipt:
-    t0 = time.perf_counter()
-    p = params or load_watch()[1]
+    p: WatchParams,
+    hours: int,
+) -> Hourly:
     kpis, _ = load_kpis()
     kpi = kpis[series.kpi]
     log_scale = series.kpi in p.log_scale
@@ -88,7 +102,7 @@ def check_series(
     judged_until = (as_of - timedelta(minutes=p.settle_minutes)).replace(
         minute=0, second=0, microsecond=0
     )
-    judged_from = judged_until - timedelta(hours=p.recent_hours)
+    judged_from = judged_until - timedelta(hours=hours)
     start_row = conn.execute("SELECT min(ts) FROM trades_as_of(?)", [as_of]).fetchone()
     first = start_row[0] if start_row else None
     record_start = (
@@ -109,8 +123,8 @@ def check_series(
         filters=series.filters,
     )
     compiled = compile_kpi(q)
-    rows = [tuple(r) for r in conn.execute(compiled.sql).fetchall()]
-    values: dict[datetime, float] = {t: float(v) for t, v in rows if v is not None}
+    raw = [tuple(r) for r in conn.execute(compiled.sql).fetchall()]
+    values: dict[datetime, float] = {t: float(v) for t, v in raw if v is not None}
     gaps = _gap_hours(conn, lo, judged_until)
 
     def value_at(h: datetime) -> float | None:
@@ -122,25 +136,61 @@ def check_series(
     def scale(v: float) -> float:
         return math.log1p(max(v, 0.0)) if log_scale else v
 
+    def unscale(x: float) -> float:
+        return math.expm1(x) if log_scale else x
+
     floor = p.min_sd["log" if log_scale else "linear"]
     warm = (judged_until - record_start).days >= p.warmup_days.get(series.kpi, 0)
-    judged: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     history_days = 0
     skipped = 0
-    h = max(judged_from, record_start)
+    h = judged_from
     while h < judged_until:
         v = value_at(h)
         if h in gaps:
             skipped += 1
         past = [value_at(h - timedelta(days=d)) for d in range(1, p.lookback_days + 1)]
         hist = [scale(x) for x in past if x is not None]
-        history_days = max(history_days, len(hist))
-        if v is not None and len(hist) >= p.min_history_days and warm:
+        if h >= record_start:
+            history_days = max(history_days, len(hist))
+        row: dict[str, Any] = {
+            "t": h,
+            "v": v,
+            "expected": None,
+            "low": None,
+            "high": None,
+            "z": None,
+        }
+        if len(hist) >= p.min_history_days and warm:
             mean = sum(hist) / len(hist)
             sd = max(math.sqrt(sum((x - mean) ** 2 for x in hist) / len(hist)), floor)
-            expected = math.expm1(mean) if log_scale else mean
-            judged.append({"t": h, "v": v, "z": (scale(v) - mean) / sd, "expected": expected})
+            row["expected"] = unscale(mean)
+            row["low"] = (
+                max(unscale(mean - p.k_sigma * sd), 0.0) if log_scale else mean - p.k_sigma * sd
+            )
+            row["high"] = unscale(mean + p.k_sigma * sd)
+            if v is not None:
+                row["z"] = (scale(v) - mean) / sd
+        rows.append(row)
         h += HOUR
+    return Hourly(
+        rows, compiled.sql, raw, history_days, skipped, judged_from, judged_until, log_scale
+    )
+
+
+def check_series(
+    conn: duckdb.DuckDBPyConnection,
+    series: WatchedSeries,
+    as_of: datetime,
+    params: WatchParams | None = None,
+) -> Receipt:
+    t0 = time.perf_counter()
+    p = params or load_watch()[1]
+    hv = hourly(conn, series, as_of, p, p.recent_hours)
+    judged = [r for r in hv.rows if r["z"] is not None]
+    history_days, skipped = hv.history_days, hv.gap_hours_skipped
+    judged_from, judged_until, log_scale = hv.judged_from, hv.judged_until, hv.log_scale
+    compiled_sql, rows = hv.sql, hv.raw
 
     run: list[dict[str, Any]] = []
     best: list[dict[str, Any]] = []
@@ -193,5 +243,42 @@ def check_series(
         data_version=None,
         effect_size=output["z"],
         runtime_ms=int((time.perf_counter() - t0) * 1000),
-        sql=[{"sql": compiled.sql, "rows_hash": rows_hash(rows)}],
+        sql=[{"sql": compiled_sql, "rows_hash": rows_hash(rows)}],
     )
+
+
+def series_view(
+    conn: duckdb.DuckDBPyConnection, series: WatchedSeries, as_of: datetime, hours: int = 48
+) -> dict[str, Any]:
+    """What the Now page draws: the last `hours` complete hours against their usual band, and
+    the alarm's verdict on the latest ones."""
+    p = load_watch()[1]
+    kpis, _ = load_kpis()
+    verdict = check_series(conn, series, as_of, p).output
+    hv = hourly(conn, series, as_of, p, hours)
+    latest = next((r for r in reversed(hv.rows) if r["v"] is not None), None)
+    return {
+        "series": series.label,
+        "kpi": series.kpi,
+        "label": kpis[series.kpi].label,
+        "unit": kpis[series.kpi].unit,
+        "segment": series.segment,
+        "filters": series.filters,
+        "status": verdict["status"],
+        "direction": verdict["direction"],
+        "ratio": verdict["ratio"],
+        "history_days": verdict["history_days"],
+        "latest": None
+        if latest is None
+        else {"t": latest["t"].isoformat(), "value": latest["v"], "usual": latest["expected"]},
+        "points": [
+            {
+                "t": r["t"].isoformat(),
+                "value": r["v"],
+                "usual": r["expected"],
+                "low": r["low"],
+                "high": r["high"],
+            }
+            for r in hv.rows
+        ],
+    }

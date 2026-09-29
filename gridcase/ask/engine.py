@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol
 
 import duckdb
@@ -44,6 +45,11 @@ class AskResult:
 def case_checker(conn: duckdb.DuckDBPyConnection, case: CaseRecord) -> RunCheck:
     """Run a check exactly as the investigation could have: at the case's as_of, read-only
     (no case id, so nothing is written to the ledger)."""
+    return checker_at(conn, case.as_of)
+
+
+def checker_at(conn: duckdb.DuckDBPyConnection, as_of: datetime) -> RunCheck:
+    """Read-only checks on the data as known at `as_of` (now, on the Now page)."""
 
     def run(tool: str, raw: dict[str, Any]) -> Receipt:
         if tool not in LLM_INPUTS:
@@ -52,7 +58,7 @@ def case_checker(conn: duckdb.DuckDBPyConnection, case: CaseRecord) -> RunCheck:
             inputs = tool_inputs(tool, raw)
         except ValidationError as e:
             raise ToolError(f"invalid inputs for {tool}: {e.errors()[0]['msg']}") from e
-        return run_tool(conn, tool, inputs, case.as_of)
+        return run_tool(conn, tool, inputs, as_of)
 
     return run
 

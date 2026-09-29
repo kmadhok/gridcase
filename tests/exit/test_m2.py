@@ -214,3 +214,14 @@ def test_6_trades_collected_after_as_of_are_invisible(synth: duckdb.DuckDBPyConn
         synth, KpiQuery(kpi="volume_usd", grain="total", window=w, as_of=t + timedelta(hours=4))
     )
     assert early[0][-1] == 10 and late[0][-1] == 109
+
+
+def test_7_segment_labels_round_trip_even_with_an_ampersand_in_a_value() -> None:
+    from gridcase.semantic.kpis import parse_segment, segment_label
+
+    for filters in (
+        {},
+        {"category": "Economy & Finance"},
+        {"category": "Sports", "size_band": "$1k+"},
+    ):
+        assert parse_segment(segment_label(filters)) == filters

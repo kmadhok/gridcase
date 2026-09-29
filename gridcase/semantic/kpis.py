@@ -155,12 +155,15 @@ def run_kpi(conn: duckdb.DuckDBPyConnection, q: KpiQuery) -> list[tuple[Any, ...
     return [tuple(r) for r in conn.execute(compile_kpi(q).sql).fetchall()]
 
 
+SEGMENT_SEP = ";"  # not '&': a category is called "Economy & Finance"
+
+
 def segment_label(filters: dict[str, str]) -> str:
-    """A case's `entity`: 'all', or 'category=Sports' (dimensions sorted, joined by '&')."""
-    return "&".join(f"{k}={v}" for k, v in sorted(filters.items())) or "all"
+    """A case's `entity`: 'all', or 'category=Sports' (dimensions sorted, joined by ';')."""
+    return SEGMENT_SEP.join(f"{k}={v}" for k, v in sorted(filters.items())) or "all"
 
 
 def parse_segment(label: str) -> dict[str, str]:
     if label in ("", "all"):
         return {}
-    return dict(part.split("=", 1) for part in label.split("&"))
+    return dict(part.split("=", 1) for part in label.split(SEGMENT_SEP))

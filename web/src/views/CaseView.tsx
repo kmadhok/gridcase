@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type CaseFull, type Claim, type Receipt } from "../api";
 import { HypothesisName, Panel, StatusBadge, TierBadge, pct } from "../components";
-import { CASE_STATES, HYPOTHESES, REGION_NAMES, TIERS, fmtTime, metricName, stepQuestion } from "../labels";
+import { CASE_STATES, HYPOTHESES, KPIS, TIERS, fmtTime, fmtValue, kpiLabel, segmentName, stepQuestion } from "../labels";
 import { AskPanel } from "./AskPanel";
 import { ReceiptCard } from "./ReceiptCard";
 
@@ -22,12 +22,16 @@ function ClaimRow({ claim, i, receipts }: { claim: Claim; i: number; receipts: R
 
 function TriggerNote({ r }: { r: Receipt }) {
   const [open, setOpen] = useState(false);
-  const o = r.output as Record<string, number | string>;
-  const worst = Math.abs(Number(o.worst_value)).toFixed(1);
+  const o = r.output as Record<string, unknown>;
+  const kpi = String(o.kpi ?? "");
+  const unit = KPIS[kpi]?.unit ?? "count";
+  const filters = (o.filters as Record<string, string>) ?? {};
+  const where = Object.values(filters).join(", ");
+  const hours = Number(o.run_hours);
   return (
     <div className="panel p-3 text-sm" data-testid="trigger">
       <span className="font-medium">Opened automatically.</span>{" "}
-      Demand ran {worst}% {String(o.direction)} forecast for {String(o.run_hours)} hours in a row, beyond {Number(o.k_sigma)} standard deviations of its usual {Number(o.mean).toFixed(1)}% ± {Number(o.std).toFixed(1)}% for that hour of the day over the previous {String(o.lookback_days)} days.{" "}
+      {kpiLabel(kpi)}{where ? ` in ${where}` : ""} was {Number(o.ratio).toFixed(1)} times its usual level for that hour of the day ({fmtValue(unit, Number(o.value))} against about {fmtValue(unit, Number(o.expected))}), {hours} hour{hours === 1 ? "" : "s"} in a row.{" "}
       <button className="muted text-xs underline" onClick={() => setOpen((x) => !x)} aria-expanded={open}>{open ? "hide" : "show"} evidence</button>
       {open && <ReceiptCard r={r} />}
     </div>
@@ -47,13 +51,13 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
   const ranked = c.conclusion?.ranked ?? [];
   const top = c.conclusion?.top_hypothesis;
   const failed = Object.keys(c.step_errors ?? {}).length;
-  const trigger = c.receipts.find((r) => r.tool === "kpi.alarm" && r.output.alarm === true);
+  const trigger = c.receipts.find((r) => r.tool === "kpi.alarm" && r.output.status === "alarm");
 
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-xl font-semibold">
-          {REGION_NAMES[c.entity] ?? c.entity} · {metricName(c.metric)} · {fmtTime(c.as_of)}
+          Why did {kpiLabel(c.metric).toLowerCase()} move? · {segmentName(c.entity)} · {fmtTime(c.as_of)}
         </h1>
         <div className="muted text-sm" title={`case ${c.case_id} · state ${c.state}`}>
           {CASE_STATES[c.state] ?? c.state} · {c.llm_calls} model call{c.llm_calls === 1 ? "" : "s"} · ${c.cost_usd.toFixed(2)}
@@ -62,7 +66,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
       {trigger && <TriggerNote r={trigger} />}
       {/* minmax(0,1fr): the query <pre> must scroll inside its column, not widen the page */}
       <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
-        <Panel title="Possible causes" hint="Each one was tested against the numbers." className="min-w-0">
+        <Panel title="Possible drivers" hint="Each one was tested against the numbers." className="min-w-0">
           <ol className="space-y-2" data-testid="hypothesis-tree">
             {ranked.map((v) => (
               <li key={v.id} className={`rounded border p-2 ${v.id === top ? "border-amber-600" : "border-[var(--gc-line)]"}`}>
@@ -100,10 +104,10 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
             </ol>
             {failed > 0 && <p className="muted mt-2 text-xs">{failed} check{failed === 1 ? "" : "s"} couldn't run (usually data not published yet); the conclusion says so.</p>}
           </Panel>
-          <Panel title="Follow-up check" hint="Some grid data arrives a day or two late, so every case is re-checked once it lands.">
+          <Panel title="Follow-up check" hint="Every investigation is re-run a day later: did the change hold, and does the answer still stand?">
             {c.recheck ? (
               <table className="w-full text-xs" data-testid="verify-diff">
-                <thead><tr className="muted text-left"><th>cause</th><th>at first</th><th>on {fmtTime(c.recheck.as_of)}</th></tr></thead>
+                <thead><tr className="muted text-left"><th>driver</th><th>at first</th><th>on {fmtTime(c.recheck.as_of)}</th></tr></thead>
                 <tbody>
                   {Object.entries(c.recheck.diffs).map(([h, d]) => (
                     <tr key={h}><td><HypothesisName id={h} /></td><td>{d.before ? <StatusBadge status={d.before} /> : "–"}</td><td><StatusBadge status={d.after} /></td></tr>
@@ -111,7 +115,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
                 </tbody>
               </table>
             ) : (
-              <p className="muted text-sm">Not yet: the follow-up runs automatically when the delayed data arrives.</p>
+              <p className="muted text-sm">Not yet: the follow-up runs automatically a day later.</p>
             )}
           </Panel>
         </div>

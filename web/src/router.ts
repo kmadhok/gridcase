@@ -1,21 +1,16 @@
 import { useEffect, useState } from "react";
 
-export type Route =
-  | { view: "map" }
-  | { view: "case"; id: string }
-  | { view: "bench" };
+export type Route = { view: "now" } | { view: "case"; id: string };
 
 export function parseHash(hash: string): Route {
   const path = hash.replace(/^#/, "") || "/";
   const m = path.match(/^\/case\/(.+)$/);
   if (m) return { view: "case", id: decodeURIComponent(m[1]) };
-  if (path === "/bench") return { view: "bench" };
-  return { view: "map" };
+  return { view: "now" };
 }
 
 export function href(route: Route): string {
   if (route.view === "case") return `#/case/${encodeURIComponent(route.id)}`;
-  if (route.view === "bench") return "#/bench";
   return "#/";
 }
 
