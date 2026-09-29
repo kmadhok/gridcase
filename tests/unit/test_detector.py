@@ -2,7 +2,8 @@
 
 Requirements:
 - The alarm threshold is calibrated per fit from the training residuals: k = the q-quantile of
-  |z| over the leak-free training set (Monday refit, trailing 3 years), never below 3.
+  each training day's worst |z| over the leak-free training set (Monday refit, trailing 3
+  years), never below 3.
 - It is leak-free: nothing after the refit date moves it.
 - EIA placeholder hours (forecast error exactly 0: CAISO's first demand value is the forecast
   itself) are excluded from the threshold sample.
@@ -105,7 +106,7 @@ def test_threshold_is_calibrated_from_fat_tailed_training_residuals(
 ) -> None:
     load_noisy(db)
     out = _detect(db, LAST_WEEK)
-    # Student-t(3) residuals put the 99.5th percentile of |z| well beyond 3 MAD-sigmas.
+    # Student-t(3) residuals put the 95th percentile of daily worst |z| well beyond 3 sigmas.
     assert out["threshold_z"] > 3.5
     assert out["threshold_n"] == (REFIT - T0).total_seconds() // 3600
 
@@ -123,8 +124,8 @@ def test_anomaly_quantile_threshold_is_leak_free(db: duckdb.DuckDBPyConnection) 
         dedupe_unchanged=False,
     )
     assert _detect(db, LAST_WEEK)["threshold_z"] == before
-    # Control: the same misses *before* the refit date do move it.
-    early = [T0 + timedelta(weeks=2, hours=h) for h in range(60)]
+    # Control: misses on enough training days (> 5% of them) *before* the refit date move it.
+    early = [T0 + timedelta(weeks=2, days=d, hours=h) for d in range(10) for h in (12, 13, 14)]
     append_observations(
         db,
         [_obs("eia.DF", "ERCO", t, _demand(t) - 60_000, lag_h=2) for t in early],
@@ -236,7 +237,7 @@ def test_a_single_hour_flags_only_when_catastrophic(db: duckdb.DuckDBPyConnectio
 def test_detector_config_defaults_match_the_plan() -> None:
     p = detector_params("ERCO")
     assert p == DetectorParams(
-        quantile=0.995, min_run=3, single_hour_multiple=2.0, min_threshold_z=3.0
+        daily_max_quantile=0.95, min_run=3, single_hour_multiple=2.0, min_threshold_z=3.0
     )
 
 
@@ -244,24 +245,60 @@ def test_detector_config_allows_per_ba_overrides() -> None:
     cfg = parse_detector_config(
         {
             "defaults": {
-                "quantile": 0.995,
+                "daily_max_quantile": 0.95,
                 "min_run": 3,
                 "single_hour_multiple": 2.0,
                 "min_threshold_z": 3.0,
             },
-            "overrides": {"CISO": {"quantile": 0.99, "min_run": 4}},
+            "overrides": {"CISO": {"daily_max_quantile": 0.97, "min_run": 4}},
         }
     )
-    assert cfg.for_entity("CISO").quantile == 0.99
+    assert cfg.for_entity("CISO").daily_max_quantile == 0.97
     assert cfg.for_entity("CISO").min_run == 4
     assert cfg.for_entity("CISO").single_hour_multiple == 2.0
-    assert cfg.for_entity("ERCO").quantile == 0.995
+    assert cfg.for_entity("ERCO").daily_max_quantile == 0.95
 
 
 def test_detector_config_rejects_nonsense() -> None:
     with pytest.raises(ValueError):
-        parse_detector_config({"defaults": {"quantile": 1.5, "min_run": 3}})
+        parse_detector_config({"defaults": {"daily_max_quantile": 1.5, "min_run": 3}})
     with pytest.raises(ValueError):
         parse_detector_config(
-            {"defaults": {"quantile": 0.995, "min_run": 0, "single_hour_multiple": 2.0}}
+            {"defaults": {"daily_max_quantile": 0.95, "min_run": 0, "single_hour_multiple": 2.0}}
         )
+
+
+# --------------------------------------------------------------------------- storm robustness
+
+
+def test_a_multi_day_storm_in_training_barely_moves_the_threshold(
+    db: duckdb.DuckDBPyConnection,
+) -> None:
+    """Found on the fixture benchmark: a quantile of *hours* over a training window holding
+    Winter Storm Uri rose from 5.5 to about 8 sigmas and the alarm missed 13 of 17 injected
+    faults. Calibrating on each day's worst hour makes a four-day storm four samples out of
+    hundreds of days, below the 5% the quantile discards. (Two years of history, like the
+    real fits' three: with a few weeks, least squares itself absorbs the storm.)"""
+    weeks = 104
+    as_of = T0 + timedelta(weeks=weeks - 1, days=3)
+    window = (T0 + timedelta(weeks=weeks - 1), as_of)
+
+    def threshold() -> float:
+        return float(
+            run_tool(
+                db,
+                "anomaly.detect",
+                {"metric": "forecast_error_mw", "entity": "ERCO", "window": window},
+                as_of,
+            ).output["threshold_z"]
+        )
+
+    load_noisy(db, weeks=weeks)
+    calm = threshold()
+    storm = [T0 + timedelta(weeks=40, hours=h) for h in range(96)]  # four days, ~30 sigmas
+    append_observations(
+        db,
+        [_obs("eia.DF", "ERCO", t, _demand(t) - 15_000, lag_h=2) for t in storm],
+        dedupe_unchanged=False,
+    )
+    assert abs(threshold() - calm) / calm < 0.15

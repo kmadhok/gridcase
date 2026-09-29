@@ -16,8 +16,10 @@ from gridcase.config import ONTOLOGY_DIR
 
 
 class DetectorParams(BaseModel):
-    # Quantile of the training |z| that becomes the alarm threshold (in sigmas).
-    quantile: float = Field(0.995, gt=0.5, lt=1.0)
+    # Quantile of the training days' worst |z| that becomes the alarm threshold (in sigmas).
+    # Per-day maxima, not hours: a multi-day storm in the training window is a handful of days
+    # out of ~1,000 and cannot drag the bar up the way its hundreds of extreme hours would.
+    daily_max_quantile: float = Field(0.95, gt=0.5, lt=1.0)
     # Consecutive exceeding hours needed for an alarm ...
     min_run: int = Field(3, ge=1)
     # ... unless one hour in the run exceeds the threshold by more than this multiple.

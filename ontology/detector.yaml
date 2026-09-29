@@ -1,15 +1,17 @@
 # Anomaly alarm calibration (docs/plans/2026-09-29_detector_calibration.md, Part A).
 # Governed: a change here changes what GridCase calls an anomaly; log it in DECISIONS.
 #
-# threshold (in sigmas) = max(min_threshold_z, quantile of |z| over the leak-free training
-# residuals of the fit); an hour exceeds when |z| > threshold. An alarm is a run of >= min_run
-# exceeding hours, or any run holding an hour above single_hour_multiple x threshold.
+# threshold (in sigmas) = max(min_threshold_z, daily_max_quantile of the worst |z| of each
+# training day, over the leak-free training residuals of the fit); an hour exceeds when
+# |z| > threshold. An alarm is a run of >= min_run exceeding hours, or any run holding an hour
+# above single_hour_multiple x threshold. Per-day maxima, because a quantile of hours is
+# dragged up by multi-day storms in the training window (Uri: q99.5 of hours 5.5 -> 8 sigmas).
 defaults:
-  quantile: 0.995
+  daily_max_quantile: 0.95
   min_run: 3
   single_hour_multiple: 2.0
   min_threshold_z: 3.0
 
-# Per-BA overrides, e.g. {CISO: {quantile: 0.99}}. None yet: the per-fit quantile already
-# adapts to each BA's error distribution.
+# Per-BA overrides, e.g. {CISO: {daily_max_quantile: 0.97}}. None yet: the per-fit quantile
+# already adapts to each BA's error distribution.
 overrides: {}

@@ -9,10 +9,11 @@ refit date is the Monday 00:00 UTC <= as_of, so the fit is a pure function of (i
 as_of), never of the wall clock.
 
 The alarm threshold (in sigmas) is calibrated on the same training residuals: the configured
-quantile of |z| (ontology/detector.yaml), never below min_threshold_z. MAD ignores the fat
-tails real forecast errors have, so a fixed 3-sigma bar fires on ordinary days; the quantile
-puts it where history says "rare". EIA placeholder hours (forecast error exactly 0: CAISO's
-first demand value is the forecast itself) are left out of that sample.
+quantile of each training day's worst |z| (ontology/detector.yaml), never below
+min_threshold_z. MAD ignores the fat tails real forecast errors have, so a fixed 3-sigma bar
+fires on ordinary days; a quantile of daily maxima puts it at "a bad but ordinary day", and a
+multi-day storm in the window is only a few days of the sample. EIA placeholder hours
+(forecast error exactly 0: CAISO's first demand value is the forecast itself) are left out.
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ EXTRA_REGRESSORS: dict[str, tuple[str, str]] = {
 EXTRA_WIDTH = {"wind": 3, "cloud": 1, "none": 0}
 # Metrics whose exact-zero values are EIA placeholders (demand published equal to forecast).
 PLACEHOLDER_ZERO_METRICS = {"forecast_error_mw", "forecast_error_pct"}
-MIN_THRESHOLD_HOURS = 24 * 7  # fewer usable residuals than this: fall back to the floor
+MIN_THRESHOLD_DAYS = 7  # fewer usable training days than this: fall back to the floor
 
 
 def refit_date(as_of: datetime) -> datetime:
@@ -216,21 +217,27 @@ def _fit(
         if len(r) >= 4:
             mad = float(np.median(np.abs(r - np.median(r))))
             sigma[h] = max(1.4826 * mad, floor)
-    threshold_z, threshold_n = _threshold(metric, entity, y, resid / sigma[hows])
+    threshold_z, threshold_n = _threshold(metric, entity, ts, y, resid / sigma[hows])
     return (
         Fit(coef, sigma, fill, len(ts), r2, extra_kind, extra_fill, threshold_z, threshold_n),
         refit,
     )
 
 
-def _threshold(metric: str, entity: str, y: np.ndarray, z: np.ndarray) -> tuple[float, int]:
+def _threshold(
+    metric: str, entity: str, ts: list[datetime], y: np.ndarray, z: np.ndarray
+) -> tuple[float, int]:
     """(alarm threshold in sigmas, number of training hours it was calibrated on)."""
     p = detector_params(entity)
     usable = y != 0.0 if metric in PLACEHOLDER_ZERO_METRICS else np.ones(len(y), dtype=bool)
+    daily: dict[Any, float] = {}
+    for t, zz, ok in zip(ts, np.abs(z), usable, strict=True):
+        if ok:
+            daily[t.date()] = max(daily.get(t.date(), 0.0), float(zz))
     n = int(usable.sum())
-    if n < MIN_THRESHOLD_HOURS:
+    if len(daily) < MIN_THRESHOLD_DAYS:
         return p.min_threshold_z, n
-    q = float(np.quantile(np.abs(z[usable]), p.quantile))
+    q = float(np.quantile(np.array(list(daily.values())), p.daily_max_quantile))
     return max(p.min_threshold_z, q), n
 
 
