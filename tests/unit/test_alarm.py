@@ -162,3 +162,48 @@ def test_uri_raises_an_alarm_and_a_calm_week_does_not(
     assert uri["alarm"] is True and uri["direction"] == "below"
     calm = check_kpi(fixture_store, "ERCO", datetime(2023, 5, 3, 12), alarm_params("ERCO")).output
     assert calm["alarm"] is False
+
+
+def test_a_forecast_that_collapses_is_a_data_problem_not_an_alarm(
+    db: duckdb.DuckDBPyConnection,
+) -> None:
+    """A day-ahead forecast at a fraction of its usual level for that hour (PJM 2021-10-19:
+    forecast near zero, error +3,061,867%) is bad data. Real grid events move demand, not
+    the day-ahead forecast, so those hours are set aside and counted, never alarmed on."""
+    load(db)
+    bad = []
+    for k in (1, 2, 3):
+        t = NOW - timedelta(hours=k)
+        bad.append(_obs("eia.DF", "ERCO", t, 400.0, t - timedelta(hours=10)))
+    append_observations(db, bad)
+    o = check_kpi(db, "ERCO", NOW, PARAMS).output
+    assert o["alarm"] is False and o["n_bad_forecast"] == 3
+
+
+def test_daylight_saving_switch_days_can_be_skipped(tmp_path: Path) -> None:
+    """EIA's US48 sum misaligns on clock-change days (every one since 2019 alarmed)."""
+    dst = datetime(2024, 11, 3, 12)  # first Sunday of November
+    alarm_hours = {k: 40.0 for k in range(1, 5)}  # 2024-11-03 08:00-11:00Z, the switch day
+    conn = connect(tmp_path / "d.duckdb")
+    rows = []
+    for k in range(1, 30 * 24 + 1):
+        t = dst + timedelta(hours=24) - timedelta(hours=k)
+        pct = alarm_hours.get(k - 24, 1.0 if k % 2 else -1.0)
+        rows.append(_obs("eia.DF", "US48", t, 400_000.0, t - timedelta(hours=20)))
+        rows.append(
+            _obs("eia.D", "US48", t, 400_000.0 * (1 + pct / 100), t + timedelta(minutes=30))
+        )
+    append_observations(conn, rows)
+    base = AlarmParams(lookback_days=28, k_sigma=3.0, min_run=3, recent_hours=48, settle_hours=0)
+    judged = dst + timedelta(hours=24)
+    assert check_kpi(conn, "US48", judged, base).output["alarm"] is True
+    o = check_kpi(conn, "US48", judged, base.model_copy(update={"skip_dst_days": True})).output
+    assert o["alarm"] is False and o["n_dst_skipped"] > 0
+    conn.close()
+
+
+def test_us48_skips_clock_change_days_by_default() -> None:
+    from gridcase.alarm import alarm_params
+
+    assert alarm_params("US48").skip_dst_days is True
+    assert alarm_params("ERCO").skip_dst_days is False

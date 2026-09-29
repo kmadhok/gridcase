@@ -15,6 +15,8 @@ defaults:
   recent_hours: 24
   settle_hours: 3
   min_history_days: 7
+  bad_forecast_ratio: 0.6   # forecast below 60% of its usual level for the hour = bad data
+  skip_dst_days: false
 
 overrides:
-  US48: {settle_hours: 24}
+  US48: {settle_hours: 24, skip_dst_days: true}   # national sum misaligns on clock changes

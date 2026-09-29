@@ -9,8 +9,9 @@ case opened by the alarm can show exactly why. Pure function of (entity, as_of, 
 from __future__ import annotations
 
 import math
+import statistics
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import cache
 from typing import Any
 
@@ -32,6 +33,11 @@ class AlarmParams(BaseModel):
     recent_hours: int = Field(default=24, ge=1)
     settle_hours: int = Field(default=3, ge=0)
     min_history_days: int = Field(default=7, ge=1)
+    # An hour whose day-ahead forecast is below this share of the usual forecast for that hour
+    # of day is bad data (real grid events move demand, not yesterday's forecast).
+    bad_forecast_ratio: float = Field(default=0.6, gt=0, lt=1)
+    # Skip the US daylight-saving switch days (EIA's national sum misaligns on them).
+    skip_dst_days: bool = False
 
 
 class _Config(BaseModel):
@@ -52,6 +58,19 @@ def alarm_params(entity: str) -> AlarmParams:
     )
 
 
+def dst_switch_days(year: int) -> set[date]:
+    """US clock changes: second Sunday of March, first Sunday of November, plus the Monday
+    after each (UTC dates, which cover the local Sunday evening)."""
+
+    def nth_sunday(month: int, n: int) -> date:
+        d = date(year, month, 1)
+        d += timedelta(days=(6 - d.weekday()) % 7)
+        return d + timedelta(weeks=n - 1)
+
+    days = {nth_sunday(3, 2), nth_sunday(11, 1)}
+    return days | {d + timedelta(days=1) for d in days}
+
+
 def _r(x: float | None) -> float | None:
     return None if x is None else round(float(x), 6)
 
@@ -63,18 +82,45 @@ def check_kpi(conn: Any, entity: str, as_of: datetime, params: AlarmParams) -> R
     judged_from = judged_until - timedelta(hours=params.recent_hours)
     history_from = judged_from - timedelta(days=params.lookback_days)
 
+    forecast = {
+        t: float(v)
+        for t, v in ctx.metric("demand_forecast", entity, (history_from, judged_until))
+        if v is not None
+    }
+    by_hour: dict[int, list[float]] = {}
+    for t, v in forecast.items():
+        if t < judged_from:
+            by_hour.setdefault(t.hour, []).append(v)
+    usual = {h: statistics.median(vs) for h, vs in by_hour.items()}
+    dst: set[date] = set()
+    if params.skip_dst_days:
+        for y in range(history_from.year, judged_until.year + 1):
+            dst |= dst_switch_days(y)
+
+    def verdict(t: datetime, v: float) -> str:
+        if t.date() in dst:
+            return "dst"
+        f = forecast.get(t)
+        if f is not None and t.hour in usual and f < params.bad_forecast_ratio * usual[t.hour]:
+            return "bad_forecast"
+        if v == 0.0:  # exactly 0: EIA placeholder (demand = forecast)
+            return "placeholder"
+        return "ok"
+
     history = [
         float(v)
-        for _, v in ctx.metric(params.kpi, entity, (history_from, judged_from))
-        if v is not None and float(v) != 0.0  # exactly 0: EIA placeholder (demand = forecast)
+        for t, v in ctx.metric(params.kpi, entity, (history_from, judged_from))
+        if v is not None and verdict(t, float(v)) == "ok"
     ]
     recent_rows = [
-        (t, float(v))
+        (t, float(v), verdict(t, float(v)))
         for t, v in ctx.metric(params.kpi, entity, (judged_from, judged_until))
         if v is not None
     ]
-    placeholders = sum(1 for _, v in recent_rows if v == 0.0)
-    recent = [(t, v) for t, v in recent_rows if v != 0.0]
+    placeholders = sum(1 for *_, k in recent_rows if k == "placeholder")
+    bad_forecast = sum(1 for *_, k in recent_rows if k == "bad_forecast")
+    dst_skipped = sum(1 for *_, k in recent_rows if k == "dst")
+    recent = [(t, v) for t, v, k in recent_rows if k == "ok"]
 
     n = len(history)
     mean = sum(history) / n if n else 0.0
@@ -122,6 +168,8 @@ def check_kpi(conn: Any, entity: str, as_of: datetime, params: AlarmParams) -> R
         "n_recent": len(recent),
         "n_history": n,
         "n_placeholder": placeholders,
+        "n_bad_forecast": bad_forecast,
+        "n_dst_skipped": dst_skipped,
         "insufficient": insufficient,
     }
     return Receipt.build(
