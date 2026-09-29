@@ -57,6 +57,19 @@ def case_checker(conn: duckdb.DuckDBPyConnection, case: CaseRecord) -> RunCheck:
     return run
 
 
+def resolve_citations(sentences: list[Claim], pool: dict[str, Receipt]) -> list[Claim]:
+    """Map short evidence codes (unique prefixes) to full receipt ids; unknown codes are left
+    as they are, so the verifier drops the sentence as citing unknown evidence."""
+    out = []
+    for c in sentences:
+        ids = []
+        for cid in c.receipt_ids:
+            matches = [cid] if cid in pool else [rid for rid in pool if rid.startswith(cid)]
+            ids.append(matches[0] if len(matches) == 1 else cid)
+        out.append(c.model_copy(update={"receipt_ids": ids}))
+    return out
+
+
 def answer_question(
     asker: Asker,
     question: str,
@@ -82,8 +95,9 @@ def answer_question(
         note = Claim(text="Sorry, I couldn't put together an answer just now.", tier="inferred")
         return AskResult([note], False, new, 0, usage)
     pool = {**receipts, **{r.receipt_id: r for r in new}}
+    sentences = resolve_citations(answer.sentences, pool)
     checked, dropped = verify(
-        Conclusion(case_id="ask", top_hypothesis=None, ranked=[], claims=answer.sentences),
+        Conclusion(case_id="ask", top_hypothesis=None, ranked=[], claims=sentences),
         pool,
         drop_uncited_numbers=True,
     )

@@ -11,6 +11,13 @@ from gridcase.ledger.schema import Receipt
 from gridcase.memory.cases import CaseRecord
 from gridcase.planner.hypotheses import load_templates
 
+CODE_LEN = 8
+
+
+def cite_code(receipt_id: str) -> str:
+    """The short code the model cites; `engine.resolve_citations` maps it back."""
+    return receipt_id[:CODE_LEN]
+
 
 def case_context(case: CaseRecord) -> dict[str, Any]:
     templates = {t.id: t for t in load_templates()}
@@ -45,7 +52,7 @@ def case_context(case: CaseRecord) -> dict[str, Any]:
     ]
     evidence = [
         {
-            "receipt_id": r.receipt_id,
+            "cite_as": cite_code(r.receipt_id),
             "check": CHECKS.get(r.tool, r.tool),
             "tool": r.tool,
             "inputs": r.inputs,
@@ -63,7 +70,8 @@ def case_context(case: CaseRecord) -> dict[str, Any]:
         "plan": plan,
         "evidence": evidence,
         "conclusion_sentences": [
-            c.text for c in (case.conclusion.claims if case.conclusion else [])
+            {"text": c.text, "cites": [cite_code(rid) for rid in c.receipt_ids]}
+            for c in (case.conclusion.claims if case.conclusion else [])
         ],
         "caveats": case.conclusion.caveats if case.conclusion else [],
         "follow_up": case.recheck,
@@ -92,7 +100,7 @@ def bench_context(runs: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str,
             sql=[],
         )
         receipts[r.receipt_id] = r
-        rows.append({"receipt_id": r.receipt_id, "run": run.get("name"), **output})
+        rows.append({"cite_as": cite_code(r.receipt_id), "run": run.get("name"), **output})
     context = {
         "page": "scorecard",
         "what_it_measures": (

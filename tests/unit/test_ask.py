@@ -228,7 +228,7 @@ def test_case_context_carries_causes_falsifiers_evidence_and_glossary(case: Case
     ctx = case_context(case)
     assert {c["id"] for c in ctx["causes"]} == {v.id for v in case.conclusion.ranked}  # type: ignore[union-attr]
     assert all(c["name"] and c["what_rules_it_out"] for c in ctx["causes"])
-    assert {e["receipt_id"] for e in ctx["evidence"]} == {r.receipt_id for r in case.receipts}
+    assert {e["cite_as"] for e in ctx["evidence"]} == {r.receipt_id[:8] for r in case.receipts}
     assert all("sql" not in e for e in ctx["evidence"])  # queries stay in the UI, not the prompt
     assert "usual gap" in ctx["glossary"] and "ruled out" in ctx["glossary"]
 
@@ -343,3 +343,32 @@ def test_an_uncited_sentence_that_states_a_number_is_dropped(case: CaseRecord) -
     res = answer_question(asker, "q", context=case_context(case), receipts={}, run_check=None)
     assert res.dropped == 1
     assert [s.text for s in res.sentences] == ["That is a very large miss for this grid."]
+
+
+def test_short_evidence_codes_resolve_to_full_receipt_ids(case: CaseRecord) -> None:
+    """The model cites 8-character codes (easier to copy than 24-character ids); the engine
+    maps them back before verification, and the context offers only the short codes."""
+    r = _receipt(case, "variance.plan_vs_actual")
+    ctx = case_context(case)
+    assert all(len(e["cite_as"]) == 8 and "receipt_id" not in e for e in ctx["evidence"])
+    assert all("cites" in s for s in ctx["conclusion_sentences"])
+    worst = abs(r.output["min_error_mw"])
+    asker = FakeAsker(
+        answer=lambda _: Answer(
+            sentences=[
+                Claim(
+                    text=f"Demand came in {worst:,.0f} MW below plan.",
+                    receipt_ids=[r.receipt_id[:8]],
+                    tier="governed",
+                )
+            ]
+        )
+    )
+    res = answer_question(
+        asker,
+        "q",
+        context=ctx,
+        receipts={x.receipt_id: x for x in case.receipts},
+        run_check=None,
+    )
+    assert res.dropped == 0 and res.sentences[0].receipt_ids == [r.receipt_id]

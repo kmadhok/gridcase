@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from gridcase import config
+from gridcase.ask.context import cite_code
 from gridcase.ask.engine import MAX_CHECKS, RunCheck
 from gridcase.ask.glossary import CHECKS
 from gridcase.ask.schema import Answer
@@ -38,7 +39,9 @@ shortfall", not H2_SUPPLY_SHORTFALL). Never write field or variable names from t
 mean ("demand moved the opposite way to what the cold would cause"). Never mention receipt
 ids or tool names in the text.
 
-Every sentence that states a fact must cite the receipt id(s) it comes from in receipt_ids,
+Every piece of evidence has a short code (cite_as). Every sentence that states a fact must
+list the codes of the evidence it uses in receipt_ids (e.g. ["3f9a1c2e"]); when you restate a
+conclusion sentence, reuse its cites. Every sentence that states a fact must cite,
 and every number in it must be copied from that evidence (rounding is fine). A sentence that
 contains any number but cites nothing is deleted before the reader sees it, so always cite.
 Do not add facts from outside the context (no "during the freeze", no event names or causes
@@ -203,7 +206,7 @@ class AnthropicAsker:
                     rec = run_check(by_name[block.name], dict(block.input))
                     checks += 1
                     content = json.dumps(
-                        {"receipt_id": rec.receipt_id, "output": rec.output}, default=str
+                        {"cite_as": cite_code(rec.receipt_id), "output": rec.output}, default=str
                     )
                     results.append(
                         {"type": "tool_result", "tool_use_id": block.id, "content": content}
