@@ -81,6 +81,9 @@ class Fit:
         self.coef, self.sigma, self.fill, self.n, self.r2 = coef, sigma, fill, n, r2
         self.extra_kind, self.extra_fill = extra_kind, extra_fill
         self.threshold_z, self.threshold_n = threshold_z, threshold_n
+        # Largest heating / cooling degree-hours seen in training: the model's support, beyond
+        # which inverting it (regress.temperature's forecast-implied weather) is not trusted.
+        self.hdh_max, self.cdh_max = 0.0, 0.0
 
 
 def _design(
@@ -218,10 +221,9 @@ def _fit(
             mad = float(np.median(np.abs(r - np.median(r))))
             sigma[h] = max(1.4826 * mad, floor)
     threshold_z, threshold_n = _threshold(metric, entity, ts, y, resid / sigma[hows])
-    return (
-        Fit(coef, sigma, fill, len(ts), r2, extra_kind, extra_fill, threshold_z, threshold_n),
-        refit,
-    )
+    fit = Fit(coef, sigma, fill, len(ts), r2, extra_kind, extra_fill, threshold_z, threshold_n)
+    fit.hdh_max, fit.cdh_max = float(x[:, HOW].max()), float(x[:, HOW + 1].max())
+    return fit, refit
 
 
 def _threshold(

@@ -41,13 +41,14 @@ templates:
         inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
       - tool: peer.compare
         inputs: {entity: "{entity}", peers: "{peers}", window: "{window}"}
-    # Refuted when the error moves the wrong way with the thermal surprise (colder than
-    # expected yet less load: that is shed load, not weather), or when the surprise explains
-    # little of the error and peers do not co-move.
+    # Refuted when the error moves the wrong way against the weather surprise relative to what
+    # the forecast priced in (colder than assumed yet less load: that is shed load, not
+    # weather), or when that surprise explains little of the error and peers do not co-move.
+    # Part B (DECISIONS 2026-09-29): judged against the forecast, not a 14-day climatology.
     falsifier: >-
-      regress.temperature.sign_consistent == 0
-      or (regress.temperature.share_explained < 0.3 and peer.compare.max_corr < 0.5)
-    explains: regress.temperature.error_explained_mw
+      regress.temperature.forecast_weather_sign == 0
+      or (regress.temperature.forecast_weather_share < 0.3 and peer.compare.max_corr < 0.5)
+    explains: regress.temperature.forecast_weather_error_mw
     prior: {a: 3.5, b: 6.5}
 
   - id: H2_SUPPLY_SHORTFALL
@@ -65,15 +66,15 @@ templates:
         inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}", mode: expected, event_start: "{event_start}"}
       - tool: price.co_movement
         inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when the supply gap is not anomalous, when the weather surprise explains the
-    # window's forecast error (a demand-side miss), or when served load sits at what the
-    # weather implied (a shortfall that serves everyone is not a shortfall). Fuel attribution
-    # lags the gap by a day of EIA publication and is reported, not required: at Uri's first
-    # information state gas was still at its expected level (DECISIONS, Phase 4).
+    # Refuted when the supply gap is not anomalous, when weather the forecast did not price in
+    # explains the window's forecast error (a demand-side miss), or when served load sits at
+    # what the weather implied (a shortfall that serves everyone is not a shortfall). Fuel
+    # attribution lags the gap by a day of EIA publication and is reported, not required: at
+    # Uri's first information state gas was still at its expected level (DECISIONS, Phase 4).
     falsifier: >-
       anomaly.detect.max_exceedance < 1
-      or (regress.temperature.share_explained_window > 0.5
-          and regress.temperature.sign_consistent_window == 1)
+      or (regress.temperature.forecast_weather_share_window > 0.5
+          and regress.temperature.forecast_weather_sign_window == 1)
       or regress.temperature.implied_minus_actual_mean_z < 1
     explains: anomaly.detect.max_abs_dev
     prior: {a: 2.0, b: 8.0}
@@ -107,13 +108,14 @@ templates:
         inputs: {entity: "{entity}", window: "{window}", event_start: "{event_start}", event_end: "{event_end}"}
       - tool: price.co_movement
         inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when demand did not fall below forecast, when the weather surprise explains the
-    # window's error or demand moved *with* the weather (a weather miss, not shed load), or
-    # when served load sits at what the weather implied.
+    # Refuted when demand did not fall below forecast, when weather the forecast did not price
+    # in explains the window's error, when demand moved *with* the temperature over the event
+    # (a weather miss, not shed load: the load-shed signature is read on the temperature
+    # record, not the forecast), or when served load sits at what the weather implied.
     falsifier: >-
       variance.plan_vs_actual.min_error_pct > -5
-      or (regress.temperature.share_explained_window > 0.5
-          and regress.temperature.sign_consistent_window == 1)
+      or (regress.temperature.forecast_weather_share_window > 0.5
+          and regress.temperature.forecast_weather_sign_window == 1)
       or regress.temperature.sign_consistent == 1
       or regress.temperature.implied_minus_actual_mean_z < 1
     explains: regress.temperature.implied_minus_actual_mw
