@@ -77,6 +77,7 @@ export interface Region {
   demand_mw: number | null;
   forecast_mw: number | null;
   forecast_error_pct: number | null;
+  typical_error_pct: number | null;
   case_id: string | null;
   case_state: string | null;
   top_hypothesis: string | null;

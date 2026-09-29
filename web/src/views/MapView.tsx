@@ -82,7 +82,7 @@ export function MapView() {
               <div className="text-xl font-semibold" style={{ color: r.forecast_error_pct !== null && r.forecast_error_pct < -5 ? "var(--gc-accent)" : undefined }}>
                 {r.forecast_error_pct === null ? "–" : `${r.forecast_error_pct > 0 ? "+" : ""}${fmt(r.forecast_error_pct, 1)}%`}
               </div>
-              <div className="text-xs muted">{errorPhrase(r.forecast_error_pct)}</div>
+              <div className="text-xs muted">{errorPhrase(r.forecast_error_pct)}{r.typical_error_pct !== null && r.forecast_error_pct !== null ? ` · usually ${r.typical_error_pct >= 0 ? "+" : ""}${fmt(r.typical_error_pct, 1)}%` : ""}</div>
             </button>
           ))}
         </div>
@@ -99,6 +99,7 @@ export function MapView() {
                 <dt className="muted">Actual demand</dt><dd>{fmt(selected.demand_mw)} MW</dd>
                 <dt className="muted">Forecast</dt><dd>{fmt(selected.forecast_mw)} MW</dd>
                 <dt className="muted">Difference</dt><dd>{errorPhrase(selected.forecast_error_pct)}</dd>
+                <dt className="muted">Usual gap</dt><dd>{selected.typical_error_pct === null ? "–" : `${selected.typical_error_pct >= 0 ? "+" : ""}${fmt(selected.typical_error_pct, 1)}%`}</dd>
                 <dt className="muted">Investigation</dt><dd>{selected.case_id ? "yes" : "none yet"}</dd>
               </dl>
               {selected.case_id ? (

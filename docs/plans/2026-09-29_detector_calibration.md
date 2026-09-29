@@ -83,3 +83,14 @@ false alarms **24/100**, synthetic top-1 **48%** (H2 **16%**), replay top-1 **3/
 - **PJM/CAISO with thinner temperature coverage**: the inverse-fit fallback to climatology.
 - **Effort**: B is the larger piece; A alone may already meet the false-alarm target, so A
   ships first and B is re-scoped if A+B's gain on H2 is under 10 points.
+
+## Addendum (2026-09-29, after the map fixes)
+
+Seven years of store data say the "usual gap" between demand and EIA's day-ahead forecast is
+not the same animal per grid: ERCOT median ≈ 0%, p90 ≈ 2–3%; PJM median +1.7%, p90 ≈ 6–8%;
+US48 median +1–2%, p90 3–5% (11% in the most recent quarter, where the aggregate is still
+filling); **CAISO median +4–5%, p90 25–40%** — EIA's CAISO forecast is systematically low
+and noisy, and its first-published demand value is the forecast itself. Part A's per-grid
+quantile is therefore not optional, and CAISO needs the placeholder rows (D = DF exactly)
+excluded from both the threshold fit and the detector's input; the replay case `caiso_2020`
+is affected.

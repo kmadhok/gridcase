@@ -263,3 +263,50 @@ def test_map_skips_placeholder_hours_where_demand_equals_the_forecast(store: Pat
     with TestClient(app) as client:
         ciso = next(r for r in client.get("/api/map").json()["regions"] if r["entity"] == "CISO")
     assert ciso["latest_hour"] == old.isoformat()
+
+
+def test_map_reports_each_regions_usual_gap_for_context(store: Path) -> None:
+    """A 9% gap means little without knowing the region usually runs +1.5%: the API returns
+    the trailing-28-day median error so the tile can say 'usually +1.5%'."""
+    from gridcase.store.db import append_observations
+    from gridcase.store.models import Observation
+
+    now = datetime.now(UTC).replace(tzinfo=None, minute=0, second=0, microsecond=0)
+    rows = []
+    for k in range(1, 30 * 24):  # a month of hours running exactly +2% (most recent at +9%)
+        t = now - timedelta(hours=k + 25)
+        pct = 0.09 if k == 1 else 0.02
+        rows.append(
+            Observation(
+                series_id="eia.DF",
+                entity_id="US48",
+                valid_time=t,
+                value=400_000,
+                observed_at=t - timedelta(hours=20),
+                available_at=t - timedelta(hours=20),
+                source="eia",
+                vintage="observed",
+                raw_hash="x",
+            )
+        )
+        rows.append(
+            Observation(
+                series_id="eia.D",
+                entity_id="US48",
+                valid_time=t,
+                value=400_000 * (1 + pct),
+                observed_at=t + timedelta(minutes=17),
+                available_at=t + timedelta(minutes=17),
+                source="eia",
+                vintage="observed",
+                raw_hash="x",
+            )
+        )
+    conn = connect(store)
+    append_observations(conn, rows)
+    conn.close()
+    app = create_app(db_path=store, token="t", llm_factory=FakeLLM, drain_interval_s=None)
+    with TestClient(app) as client:
+        us48 = next(r for r in client.get("/api/map").json()["regions"] if r["entity"] == "US48")
+    assert abs(us48["forecast_error_pct"] - 9.0) < 0.01
+    assert abs(us48["typical_error_pct"] - 2.0) < 0.01

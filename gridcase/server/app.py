@@ -286,6 +286,22 @@ def create_app(
                     """,
                     [ba, ba, ba, now - SETTLE_WINDOW, now - SETTLE_AGE.get(ba, timedelta(0))],
                 ).fetchone()
+                typical = None
+                if row:
+                    typical = c.execute(
+                        """
+                        WITH d AS (SELECT valid_time, value FROM as_of(TIMESTAMP '2100-01-01')
+                                   WHERE series_id = 'eia.D' AND entity_id = ?),
+                             f AS (SELECT valid_time, value FROM as_of(TIMESTAMP '2100-01-01')
+                                   WHERE series_id = 'eia.DF' AND entity_id = ?)
+                        SELECT median(100 * (d.value - f.value) / f.value)
+                        FROM d JOIN f USING (valid_time)
+                        WHERE d.valid_time >= ? - INTERVAL 28 DAY AND d.valid_time < ?
+                          AND f.value > 0 AND d.value <> f.value
+                        """,
+                        [ba, ba, row[0], row[0]],
+                    ).fetchone()
+                    typical = typical[0] if typical else None
                 open_case = next((x for x in cases if x.entity == ba and x.state != "closed"), None)
                 last_case = open_case or next((x for x in cases if x.entity == ba), None)
                 regions.append(
@@ -297,6 +313,7 @@ def create_app(
                         "forecast_error_pct": (100 * (row[1] - row[2]) / row[2])
                         if row and row[2]
                         else None,
+                        "typical_error_pct": typical,
                         "case_id": last_case.case_id if last_case else None,
                         "case_state": last_case.state if last_case else None,
                         "top_hypothesis": last_case.top_hypothesis if last_case else None,
