@@ -51,6 +51,18 @@ DDL = [
         error        VARCHAR
     )
     """,
+    # Evidence ledger: append-only receipts per case (gridcase/ledger).
+    """
+    CREATE TABLE IF NOT EXISTS ledger (
+        case_id      VARCHAR NOT NULL,
+        receipt_id   VARCHAR NOT NULL,
+        tool         VARCHAR NOT NULL,
+        as_of        TIMESTAMP NOT NULL,
+        created_at   TIMESTAMP NOT NULL,
+        receipt_json VARCHAR NOT NULL,
+        PRIMARY KEY (case_id, receipt_id)
+    )
+    """,
     # Latest known row per key with available_at <= t. Ties on available_at (two synthetic
     # rows) resolve to the later observed_at.
     """
