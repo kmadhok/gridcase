@@ -1,0 +1,69 @@
+# MarketCase KPIs and dimensions (governed: the only place a KPI's meaning is defined; the
+# compiler assembles these fragments and the model never writes SQL). Measures aggregate the
+# enriched trades relation, whose dimension columns are d_<name>.
+measures:
+  volume_usd:
+    label: Trading volume
+    description: Dollars traded (shares x price), summed over trades.
+    unit: usd
+    sql: sum(usd)
+    additive: true
+  trades:
+    label: Trades
+    description: Number of trades (fills).
+    unit: count
+    sql: count(*)
+    additive: true
+  active_traders:
+    label: Active traders
+    description: Distinct wallets that traded.
+    unit: count
+    sql: count(DISTINCT wallet)
+    additive: false
+  new_traders:
+    label: New traders
+    description: Distinct wallets whose first trade in our record was that day.
+    unit: count
+    sql: count(DISTINCT wallet) FILTER (WHERE d_trader_type = 'new')
+    additive: false
+
+derived:
+  avg_trade_usd:
+    label: Average trade size
+    description: Trading volume divided by trades.
+    unit: usd
+    expr: volume_usd / trades
+  returning_share:
+    label: Returning-trader share
+    description: Share of active traders who had traded on an earlier day.
+    unit: share
+    expr: 1 - new_traders / active_traders
+
+dimensions:
+  category:
+    label: Category
+    sql: coalesce(m_category, 'Other')
+    values: [Sports, Politics, Crypto, Culture, Economy & Finance, Tech & Science, Weather, Other]
+  market:
+    label: Market
+    sql: coalesce(nullif(m_event_title, ''), title)
+  size_band:
+    label: Trade size
+    sql: >-
+      CASE WHEN usd < 10 THEN 'under $10' WHEN usd < 100 THEN '$10-100'
+      WHEN usd < 1000 THEN '$100-1k' ELSE '$1k+' END
+    values: [under $10, $10-100, $100-1k, $1k+]
+  trader_type:
+    label: Trader
+    sql: CASE WHEN CAST(first_ts AS DATE) = CAST(ts AS DATE) THEN 'new' ELSE 'returning' END
+    values: [new, returning]
+  side:
+    label: Side
+    sql: lower(side)
+    values: [buy, sell]
+  odds_band:
+    label: Odds
+    sql: >-
+      CASE WHEN price < 0.2 THEN 'longshot' WHEN price > 0.8 THEN 'favourite'
+      ELSE 'toss-up' END
+    values: [longshot, toss-up, favourite]
