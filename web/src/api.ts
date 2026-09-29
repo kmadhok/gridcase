@@ -62,6 +62,7 @@ export interface CaseFull extends CaseSummary {
   conclusion: Conclusion | null;
   receipts: Receipt[];
   verdicts: Record<string, string>;
+  step_errors: Record<string, string>;
   recheck: {
     as_of: string;
     verdicts: Record<string, string>;

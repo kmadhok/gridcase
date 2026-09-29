@@ -83,6 +83,17 @@ def investigate(
     conclusion, dropped, u2 = explain(
         llm, case.case_id, ranked, case.receipts, ctx.model_dump(mode="json")
     )
+    case.step_errors = dict(result.errors)
+    if result.errors:
+        failed = ", ".join(
+            f"{sid} ({next((s.tool for s in plan.steps if s.step_id == sid), '?')}): {msg[:80]}"
+            for sid, msg in result.errors.items()
+        )
+        note = (
+            f"{len(result.errors)} of {len(plan.steps)} planned steps failed and produced no "
+            f"evidence: {failed}"
+        )
+        conclusion = conclusion.model_copy(update={"caveats": [*conclusion.caveats, note]})
     case.conclusion = conclusion
     case.top_hypothesis = conclusion.top_hypothesis
     case.llm_usage = case.llm_usage + u2

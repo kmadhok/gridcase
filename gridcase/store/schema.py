@@ -120,6 +120,11 @@ DDL = [
 ]
 
 
+MIGRATIONS = [
+    "ALTER TABLE cases ADD COLUMN IF NOT EXISTS step_errors_json VARCHAR",
+]
+
+
 def create_schema(conn: duckdb.DuckDBPyConnection) -> None:
-    for stmt in DDL:
+    for stmt in [*DDL, *MIGRATIONS]:
         conn.execute(stmt)

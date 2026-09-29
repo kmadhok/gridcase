@@ -146,7 +146,12 @@ def run_tool(
         raise ToolError(f"{name}: invalid inputs: {e.errors()[0]['msg']}") from e
     ctx = ToolCtx(conn=conn, as_of=as_of)
     t0 = time.perf_counter()
-    output, effect = TOOLS[name](ctx, parsed)
+    try:
+        output, effect = TOOLS[name](ctx, parsed)
+    except ToolError:
+        raise
+    except Exception as e:  # a bug or bad input deep in a tool fails this step only
+        raise ToolError(f"{name} failed: {type(e).__name__}: {e}") from e
     runtime_ms = int((time.perf_counter() - t0) * 1000)
     receipt = Receipt.build(
         tool=name,

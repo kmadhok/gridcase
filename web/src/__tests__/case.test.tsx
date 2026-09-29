@@ -34,6 +34,7 @@ const CASE: CaseFull = {
     { receipt_id: "r1", tool: "anomaly.detect", inputs: { metric: "supply_gap_mw" }, as_of: "2021-02-16T12:00:00", data_version: null, output: { max_abs_z: 15.6, flagged: true }, effect_size: 15.6, runtime_ms: 12, sql: [{ sql: "WITH m_demand AS (SELECT 1) SELECT t, v FROM m_demand", rows_hash: "abc" }] },
   ],
   verdicts: {},
+  step_errors: {},
   recheck: null,
 };
 

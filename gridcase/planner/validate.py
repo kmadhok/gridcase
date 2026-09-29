@@ -5,13 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import ValidationError
+
 from gridcase.planner.falsifier import Cmp, Rule, parse
 from gridcase.planner.hypotheses import load_templates
 from gridcase.planner.schema import InvestigationPlan
 from gridcase.semantic.ontology import load_ontology
-from gridcase.tools.registry import TOOL_NAMES
+from gridcase.tools.registry import TOOL_INPUTS, TOOL_NAMES
 
 H0 = "H0_DATA_ARTIFACT"
+
+
+def _input_errors(tool: str, inputs: dict[str, Any]) -> str | None:
+    """Pydantic's complaints about a step's inputs, compact enough to feed back to the planner."""
+    try:
+        TOOL_INPUTS[tool].model_validate(inputs)
+    except ValidationError as e:
+        return "; ".join(
+            f"{'.'.join(str(x) for x in err['loc']) or 'inputs'}: {err['msg']}"
+            for err in e.errors()[:4]
+        )
+    return None
 
 
 @dataclass(frozen=True)
@@ -80,6 +94,10 @@ def validate_plan(plan: InvestigationPlan) -> list[PlanError]:
     for s in plan.steps:
         if s.tool not in TOOL_NAMES:
             errors.append(PlanError("E_UNKNOWN_TOOL", f"unknown tool {s.tool}", s.step_id))
+        else:
+            bad = _input_errors(s.tool, s.inputs)
+            if bad:
+                errors.append(PlanError("E_BAD_INPUTS", f"inputs for {s.tool}: {bad}", s.step_id))
         for ref in _entity_refs(s.inputs):
             if ref not in known:
                 errors.append(PlanError("E_UNKNOWN_ENTITY", f"unknown entity {ref}", s.step_id))

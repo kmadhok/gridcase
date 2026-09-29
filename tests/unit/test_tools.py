@@ -478,3 +478,28 @@ def test_run_tool_writes_to_the_ledger_when_given_a_case(db: duckdb.DuckDBPyConn
         case_id="c1",
     )
     assert [x.receipt_id for x in read_receipts(db, "c1")] == [r.receipt_id]
+
+
+def test_an_unexpected_exception_inside_a_tool_becomes_a_tool_error(
+    fixture_store: duckdb.DuckDBPyConnection,
+) -> None:
+    """A bug or bad input deep in a tool must fail that step, not the whole investigation."""
+    from gridcase.tools.base import TOOLS, ToolError, run_tool
+    from gridcase.tools.registry import TOOL_INPUTS, EntityWindow
+
+    def broken(ctx: object, inputs: object) -> tuple[dict[str, object], float | None]:
+        raise TypeError("can't compare offset-naive and offset-aware datetimes")
+
+    TOOLS["test.broken"] = broken
+    TOOL_INPUTS["test.broken"] = EntityWindow
+    try:
+        with pytest.raises(ToolError, match="test.broken.*offset-naive"):
+            run_tool(
+                fixture_store,
+                "test.broken",
+                {"entity": "ERCO", "window": (datetime(2023, 5, 1), datetime(2023, 5, 2))},
+                datetime(2023, 5, 3),
+            )
+    finally:
+        del TOOLS["test.broken"]
+        del TOOL_INPUTS["test.broken"]

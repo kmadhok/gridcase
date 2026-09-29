@@ -19,7 +19,6 @@ from gridcase.ledger.schema import Receipt
 from gridcase.planner.context import PlanContext, default_windows
 from gridcase.planner.hypotheses import load_templates
 from gridcase.planner.schema import InvestigationPlan
-from gridcase.tools.registry import TOOL_INPUTS
 
 log = logging.getLogger("gridcase")
 
@@ -116,7 +115,10 @@ Return an InvestigationPlan. Rules the validator enforces: H0_DATA_ARTIFACT must
 tested; test at least two hypotheses; use only the listed tools with exactly their input
 schemas; every hypothesis needs a step using a tool its falsifier reads; steps form a DAG;
 at most budget_steps steps. Prefer the fewest steps that can falsify each hypothesis. Never
-write SQL. Use the provided windows and instants verbatim."""
+write SQL. Use the provided windows and instants verbatim. Every step's `inputs` must be the
+complete input object for its tool (windows are {start, end}); a step with empty or partial
+inputs fails and yields no evidence. `reference_plan` is the template default: adapt, reorder
+or drop steps, but keep the input shapes."""
 
 EXPLAIN_SYSTEM = """You write the conclusion of a grid investigation as a list of claims.
 Every claim must cite receipt ids from the ledger given to you, and every number you write
@@ -173,19 +175,25 @@ class AnthropicLLM:
     def plan(
         self, ctx: PlanContext, feedback: list[str]
     ) -> tuple[InvestigationPlan | None, LLMUsage]:
-        tools = {name: model.model_json_schema() for name, model in TOOL_INPUTS.items()}
+        from gridcase.planner.llm_schema import LLM_INPUTS, LLMPlan, from_plan, to_plan
+        from gridcase.planner.planner import default_plan
+
+        tools = {name: model.model_json_schema() for name, model in LLM_INPUTS.items()}
         templates = [t.model_dump() for t in load_templates() if t.id in ctx.applicable]
         user = json.dumps(
             {
                 "context": ctx.model_dump(mode="json"),
                 "tools": tools,
                 "hypothesis_templates": templates,
+                "reference_plan": from_plan(default_plan(ctx)).model_dump(mode="json"),
                 "validator_feedback": feedback,
             },
             default=str,
         )
-        plan, usage = self._parse(PLAN_SYSTEM, user, InvestigationPlan)
-        return (plan if isinstance(plan, InvestigationPlan) else None), usage
+        plan, usage = self._parse(PLAN_SYSTEM, user, LLMPlan)
+        if not isinstance(plan, LLMPlan):
+            return None, usage
+        return to_plan(plan, ctx.case_id, ctx.as_of), usage
 
     def explain(
         self,

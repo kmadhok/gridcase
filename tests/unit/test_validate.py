@@ -109,3 +109,27 @@ def test_step_hypotheses_must_be_in_the_plan() -> None:
         [*GOOD.steps, step("s5", "bridge.fuel", ["H2_SUPPLY_SHORTFALL"], t0=W[0], t1=W[1])],
     )
     assert "E_STEP_HYPOTHESIS" in {e.code for e in validate_plan(p)}
+
+
+def test_step_inputs_must_validate_against_the_tools_input_model() -> None:
+    """An empty or mistyped inputs object is a plan error the planner can be told about."""
+    bad = plan(
+        ["H0_DATA_ARTIFACT", "H5_SUBREGION_CONCENTRATION"],
+        [
+            ToolStep(
+                step_id="s1",
+                tool="identity.balance",
+                inputs={},
+                hypothesis_ids=["H0_DATA_ARTIFACT"],
+            ),
+            step("s2", "anomaly.detect", ["H0_DATA_ARTIFACT"], metric="demand"),
+            step("s3", "revision.diff", ["H0_DATA_ARTIFACT"], series="eia.D", t_a=W[0], t_b=W[1]),
+            step("s4", "contribution.subregion", ["H5_SUBREGION_CONCENTRATION"], deps=["s1"]),
+        ],
+    )
+    errors = validate_plan(bad)
+    codes = {(e.code, e.step_id) for e in errors}
+    assert ("E_BAD_INPUTS", "s1") in codes
+    msg = next(e.message for e in errors if e.code == "E_BAD_INPUTS")
+    assert "entity" in msg and "window" in msg
+    assert not [e for e in validate_plan(GOOD) if e.code == "E_BAD_INPUTS"]

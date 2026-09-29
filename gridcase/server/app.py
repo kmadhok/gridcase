@@ -79,6 +79,7 @@ def _case_full(c: CaseRecord) -> dict[str, Any]:
         "receipts": [r.model_dump(mode="json") for r in c.receipts],
         "verdicts": c.verdicts,
         "recheck": c.recheck,
+        "step_errors": c.step_errors,
         "action": {k: v for k, v in (c.action or {}).items() if k != "path"},
     }
 

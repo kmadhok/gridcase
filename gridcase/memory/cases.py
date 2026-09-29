@@ -61,6 +61,7 @@ class CaseRecord(BaseModel):
     verdicts: dict[str, str] = Field(default_factory=dict)
     recheck: dict[str, Any] | None = None
     action: dict[str, Any] | None = None
+    step_errors: dict[str, str] = Field(default_factory=dict)  # step_id -> tool error
 
 
 def _now() -> datetime:
@@ -92,8 +93,8 @@ def save_case(conn: duckdb.DuckDBPyConnection, case: CaseRecord) -> None:
         """
         INSERT OR REPLACE INTO cases (case_id, entity, metric, opened_at, as_of, state, season,
             top_hypothesis, plan_json, conclusion_json, plan_attempts, llm_calls, llm_usage_json,
-            verdicts_json, recheck_json, action_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            verdicts_json, recheck_json, action_json, step_errors_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             case.case_id,
@@ -112,6 +113,7 @@ def save_case(conn: duckdb.DuckDBPyConnection, case: CaseRecord) -> None:
             json.dumps(case.verdicts),
             json.dumps(case.recheck) if case.recheck else None,
             json.dumps(case.action) if case.action else None,
+            json.dumps(case.step_errors),
         ],
     )
 
@@ -120,7 +122,7 @@ def get_case(conn: duckdb.DuckDBPyConnection, case_id: str) -> CaseRecord:
     row = conn.execute(
         "SELECT case_id, entity, metric, opened_at, as_of, state, season, top_hypothesis, "
         "plan_json, conclusion_json, plan_attempts, llm_calls, llm_usage_json, verdicts_json, "
-        "recheck_json, action_json FROM cases WHERE case_id = ?",
+        "recheck_json, action_json, step_errors_json FROM cases WHERE case_id = ?",
         [case_id],
     ).fetchone()
     if row is None:
@@ -142,6 +144,7 @@ def get_case(conn: duckdb.DuckDBPyConnection, case_id: str) -> CaseRecord:
         verdicts=json.loads(row[13] or "{}"),
         recheck=json.loads(row[14]) if row[14] else None,
         action=json.loads(row[15]) if row[15] else None,
+        step_errors=json.loads(row[16] or "{}"),
         receipts=read_receipts(conn, case_id),
     )
 

@@ -91,8 +91,9 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           <Panel title="Plan">
             <ol className="space-y-1 text-xs" data-testid="plan-dag">
               {(c.plan?.steps ?? []).map((s) => (
-                <li key={s.step_id} className="mono">
+                <li key={s.step_id} className="mono" title={c.step_errors?.[s.step_id]}>
                   <span className="muted">{s.step_id}</span> {s.tool}
+                  {c.step_errors?.[s.step_id] && <span className="accent"> failed</span>}
                   <span className="muted"> → {s.hypothesis_ids.map((h) => h.split("_")[0]).join(",")}</span>
                   {s.depends_on.length > 0 && <span className="muted"> ⇐ {s.depends_on.join(",")}</span>}
                 </li>
