@@ -62,3 +62,16 @@ def test_install_script_stops_the_timer_when_the_server_owns_ingest() -> None:
     text = (DEPLOY / "install.sh").read_text()
     assert "gridcase-server.service" in text
     assert "disable --now gridcase-ingest.timer" in text
+
+
+def test_collector_runs_forever_and_restarts_on_failure() -> None:
+    s = _unit("gridcase-collector.service")
+    assert "gridcase collect" in " ; ".join(s["ExecStart"])
+    assert s["Restart"] == ["always"]
+    assert s["WorkingDirectory"][0].endswith("/gridcase")
+    assert "Environment" not in s
+
+
+def test_install_script_enables_the_collector_in_every_mode() -> None:
+    text = (DEPLOY / "install.sh").read_text()
+    assert "enable --now gridcase-collector.service" in text

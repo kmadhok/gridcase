@@ -150,6 +150,13 @@ def cmd_bench(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_collect(args: argparse.Namespace) -> int:
+    from gridcase.ingest.polymarket import run_collector
+
+    run_collector(config.RAW_DIR / "polymarket", interval_s=args.interval)
+    return 0
+
+
 def cmd_init(_: argparse.Namespace) -> int:
     conn = connect(config.DB_PATH)
     n_series, n_ent = one(
@@ -284,6 +291,9 @@ def main(argv: list[str] | None = None) -> int:
     ben.add_argument("--no-validator", action="store_true", help="ablation: skip plan validation")
     ben.add_argument("--work-dir", help="where scratch stores are built (default data/bench_work)")
     ben.set_defaults(fn=cmd_bench)
+    col = sub.add_parser("collect", help="save live Polymarket trades as they happen")
+    col.add_argument("--interval", type=float, default=20.0, help="seconds between polls")
+    col.set_defaults(fn=cmd_collect)
     srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
     _add_serve_args(srv)
     srv.set_defaults(fn=cmd_serve)

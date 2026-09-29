@@ -1,0 +1,18 @@
+# User unit: save every Polymarket trade as it happens (the public feed only reaches back
+# ~20 minutes, so history exists only if collected live). Writes raw gzip JSONL under
+# data/raw/polymarket/; never opens the DuckDB store, so it cannot conflict with the server.
+[Unit]
+Description=GridCase Polymarket trades collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Documents/Claude/Projects/gridcase
+ExecStart=%h/.local/bin/uv run gridcase collect --interval 20
+Restart=always
+RestartSec=15
+Nice=10
+
+[Install]
+WantedBy=default.target

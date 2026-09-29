@@ -11,10 +11,12 @@ root="$(cd "$here/.." && pwd)"
 dest="$HOME/.config/systemd/user"
 mode="${1:-server}"
 mkdir -p "$dest"
-for f in gridcase-ingest.service gridcase-ingest.timer gridcase-server.service; do
+for f in gridcase-ingest.service gridcase-ingest.timer gridcase-server.service gridcase-collector.service; do
   install -m 0644 "$here/$f" "$dest/$f"
 done
 systemctl --user daemon-reload
+# The collector writes raw files only, so it runs in every mode.
+systemctl --user enable --now gridcase-collector.service
 
 if [ "$mode" = "server" ]; then
   if command -v npm >/dev/null 2>&1; then
