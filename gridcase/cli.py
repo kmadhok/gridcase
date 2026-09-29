@@ -292,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     ben.add_argument("--work-dir", help="where scratch stores are built (default data/bench_work)")
     ben.set_defaults(fn=cmd_bench)
     col = sub.add_parser("collect", help="save live Polymarket trades as they happen")
-    col.add_argument("--interval", type=float, default=20.0, help="seconds between polls")
+    col.add_argument("--interval", type=float, default=240.0, help="seconds between polls")
     col.set_defaults(fn=cmd_collect)
     srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
     _add_serve_args(srv)

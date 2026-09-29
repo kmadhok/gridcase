@@ -24,7 +24,10 @@ import httpx
 log = logging.getLogger("gridcase")
 
 BASE_URL = "https://data-api.polymarket.com"
-PAGE = 2000
+# The feed is cached at the CDN for 5 minutes per URL. The largest page (10,000 trades) spans
+# ~11 minutes at current rates, so polling every 4 minutes keeps consecutive pages overlapping
+# without cache-busting; the gap check reports it if trading ever outruns that.
+PAGE = 10_000
 KEEP_SEEN_S = 1800  # remember trade identities this far behind the newest one
 
 
@@ -83,7 +86,7 @@ def poll_once(
     return PollResult(len(fresh), gap=gap)
 
 
-def run_collector(root: Path, interval_s: float = 20.0) -> None:
+def run_collector(root: Path, interval_s: float = 240.0) -> None:
     """Poll forever. Logs a line every 15 polls and every gap or error."""
     state = CollectorState()
     client = httpx.Client(base_url=BASE_URL, headers={"User-Agent": "gridcase"})
@@ -96,7 +99,7 @@ def run_collector(root: Path, interval_s: float = 20.0) -> None:
             log.warning("polymarket poll failed: %s", r.error)
         if r.gap:
             log.warning("polymarket gap: the newest page no longer reached the last saved trade")
-        if polls % 15 == 0:
-            log.info("polymarket: %d trades saved in the last %d polls", saved, 15)
+        if polls % 3 == 0:
+            log.info("polymarket: %d trades saved in the last 3 polls", saved)
             saved = 0
         time.sleep(interval_s)

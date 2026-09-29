@@ -9,7 +9,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/Documents/Claude/Projects/gridcase
-ExecStart=%h/.local/bin/uv run gridcase collect --interval 20
+ExecStart=%h/.local/bin/uv run gridcase collect --interval 240
 Restart=always
 RestartSec=15
 Nice=10
