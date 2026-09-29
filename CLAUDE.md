@@ -17,7 +17,7 @@ Governed investigation engine for plan-vs-actual metrics, proven on US grid data
 3. The explainer emits only sentences that reference receipt ids. Enforce in gridcase/explain/verifier.py; uncited sentences are dropped.
 4. Plans are gridcase/planner/schema.py::InvestigationPlan. The validator rejects plans that omit hypothesis H0_DATA_ARTIFACT or test < 2 hypotheses.
 5. No new data source, hypothesis template, or action type without a line in docs/DECISIONS.md and a stop for human review.
-6. Do not create a chat UI. The case viewer is the UI.
+6. No free-form chat UI. The case viewer is the UI. A question box on the case and scorecard pages may answer only from the case's evidence (plus read-only checks run at the case's as_of), and every answer passes through gridcase/explain/verifier.py like the conclusion does (changed by the user 2026-09-29).
 
 ## Workflow
 - Work one phase at a time from docs/SPEC.md. Each phase has an exit test in tests/exit/. Loop until it passes.
