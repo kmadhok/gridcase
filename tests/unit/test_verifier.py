@@ -161,3 +161,14 @@ def test_numbers_inside_labels_copied_from_the_evidence_are_not_claims() -> None
         Conclusion(case_id="c", top_hypothesis=None, ranked=[], claims=[ok, bad]), {r.receipt_id: r}
     )
     assert [c.text for c in kept.claims] == [ok.text] and len(dropped) == 1
+
+
+def test_abbreviated_amounts_like_2_9m_match_their_evidence() -> None:
+    from gridcase.explain.verifier import numbers_in
+
+    assert numbers_in("Sports traded $2.9M, crypto $540k and politics $1.2 million.") == [
+        2_900_000.0,
+        540_000.0,
+        1_200_000.0,
+    ]
+    assert numbers_in("7,451 traders, 12 bn") == [7451.0, 12_000_000_000.0]

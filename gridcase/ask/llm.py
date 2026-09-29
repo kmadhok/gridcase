@@ -49,7 +49,9 @@ the evidence does not state). Tier: governed =
 a number read directly from one piece of evidence; derived = a comparison or calculation
 across evidence; inferred = an explanation of a term or a judgement (no citation needed).
 
-If the evidence does not answer the question, say so plainly rather than guessing. On an
+If the evidence does not answer the question, say so plainly rather than guessing. When there
+is no usual level yet (our record is young), still answer what the current numbers show (the
+split by category or market, the largest segments) and say that comparisons need more days. On an
 investigation page you may run up to {MAX_CHECKS} read-only checks (the check_* tools). Run one
 whenever the question asks about a specific day, hour, region or quantity that the evidence on
 hand only covers in aggregate or not at all (e.g. "the day before", "at 6 pm", "in PJM"):

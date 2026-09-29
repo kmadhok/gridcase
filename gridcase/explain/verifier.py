@@ -11,13 +11,39 @@ from gridcase.explain.schema import Claim, Conclusion
 from gridcase.ledger.schema import Receipt
 
 DATE_LIKE = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b")
-NUMBER = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
+NUMBER = re.compile(
+    r"(?P<n>-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?)"
+    r"(?:\s?(?P<s>k|K|M|B|bn|thousand|million|billion)\b)?"
+)
 TOLERANCE = 0.01
+SCALE = {
+    "k": 1e3,
+    "K": 1e3,
+    "thousand": 1e3,
+    "M": 1e6,
+    "million": 1e6,
+    "B": 1e9,
+    "bn": 1e9,
+    "billion": 1e9,
+}
+
+
+def number_tokens(text: str) -> list[tuple[float, float]]:
+    """Each number in the text with the rounding it was written at: '$2.9M' is 2,900,000 give
+    or take 50,000 (half its last digit); plain numbers carry no extra rounding."""
+    cleaned = DATE_LIKE.sub(" ", text)
+    out: list[tuple[float, float]] = []
+    for m in NUMBER.finditer(cleaned):
+        raw = m.group("n").replace(",", "")
+        scale = SCALE.get(m.group("s") or "", 1.0)
+        decimals = len(raw.split(".")[1]) if "." in raw else 0
+        slack = 0.5 * 10**-decimals * scale if scale != 1.0 else 0.0
+        out.append((float(raw) * scale, slack))
+    return out
 
 
 def numbers_in(text: str) -> list[float]:
-    cleaned = DATE_LIKE.sub(" ", text)
-    return [float(m.group().replace(",", "")) for m in NUMBER.finditer(cleaned)]
+    return [v for v, _ in number_tokens(text)]
 
 
 def _flatten(obj: Any, out: list[float]) -> None:
@@ -55,12 +81,13 @@ def _without_labels(text: str, labels: set[str]) -> str:
     return text
 
 
-def _matches(n: float, values: list[float]) -> bool:
-    """Prose drops signs ("fell 8,236 MW" for -8236), so magnitudes are compared."""
+def _matches(n: float, values: list[float], slack: float = 0.0) -> bool:
+    """Prose drops signs ("fell 8,236" for -8236), so magnitudes are compared; `slack` is the
+    rounding the number was written at ($2.9M)."""
     a = abs(n)
     for v in values:
         b = abs(v)
-        if a == b:
+        if a == b or abs(a - b) <= slack:
             return True
         if abs(a - b) <= TOLERANCE * max(a, b, 1e-9):
             return True
@@ -103,7 +130,7 @@ def verify(
         for rid in c.receipt_ids:
             _labels(receipts[rid].output, labels)
         text = _without_labels(c.text, labels)
-        bad = [n for n in numbers_in(text) if not _matches(n, values)]
+        bad = [n for n, slack in number_tokens(text) if not _matches(n, values, slack)]
         if bad:
             dropped.append(f"{c.text[:60]}: number {_fmt(bad[0])} not in cited receipts")
             continue
