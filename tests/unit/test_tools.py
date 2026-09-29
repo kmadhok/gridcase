@@ -127,7 +127,10 @@ def test_anomaly_flags_a_six_hour_spike_and_only_that(db: duckdb.DuckDBPyConnect
     assert out["missing_hours"] == 0
 
 
-def test_anomaly_needs_two_consecutive_hours(db: duckdb.DuckDBPyConnection) -> None:
+def test_anomaly_alarms_on_a_single_catastrophic_hour(db: duckdb.DuckDBPyConnection) -> None:
+    """Calibration Part A: a lone hour alarms only when it exceeds the threshold by more than
+    2x (a 20 GW miss against a perfect synthetic forecast does); a lone moderate hour does not
+    (tests/unit/test_detector.py). Before calibration any lone hour was ignored."""
     load_weeks(db, 6)
     t = T0 + timedelta(weeks=5, days=1, hours=3)
     append_observations(
@@ -140,7 +143,8 @@ def test_anomaly_needs_two_consecutive_hours(db: duckdb.DuckDBPyConnection) -> N
         {"metric": "forecast_error_mw", "entity": "ERCO", "window": window},
         AS_OF,
     ).output
-    assert out["max_abs_z"] > 3 and out["flagged"] is False
+    assert out["max_exceedance"] > 2 and out["flagged"] is True
+    assert out["n_flagged_hours"] == 1
 
 
 def test_anomaly_counts_missing_hours(db: duckdb.DuckDBPyConnection) -> None:

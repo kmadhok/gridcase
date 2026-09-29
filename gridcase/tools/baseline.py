@@ -7,16 +7,24 @@ weather regressor (wind speed for the wind proxy, cloud cover for the solar prox
 squares; sigma per hour-of-week bucket is a robust (MAD) residual scale with a floor. The
 refit date is the Monday 00:00 UTC <= as_of, so the fit is a pure function of (inputs,
 as_of), never of the wall clock.
+
+The alarm threshold (in sigmas) is calibrated on the same training residuals: the configured
+quantile of |z| (ontology/detector.yaml), never below min_threshold_z. MAD ignores the fat
+tails real forecast errors have, so a fixed 3-sigma bar fires on ordinary days; the quantile
+puts it where history says "rare". EIA placeholder hours (forecast error exactly 0: CAISO's
+first demand value is the forecast itself) are left out of that sample.
 """
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta
 from typing import Any
 
 import numpy as np
 
 from gridcase.tools.base import ToolCtx, ToolError, expected_hours, tool
+from gridcase.tools.detector import detector_params
 from gridcase.tools.registry import MetricEntityWindow
 
 TRAIN_YEARS = 3
@@ -29,6 +37,9 @@ EXTRA_REGRESSORS: dict[str, tuple[str, str]] = {
     "solar_capacity_factor_proxy": ("cloud_load_center", "cloud"),
 }
 EXTRA_WIDTH = {"wind": 3, "cloud": 1, "none": 0}
+# Metrics whose exact-zero values are EIA placeholders (demand published equal to forecast).
+PLACEHOLDER_ZERO_METRICS = {"forecast_error_mw", "forecast_error_pct"}
+MIN_THRESHOLD_HOURS = 24 * 7  # fewer usable residuals than this: fall back to the floor
 
 
 def refit_date(as_of: datetime) -> datetime:
@@ -63,9 +74,12 @@ class Fit:
         r2: float,
         extra_kind: str = "none",
         extra_fill: float = 0.0,
+        threshold_z: float = 3.0,
+        threshold_n: int = 0,
     ) -> None:
         self.coef, self.sigma, self.fill, self.n, self.r2 = coef, sigma, fill, n, r2
         self.extra_kind, self.extra_fill = extra_kind, extra_fill
+        self.threshold_z, self.threshold_n = threshold_z, threshold_n
 
 
 def _design(
@@ -115,27 +129,41 @@ _FIT_CACHE_MAX = 512
 def fit_baseline(
     ctx: ToolCtx, metric: str, entity: str, dims: dict[str, str] | None = None
 ) -> tuple[Fit, datetime]:
-    """Fit is a pure function of (store contents, metric, entity, dims, as_of). Cached per
-    connection and row count so a case does not refit the same model for every tool; the
-    receipt still records the training queries and their row hashes."""
-    n_rows = ctx.conn.execute("SELECT count(*) FROM observations").fetchone()
+    """Fit is a pure function of (training data, metric, entity, dims, as_of, detector
+    config). The training queries always run (so the receipt records them and their row
+    hashes); the least-squares fit is cached by a digest of what they returned. Keying on the
+    connection or row count is unsafe: connection ids are reused after close, and benchmark
+    scratch stores are edited in place without changing their row count."""
+    train_w = _training_window(ctx.as_of)
+    rows = [(r[0], r[-1]) for r in ctx.metric(metric, entity, train_w, dims=dims or {})]
+    temps = _temp_map(ctx, entity, train_w)
+    extra = EXTRA_REGRESSORS.get(metric)
+    emap = _series_map(ctx, extra[0], entity, train_w) if extra else {}
     key = (
-        id(ctx.conn),
-        n_rows[0] if n_rows else 0,
         metric,
         entity,
         tuple(sorted((dims or {}).items())),
-        ctx.as_of,
+        train_w,
+        _digest(rows, temps, emap),
+        detector_params(entity).model_dump_json(),
     )
     cached = _FIT_CACHE.get(key)
     if cached is not None:
-        _replay_training_queries(ctx, metric, entity, dims)
         return cached
-    fit = _fit_uncached(ctx, metric, entity, dims)
+    fit = _fit(metric, entity, train_w, rows, temps, emap)
     if len(_FIT_CACHE) >= _FIT_CACHE_MAX:
         _FIT_CACHE.clear()
     _FIT_CACHE[key] = fit
     return fit
+
+
+def _digest(
+    rows: list[tuple[Any, Any]], temps: dict[datetime, float], emap: dict[datetime, float]
+) -> str:
+    h = hashlib.sha256()
+    for part in (rows, sorted(temps.items()), sorted(emap.items())):
+        h.update(repr(part).encode())
+    return h.hexdigest()
 
 
 def _training_window(as_of: datetime) -> tuple[datetime, datetime]:
@@ -143,31 +171,21 @@ def _training_window(as_of: datetime) -> tuple[datetime, datetime]:
     return refit - timedelta(days=365 * TRAIN_YEARS), refit
 
 
-def _replay_training_queries(
-    ctx: ToolCtx, metric: str, entity: str, dims: dict[str, str] | None
-) -> None:
-    """Keep the receipt honest on a cache hit: the training data is still 'read'."""
-    train_w = _training_window(ctx.as_of)
-    ctx.metric(metric, entity, train_w, dims=dims or {})
-    _temp_map(ctx, entity, train_w)
-    extra = EXTRA_REGRESSORS.get(metric)
-    if extra:
-        _series_map(ctx, extra[0], entity, train_w)
-
-
-def _fit_uncached(
-    ctx: ToolCtx, metric: str, entity: str, dims: dict[str, str] | None = None
+def _fit(
+    metric: str,
+    entity: str,
+    train_w: tuple[datetime, datetime],
+    rows: list[tuple[Any, Any]],
+    temps: dict[datetime, float],
+    emap: dict[datetime, float],
 ) -> tuple[Fit, datetime]:
-    train_w = _training_window(ctx.as_of)
     refit = train_w[1]
-    rows = [(r[0], r[-1]) for r in ctx.metric(metric, entity, train_w, dims=dims or {})]
     ts = [t for t, v in rows if v is not None]
     y = np.array([float(v) for _, v in rows if v is not None])
     if len(ts) < MIN_TRAIN_HOURS:
         raise ToolError(
             f"insufficient history for {metric}/{entity}: {len(ts)} hours before {refit:%Y-%m-%d}"
         )
-    temps = _temp_map(ctx, entity, train_w)
     tlist = [temps.get(t) for t in ts]
     fill = np.zeros(HOW)
     counts = np.zeros(HOW)
@@ -180,12 +198,10 @@ def _fit_uncached(
     extra_kind, extra_fill = "none", 0.0
     elist: list[float | None] = [None] * len(ts)
     extra = EXTRA_REGRESSORS.get(metric)
-    if extra:
-        emap = _series_map(ctx, extra[0], entity, train_w)
-        if len(emap) >= MIN_TRAIN_HOURS:
-            extra_kind = extra[1]
-            extra_fill = float(np.mean(list(emap.values())))
-            elist = [emap.get(t) for t in ts]
+    if extra and len(emap) >= MIN_TRAIN_HOURS:
+        extra_kind = extra[1]
+        extra_fill = float(np.mean(list(emap.values())))
+        elist = [emap.get(t) for t in ts]
 
     x = _design(ts, tlist, fill, elist, extra_kind, extra_fill)
     coef, *_ = np.linalg.lstsq(x, y, rcond=None)
@@ -200,7 +216,22 @@ def _fit_uncached(
         if len(r) >= 4:
             mad = float(np.median(np.abs(r - np.median(r))))
             sigma[h] = max(1.4826 * mad, floor)
-    return Fit(coef, sigma, fill, len(ts), r2, extra_kind, extra_fill), refit
+    threshold_z, threshold_n = _threshold(metric, entity, y, resid / sigma[hows])
+    return (
+        Fit(coef, sigma, fill, len(ts), r2, extra_kind, extra_fill, threshold_z, threshold_n),
+        refit,
+    )
+
+
+def _threshold(metric: str, entity: str, y: np.ndarray, z: np.ndarray) -> tuple[float, int]:
+    """(alarm threshold in sigmas, number of training hours it was calibrated on)."""
+    p = detector_params(entity)
+    usable = y != 0.0 if metric in PLACEHOLDER_ZERO_METRICS else np.ones(len(y), dtype=bool)
+    n = int(usable.sum())
+    if n < MIN_THRESHOLD_HOURS:
+        return p.min_threshold_z, n
+    q = float(np.quantile(np.abs(z[usable]), p.quantile))
+    return max(p.min_threshold_z, q), n
 
 
 def predict(
@@ -237,5 +268,7 @@ def baseline_expected(
         "hdh_slope": float(fit.coef[HOW]),
         "cdh_slope": float(fit.coef[HOW + 1]),
         "extra_regressor": fit.extra_kind,
+        "threshold_z": fit.threshold_z,
+        "threshold_n": fit.threshold_n,
         "hours": hours,
     }, fit.r2

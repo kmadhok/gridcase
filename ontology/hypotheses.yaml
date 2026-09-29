@@ -71,7 +71,7 @@ templates:
     # lags the gap by a day of EIA publication and is reported, not required: at Uri's first
     # information state gas was still at its expected level (DECISIONS, Phase 4).
     falsifier: >-
-      anomaly.detect.max_abs_z < 3
+      anomaly.detect.max_exceedance < 1
       or (regress.temperature.share_explained_window > 0.5
           and regress.temperature.sign_consistent_window == 1)
       or regress.temperature.implied_minus_actual_mean_z < 1
@@ -88,8 +88,9 @@ templates:
         inputs: {metric: net_interchange, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
       - tool: price.co_movement
         inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when interchange stays well inside its historical range.
-    falsifier: anomaly.detect.max_abs_z < 2 and anomaly.detect.share_at_limit < 0.2
+    # Refuted when interchange stays well inside its historical range: under two thirds of
+    # the calibrated alarm threshold (>= 2 sigmas, as before calibration) and rarely at its limit.
+    falsifier: anomaly.detect.max_exceedance < 0.67 and anomaly.detect.share_at_limit < 0.2
     explains: anomaly.detect.max_abs_dev
     consequence_of: [H2_SUPPLY_SHORTFALL]
     prior: {a: 1.0, b: 9.0}
@@ -148,7 +149,7 @@ templates:
     # not fall materially (>= 3 GW) against expected output. The proxies are noisy
     # (load-centre wind speed explains ~30% of fleet output), so this test has low recall;
     # an ISO wind/solar forecast would make it sharp (DECISIONS, Phase 5).
-    falsifier: anomaly.detect.max_abs_z < 3 or bridge.fuel.renewable_delta_mw > -3000
+    falsifier: anomaly.detect.max_exceedance < 1 or bridge.fuel.renewable_delta_mw > -3000
     explains: bridge.fuel.renewable_delta_mw
     prior: {a: 2.0, b: 8.0}
 
