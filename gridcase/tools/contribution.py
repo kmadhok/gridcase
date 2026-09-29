@@ -18,7 +18,7 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import Any
 
-from gridcase.tools.base import ToolCtx, ToolError, tool
+from gridcase.tools.base import ToolCtx, ToolError, knowable_horizon, tool
 from gridcase.tools.registry import EntityWindow
 
 MATERIALITY = 0.02
@@ -42,6 +42,10 @@ def contribution_subregion(
     week = timedelta(days=7)
     now = _means(ctx.metric("demand_by_subregion", inputs.entity, (start, end)))
     prev = _means(ctx.metric("demand_by_subregion", inputs.entity, (start - week, end - week)))
+    horizon = knowable_horizon({"eia.subba_demand"}, ctx.as_of)
+    if not now and start >= horizon:
+        # Sub-BA demand lags 36 h: the event hours are not knowable yet. Unknown, not refuted.
+        return {"insufficient": True, "knowable_until": horizon, "shares": {}}, None
     if not now or not prev:
         raise ToolError(f"no subregion demand for {inputs.entity} in window or the week before")
     subs = sorted(set(now) & set(prev))

@@ -503,3 +503,32 @@ def test_an_unexpected_exception_inside_a_tool_becomes_a_tool_error(
     finally:
         del TOOLS["test.broken"]
         del TOOL_INPUTS["test.broken"]
+
+
+def test_subregion_contribution_is_insufficient_not_failed_before_its_lag_clears(
+    fixture_store: duckdb.DuckDBPyConnection,
+) -> None:
+    """Sub-BA demand lags 36 h. Asked about event hours it cannot yet see, the tool reports
+    `insufficient` (withheld from falsifiers) instead of raising: unknown is not refuted."""
+    as_of = datetime(2021, 2, 16, 12)
+    r = run_tool(
+        fixture_store,
+        "contribution.subregion",
+        {
+            "entity": "ERCO",
+            "window": (datetime(2021, 2, 13, 12), as_of),
+            "event_start": datetime(2021, 2, 15, 9),
+            "event_end": as_of,
+        },
+        as_of,
+    )
+    assert r.output["insufficient"] is True
+    assert r.output["knowable_until"] == "2021-02-15T01:00:00"  # as_of - 36 h lag + 1 h
+    # the whole window, which reaches back before the horizon, still works
+    r2 = run_tool(
+        fixture_store,
+        "contribution.subregion",
+        {"entity": "ERCO", "window": (datetime(2021, 2, 13, 12), as_of)},
+        as_of,
+    )
+    assert r2.output.get("insufficient", False) is False and r2.output["shares"]
