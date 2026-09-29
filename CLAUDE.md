@@ -43,5 +43,5 @@ Governed investigation engine for plan-vs-actual metrics, proven on US grid data
 - Production runs on the VPS (ssh alias `vps`, ubuntu, Tailscale 100.115.94.44), not the laptop. Hourly ingest and the server are user systemd units there; the VPS holds the canonical data/gridcase.duckdb and data/raw/. The laptop is for development and uses a copy.
 - The VPS has its own .env; secrets are never copied between machines. The T3, Hermes and podcast work already on the host must not be disturbed. Do not change its SSH host keys, T3 state or existing timers.
 - Live polling captures EIA revisions; backfilled history cannot. Start the hourly poller on the VPS as soon as the Phase 1 schema exists.
-- DuckDB allows one writer per file. Ingest and server must not hold the file open for writing at the same time; decide the process model in Phase 1.
+- DuckDB allows one writer per file. The server (`gridcase serve`) is the single writer: it runs the hourly ingest and the re-check drain itself. The ingest timer is only for a host with no server; `deploy/install.sh` enables exactly one of the two.
 - Slow, network-bound tests (full backfill) run on the VPS, not in the laptop exit-test loop.

@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+  --gc-bg: #f7f7f5;
+  --gc-panel: #ffffff;
+  --gc-ink: #1a1a1a;
+  --gc-muted: #6b6b6b;
+  --gc-line: #e4e4e0;
+  --gc-accent: #b45309; /* amber: the miss */
+  --gc-ok: #15803d; /* green: supported */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gc-bg: #141413;
+    --gc-panel: #1e1e1c;
+    --gc-ink: #ededea;
+    --gc-muted: #a0a09a;
+    --gc-line: #2e2e2b;
+    --gc-accent: #f59e0b;
+    --gc-ok: #4ade80;
+  }
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--gc-bg);
+  color: var(--gc-ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.panel {
+  background: var(--gc-panel);
+  border: 1px solid var(--gc-line);
+  border-radius: 8px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.muted { color: var(--gc-muted); }
+.accent { color: var(--gc-accent); }
+.ok { color: var(--gc-ok); }

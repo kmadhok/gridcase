@@ -1,0 +1,21 @@
+# User unit: the GridCase server (MCP at /mcp, JSON API at /api, UI at /). Install with
+# deploy/install.sh, which also stops the ingest timer: DuckDB allows one writer process per
+# file, and the server runs the hourly ingest and the re-check drain itself.
+# Bound to the Tailscale address only; public exposure is a separate decision (DECISIONS, Phase 6).
+# Secrets (.env: EIA_API_KEY, ANTHROPIC_API_KEY, GRIDCASE_API_TOKEN) are read by python-dotenv
+# from WorkingDirectory; nothing is set here.
+[Unit]
+Description=GridCase server (MCP + API + UI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Documents/Claude/Projects/gridcase
+ExecStart=%h/.local/bin/uv run gridcase serve --host 100.115.94.44 --port 8710
+Restart=on-failure
+RestartSec=10
+Nice=5
+
+[Install]
+WantedBy=default.target

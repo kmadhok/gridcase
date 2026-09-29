@@ -43,3 +43,22 @@ def test_ingest_service_does_not_fight_the_server_for_the_db_lock() -> None:
     s = _unit("gridcase-ingest.service")
     # A failed hourly run must not retry in a tight loop while the server holds the file.
     assert s.get("Restart", ["no"]) == ["no"]
+
+
+def test_server_service_is_the_single_writer_and_binds_tailscale_only() -> None:
+    s = _unit("gridcase-server.service")
+    execs = " ; ".join(s["ExecStart"])
+    assert "gridcase serve" in execs
+    assert "--host 100.115.94.44" in execs
+    assert "--port 8710" in execs
+    assert "--no-ingest" not in execs  # the server owns ingest; no second writer process
+    assert s["Restart"] == ["on-failure"]
+    assert s["WorkingDirectory"][0].endswith("/gridcase")
+    assert "Environment" not in s
+    assert not any("KEY" in v or "TOKEN" in v for vals in s.values() for v in vals)
+
+
+def test_install_script_stops_the_timer_when_the_server_owns_ingest() -> None:
+    text = (DEPLOY / "install.sh").read_text()
+    assert "gridcase-server.service" in text
+    assert "disable --now gridcase-ingest.timer" in text

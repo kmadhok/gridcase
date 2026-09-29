@@ -30,6 +30,16 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
 }
 
 
+def api_token() -> str | None:
+    """Token the `investigate` MCP tool requires; None means the tool refuses every call."""
+    return os.environ.get("GRIDCASE_API_TOKEN", "").strip() or None
+
+
+def has_anthropic_api_key() -> bool:
+    """Presence only; the SDK reads the value itself. Never surface the key."""
+    return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+
+
 def eia_api_key() -> str:
     key = os.environ.get("EIA_API_KEY", "").strip()
     if not key:

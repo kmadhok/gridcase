@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -12,6 +14,7 @@ import httpx
 from gridcase import config
 from gridcase.ingest.base import Source
 from gridcase.ingest.runner import Mode, run_ingest
+from gridcase.planner.llm import LLM
 from gridcase.store.db import connect, one
 
 SOURCES = ["eia", "openmeteo", "gridstatus"]
@@ -157,6 +160,77 @@ def cmd_init(_: argparse.Namespace) -> int:
     return 0
 
 
+@dataclass(frozen=True)
+class ServeOptions:
+    host: str
+    port: int
+    ingest_interval_s: float | None
+    drain_interval_s: float | None
+    llm: str = "auto"
+
+
+def choose_llm_factory(llm: str, has_key: bool) -> Callable[[], LLM]:
+    """auto = the real planner when a key is present, else the template FakeLLM (logged)."""
+    from gridcase.planner.llm import AnthropicLLM, FakeLLM
+
+    if llm == "fake" or (llm == "auto" and not has_key):
+        return FakeLLM
+    return AnthropicLLM
+
+
+def serve_options(argv: list[str]) -> ServeOptions:
+    """`gridcase serve` flags. The server is the single DuckDB writer: it runs the hourly
+    ingest itself unless --no-ingest (then the ingest timer must be the writer instead)."""
+    p = argparse.ArgumentParser(prog="gridcase serve")
+    _add_serve_args(p)
+    return _serve_options_from(p.parse_args(argv))
+
+
+def _serve_options_from(a: argparse.Namespace) -> ServeOptions:
+    return ServeOptions(
+        host=a.host,
+        port=a.port,
+        ingest_interval_s=None if a.no_ingest else float(a.ingest_interval),
+        drain_interval_s=None if a.no_drain else float(a.drain_interval),
+        llm=a.llm,
+    )
+
+
+def _add_serve_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--host", default="127.0.0.1", help="bind address (VPS: the Tailscale IP)")
+    p.add_argument("--port", type=int, default=8710)
+    p.add_argument("--ingest-interval", type=float, default=3600.0, help="seconds")
+    p.add_argument("--no-ingest", action="store_true", help="do not run the live ingest")
+    p.add_argument("--drain-interval", type=float, default=600.0, help="seconds")
+    p.add_argument("--no-drain", action="store_true", help="do not run scheduled re-checks")
+    p.add_argument(
+        "--llm",
+        choices=["auto", "fake", "anthropic"],
+        default="auto",
+        help="planner/explainer model; auto = anthropic if ANTHROPIC_API_KEY is set, else fake",
+    )
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from gridcase.server.app import create_app
+
+    opts = _serve_options_from(args)
+    factory = choose_llm_factory(opts.llm, config.has_anthropic_api_key())
+    if factory.__name__ == "FakeLLM":
+        logging.warning("serving with the template FakeLLM (no ANTHROPIC_API_KEY or --llm fake)")
+    app = create_app(
+        db_path=config.DB_PATH,
+        token=config.api_token(),
+        llm_factory=factory,
+        ingest_interval_s=opts.ingest_interval_s,
+        drain_interval_s=opts.drain_interval_s,
+    )
+    uvicorn.run(app, host=opts.host, port=opts.port, log_level="info")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     p = argparse.ArgumentParser(prog="gridcase")
@@ -195,6 +269,9 @@ def main(argv: list[str] | None = None) -> int:
     ben.add_argument("--no-validator", action="store_true", help="ablation: skip plan validation")
     ben.add_argument("--work-dir", help="where scratch stores are built (default data/bench_work)")
     ben.set_defaults(fn=cmd_bench)
+    srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
+    _add_serve_args(srv)
+    srv.set_defaults(fn=cmd_serve)
     args = p.parse_args(argv)
     return int(args.fn(args))
 
