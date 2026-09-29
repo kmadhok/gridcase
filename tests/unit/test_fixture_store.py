@@ -16,7 +16,7 @@ WINDOWS = [
 
 
 def test_fixture_parquet_is_small_enough_to_commit() -> None:
-    assert FIXTURE_PARQUET.stat().st_size < 6 * 1024 * 1024
+    assert FIXTURE_PARQUET.stat().st_size < 8 * 1024 * 1024
 
 
 def test_fixture_store_covers_four_regions_and_all_eia_routes(

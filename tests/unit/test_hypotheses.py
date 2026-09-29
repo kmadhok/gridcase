@@ -40,6 +40,18 @@ def test_h0_is_mandatory_and_tests_data_quality_first() -> None:
     assert all(t.mandatory is False for t in load_templates()[1:])
 
 
+def test_causal_edges_and_explains_fields_reference_real_things() -> None:
+    by_id = {t.id: t for t in load_templates()}
+    for t in by_id.values():
+        for cause in t.consequence_of:
+            assert cause in by_id and cause != t.id
+        if t.explains:
+            tool = ".".join(t.explains.split(".")[:2])
+            assert tool in {s.tool for s in t.tests}, f"{t.id}.explains names an untested tool"
+    assert by_id["H4_LOAD_SHED"].consequence_of == ["H2_SUPPLY_SHORTFALL", "H3_IMPORT_CONSTRAINT"]
+    assert by_id["H0_DATA_ARTIFACT"].explains is None
+
+
 def test_seasons() -> None:
     assert season_of(date(2021, 2, 15)) == "winter"
     assert season_of(date(2023, 7, 20)) == "summer"

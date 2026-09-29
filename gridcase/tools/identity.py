@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from gridcase.tools.base import ToolCtx, ToolError, expected_hours, tool
+from gridcase.tools.base import ToolCtx, ToolError, knowable_hours, tool
 from gridcase.tools.registry import EntityWindow
 
 
@@ -43,7 +43,9 @@ def identity_balance(ctx: ToolCtx, inputs: EntityWindow) -> tuple[dict[str, Any]
     return {
         "entity": inputs.entity,
         "n": len(resid),
-        "n_missing": expected_hours(inputs.window) - len(resid),
+        "n_missing": max(
+            0, knowable_hours(inputs.window, {"eia.D", "eia.NG", "eia.TI"}, ctx.as_of) - len(resid)
+        ),
         "mean_residual_mw": sum(resid.values()) / len(resid),
         "max_abs_z": abs(z[worst]),
         "worst_t": worst,

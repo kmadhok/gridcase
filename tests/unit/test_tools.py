@@ -224,9 +224,48 @@ def test_bridge_ranks_fuels_by_contribution_and_is_additive(db: duckdb.DuckDBPyC
     assert out["total_change_mw"] == pytest.approx(-13_000)
     assert [f["fuel"] for f in out["fuels"]][:2] == ["natural_gas", "wind"]
     assert out["top_fuel"] == "natural_gas"
-    # receipts round floats to 6 decimals
-    assert out["top_share"] == pytest.approx(10_000 / 13_000, abs=1e-6)
-    assert out["renewable_share"] == pytest.approx((4_000 - 1_000) / 13_000, abs=1e-6)
+    # shares are of gross movement (10,000 + 4,000 + 1,000 + 0); receipts round to 6 decimals
+    assert out["top_share"] == pytest.approx(10_000 / 15_000, abs=1e-6)
+    assert out["top_delta_mw"] == pytest.approx(-10_000)
+    assert out["renewable_share"] == pytest.approx(3_000 / 15_000, abs=1e-6)
+    assert out["renewable_delta_mw"] == pytest.approx(-3_000)
+    assert out["total_change_pct"] == pytest.approx(-13_000 / 49_000, abs=1e-6)
+
+
+def test_bridge_expected_mode_measures_shortfall_against_each_fuels_baseline(
+    db: duckdb.DuckDBPyConnection,
+) -> None:
+    # Ten weeks of a flat fuel mix, then gas loses 9,000 MW on the last day; nothing else moves.
+    rows = []
+    for t in hours(24 * 70):
+        gas = 30_000.0 - (9_000.0 if t >= T0 + timedelta(days=69) else 0.0)
+        rows += [
+            obs("eia.fuel", "ERCO/NG", t, gas),
+            obs("eia.fuel", "ERCO/WND", t, 8_000.0),
+            obs("eia.fuel", "ERCO/COL", t, 10_000.0),
+        ]
+        for z in ("wz/austin", "wz/dallas", "wz/houston", "wz/san_antonio"):
+            rows.append(obs("om.temp_2m", z, t, 20.0))
+    append_observations(db, rows, dedupe_unchanged=False)
+    t1 = T0 + timedelta(days=69, hours=12)
+    # as_of on the day of the drop: the refit Monday precedes it, so the baseline is clean
+    as_of = t1 + timedelta(hours=2)
+    out = run_tool(
+        db,
+        "bridge.fuel",
+        {"entity": "ERCO", "t0": t1 - timedelta(hours=24), "t1": t1, "mode": "expected"},
+        as_of,
+    ).output
+    assert out["mode"] == "expected" and out["unmodelled_fuels"] == []
+    assert out["top_fuel"] == "natural_gas"
+    assert out["top_delta_mw"] == pytest.approx(-9_000, abs=50)
+    assert out["top_share"] > 0.95
+    # level mode against the same hour a day earlier sees the same drop here, but would not
+    # if generation had been tracking served load (the Uri case); that is the point of the mode
+    lvl = run_tool(
+        db, "bridge.fuel", {"entity": "ERCO", "t0": t1 - timedelta(hours=24), "t1": t1}, AS_OF
+    ).output
+    assert lvl["top_delta_mw"] == pytest.approx(-9_000)
 
 
 def test_bridge_with_no_data_raises_tool_error(db: duckdb.DuckDBPyConnection) -> None:
@@ -272,6 +311,35 @@ def test_regression_recovers_a_linear_temperature_slope(db: duckdb.DuckDBPyConne
     assert out["r2"] > 0.95
     assert out["slope_mw_per_degc"] == pytest.approx(1_500, rel=0.05)
     assert out["implied_minus_actual_mw"] == pytest.approx(0, abs=200)
+
+
+def test_regression_sign_consistency_separates_weather_misses_from_load_shed(
+    db: duckdb.DuckDBPyConnection,
+) -> None:
+    # Two weeks at a steady 25 C, then a hot week the forecast did not expect: demand rises
+    # with the heat (consistent). Then the mirror case: heat arrives but served load falls.
+    def build(served_falls: bool) -> None:
+        db.execute("DELETE FROM observations")
+        rows = []
+        for i, t in enumerate(hours(24 * 21)):
+            hot = t >= T0 + timedelta(days=14)
+            temp = (34.0 + 3 * math.sin(i / 24 * 2 * math.pi)) if hot else 25.0
+            for z in ("wz/austin", "wz/dallas", "wz/houston", "wz/san_antonio"):
+                rows.append(obs("om.temp_2m", z, t, temp))
+            forecast = 30_000 + 1_500 * max(0.0, 25.0 - 18.3)
+            actual = 30_000 + 1_500 * max(0.0, temp - 18.3)
+            if hot and served_falls:  # hotter -> even less served load: the wrong sign
+                actual = forecast - 8_000 - 500 * (temp - 25.0)
+            rows += [obs("eia.D", "ERCO", t, actual), obs("eia.DF", "ERCO", t, forecast)]
+        append_observations(db, rows, dedupe_unchanged=False)
+
+    window = (T0 + timedelta(days=14), T0 + timedelta(days=21))
+    build(served_falls=False)
+    out = run_tool(db, "regress.temperature", {"entity": "ERCO", "window": window}, AS_OF).output
+    assert out["sign_consistent"] == 1 and out["share_explained"] > 0.9
+    build(served_falls=True)
+    out = run_tool(db, "regress.temperature", {"entity": "ERCO", "window": window}, AS_OF).output
+    assert out["sign_consistent"] == 0
 
 
 def test_peer_compare_reports_correlation_per_peer(db: duckdb.DuckDBPyConnection) -> None:

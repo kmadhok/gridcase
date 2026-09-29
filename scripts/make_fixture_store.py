@@ -23,9 +23,10 @@ def main() -> None:
     conn = connect(DB_PATH, read_only=True)
     where = " OR ".join(f"(valid_time >= '{a}' AND valid_time < '{b}')" for a, b in WINDOWS)
     zones = ", ".join(f"'{z}'" for z in ERCO_ZONES)
+    # Training spans carry ERCO series plus temperature only (baselines need no wind/cloud).
     erco = " OR ".join(
         f"(valid_time >= '{a}' AND valid_time < '{b}' AND (entity_id LIKE 'ERCO%' "
-        f"OR entity_id IN ({zones})))"
+        f"OR (series_id = 'om.temp_2m' AND entity_id IN ({zones}))))"
         for a, b in ERCO_SPANS
     )
     conn.execute(

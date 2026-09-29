@@ -2,11 +2,14 @@
 # and a falsifier: a rule over tool outputs that, when TRUE, refutes the hypothesis.
 # Falsifier grammar: gridcase/planner/falsifier.py. Output field names are the Phase 3 tool
 # contracts. `prior` is the default Beta prior; ontology/priors.yaml overrides per BA/season.
+# `explains` names the tool output (MW) giving how much of the miss the mechanism accounts
+# for; `consequence_of` lists mechanisms it follows from (a supported cause outranks it).
 # Placeholders in inputs ({entity}, {window}, {metric}, {t0}, {t1}, {as_of}, {peers}, {hub})
-# are filled by the planner from the case context.
+# are filled by the planner from the case context; t0/t1 bracket the hour of largest supply
+# gap (forecast minus generation) known at as_of.
 #
-# REVIEW: wording, tests and falsifiers are Claude's proposal (2026-09-28). The spec says
-# this is the highest-leverage hour of the project; reverse anything you disagree with.
+# REVIEW: wording, tests, falsifiers and causal edges are Claude's proposal (2026-09-28). The
+# spec says this is the highest-leverage hour of the project; reverse anything you disagree with.
 
 templates:
   - id: H0_DATA_ARTIFACT
@@ -20,11 +23,10 @@ templates:
         inputs: {entity: "{entity}", window: "{window}"}
       - tool: revision.diff
         inputs: {series: eia.D, entity: "{entity}", t_a: "{as_of_minus_48h}", t_b: "{as_of}"}
-      - tool: anomaly.detect
-        inputs: {metric: demand, entity: "{entity}", window: "{window}"}
-    # Refuted when the identity holds, no hour is missing, and nothing was revised by >5%.
+    # Refuted when the identity holds, no knowable D/NG/TI hour is missing, and nothing was
+    # revised by >5%. (The case-level anomaly receipt already covers the metric's own gaps.)
     falsifier: >-
-      identity.balance.max_abs_z < 3 and anomaly.detect.missing_hours == 0
+      identity.balance.max_abs_z < 3 and identity.balance.n_missing == 0
       and revision.diff.max_rel_change < 0.05
     prior: {a: 1.5, b: 8.5}
 
@@ -39,22 +41,34 @@ templates:
         inputs: {entity: "{entity}", window: "{window}"}
       - tool: peer.compare
         inputs: {entity: "{entity}", peers: "{peers}", window: "{window}"}
-    # Refuted when temperature explains little of the error and peers do not co-move.
-    falsifier: regress.temperature.share_explained < 0.3 and peer.compare.max_corr < 0.5
+    # Refuted when the error moves the wrong way with the thermal surprise (colder than
+    # expected yet less load: that is shed load, not weather), or when the surprise explains
+    # little of the error and peers do not co-move.
+    falsifier: >-
+      regress.temperature.sign_consistent == 0
+      or (regress.temperature.share_explained < 0.3 and peer.compare.max_corr < 0.5)
+    explains: regress.temperature.error_explained_mw
     prior: {a: 3.5, b: 6.5}
 
   - id: H2_SUPPLY_SHORTFALL
     mechanism: >-
-      Generation fell because one fuel's fleet lost output (freeze-offs, fuel supply,
-      forced outages); the fuel bridge is dominated by a single fuel and prices spike.
+      Generation could not meet expected load because one fuel's fleet lost output
+      (freeze-offs, fuel supply, forced outages): the forecast-minus-generation gap is
+      anomalous, the fuel bridge into the gap is dominated by a single fuel, and prices spike.
     preconditions: [net_generation_anomaly, forecast_error_anomaly]
     tests:
+      - tool: anomaly.detect
+        inputs: {metric: supply_gap_mw, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
       - tool: bridge.fuel
-        inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}"}
+        inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}", mode: expected, event_start: "{event_start}"}
       - tool: price.co_movement
         inputs: {hub: "{hub}", window: "{window}"}
-    # Refuted when no single fuel explains most of the drop (prices alone cannot rescue it).
-    falsifier: bridge.fuel.top_share < 0.5 or bridge.fuel.total_change_mw > 0
+    # Refuted when the supply gap is not anomalous, or generation sits at or above each
+    # fuel's expected output (no fleet fell short). Fuel attribution lags the gap by a day of
+    # EIA publication and is reported, not required: at Uri's first information state gas
+    # was still at its expected level at the gap hour (see DECISIONS, Phase 4).
+    falsifier: anomaly.detect.max_abs_z < 3 or bridge.fuel.total_change_mw > 0
+    explains: anomaly.detect.max_abs_dev
     prior: {a: 2.0, b: 8.0}
 
   - id: H3_IMPORT_CONSTRAINT
@@ -64,11 +78,13 @@ templates:
     preconditions: [net_interchange_anomaly, forecast_error_anomaly]
     tests:
       - tool: anomaly.detect
-        inputs: {metric: net_interchange, entity: "{entity}", window: "{window}"}
+        inputs: {metric: net_interchange, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
       - tool: price.co_movement
         inputs: {hub: "{hub}", window: "{window}"}
     # Refuted when interchange stays well inside its historical range.
     falsifier: anomaly.detect.max_abs_z < 2 and anomaly.detect.share_at_limit < 0.2
+    explains: anomaly.detect.max_abs_dev
+    consequence_of: [H2_SUPPLY_SHORTFALL]
     prior: {a: 1.0, b: 9.0}
 
   - id: H4_LOAD_SHED
@@ -87,6 +103,8 @@ templates:
     falsifier: >-
       variance.plan_vs_actual.min_error_pct > -5
       or regress.temperature.implied_minus_actual_mw < 2000
+    explains: regress.temperature.implied_minus_actual_mw
+    consequence_of: [H2_SUPPLY_SHORTFALL, H3_IMPORT_CONSTRAINT]
     prior: {a: 0.5, b: 9.5}
 
   - id: H5_SUBREGION_CONCENTRATION
@@ -99,6 +117,7 @@ templates:
         inputs: {entity: "{entity}", window: "{window}"}
     # Refuted when no subregion carries more than 60% of the miss.
     falsifier: contribution.subregion.top_share < 0.6
+    explains: contribution.subregion.top_delta_mw
     prior: {a: 1.5, b: 8.5}
 
   - id: H6_RENEWABLE_FORECAST_MISS
@@ -108,13 +127,14 @@ templates:
     preconditions: [net_generation_anomaly]
     tests:
       - tool: anomaly.detect
-        inputs: {metric: wind_capacity_factor_proxy, entity: "{entity}", window: "{window}"}
+        inputs: {metric: wind_capacity_factor_proxy, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
       - tool: anomaly.detect
-        inputs: {metric: solar_capacity_factor_proxy, entity: "{entity}", window: "{window}"}
+        inputs: {metric: solar_capacity_factor_proxy, entity: "{entity}", window: "{window}", event_start: "{event_start}"}
       - tool: bridge.fuel
-        inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}"}
+        inputs: {entity: "{entity}", t0: "{t0}", t1: "{t1}", mode: expected, event_start: "{event_start}"}
     # Refuted when neither renewable proxy is anomalous and the bridge is not led by wind/solar.
     falsifier: anomaly.detect.max_abs_z < 3 and bridge.fuel.renewable_share < 0.5
+    explains: bridge.fuel.renewable_delta_mw
     prior: {a: 2.0, b: 8.0}
 
   - id: H7_CALENDAR
@@ -131,4 +151,5 @@ templates:
     falsifier: >-
       variance.plan_vs_actual.calendar_event_in_window == 0
       or regress.temperature.share_explained > 0.6
+    explains: variance.plan_vs_actual.min_error_mw
     prior: {a: 1.0, b: 9.0}

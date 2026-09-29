@@ -39,6 +39,11 @@ metrics:
     unit: pct
     kind: derived
     expr: 100 * (demand - demand_forecast) / demand_forecast
+  supply_gap_mw:
+    description: Day-ahead forecast minus net generation; large and positive when generation cannot meet expected load.
+    unit: MW
+    kind: derived
+    expr: demand_forecast - net_generation
   balance_residual:
     description: Demand minus (net generation minus net interchange); ~0 when the books balance.
     unit: MW

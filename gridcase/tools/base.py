@@ -101,11 +101,14 @@ class ToolCtx:
         self.t_max = window[1] if self.t_max is None else max(self.t_max, window[1])
 
     def data_version(self) -> datetime | None:
+        """Latest knowledge time (available_at) among the rows read: the vintage of the
+        evidence. observed_at would be the ingest clock, which for backfilled history is
+        always later than as_of."""
         if not self.series_used or self.t_min is None or self.t_max is None:
             return None
         series = ", ".join(f"'{s}'" for s in sorted(self.series_used))
         row = self.conn.execute(
-            f"SELECT max(observed_at) FROM as_of(?::TIMESTAMP) WHERE series_id IN ({series}) "
+            f"SELECT max(available_at) FROM as_of(?::TIMESTAMP) WHERE series_id IN ({series}) "
             "AND valid_time >= ? AND valid_time < ?",
             [self.as_of, self.t_min, self.t_max],
         ).fetchone()
@@ -162,3 +165,22 @@ def run_tool(
 
 def expected_hours(window: tuple[datetime, datetime]) -> int:
     return int((window[1] - window[0]).total_seconds() // 3600)
+
+
+def knowable_horizon(series: set[str], as_of: datetime) -> datetime:
+    """Latest valid_time whose values for every listed series could exist at as_of."""
+    from datetime import timedelta
+
+    from gridcase.store.series import SERIES_BY_ID
+
+    lag = max((SERIES_BY_ID[s].lag_hours for s in series if s in SERIES_BY_ID), default=0)
+    return as_of - timedelta(hours=lag) + timedelta(hours=1)
+
+
+def knowable_hours(window: tuple[datetime, datetime], series: set[str], as_of: datetime) -> int:
+    """Hours in the window whose values for every listed series could exist at as_of, given
+    each series' publication lag. Hours beyond that horizon are not 'missing'."""
+    horizon = min(window[1], knowable_horizon(series, as_of))
+    if horizon <= window[0]:
+        return 0
+    return int((horizon - window[0]).total_seconds() // 3600)

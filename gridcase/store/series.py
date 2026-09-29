@@ -67,12 +67,15 @@ SERIES: list[Series] = [
         lag_hours=36,
         history_start=EIA_START,
     ),
+    # Weather observations are live data in reality (METAR etc.); the ERA5 archive we backfill
+    # from lags ~5 days, but that is a property of the product, not of the information state.
+    # Synthetic vintage therefore uses a 1 h lag (see DECISIONS, Phase 4).
     Series(
         series_id="om.temp_2m",
         name="Air temperature 2 m",
         unit="degC",
         source="openmeteo",
-        lag_hours=120,
+        lag_hours=1,
         history_start=OM_START,
     ),
     Series(
@@ -80,7 +83,7 @@ SERIES: list[Series] = [
         name="Wind speed 10 m",
         unit="km/h",
         source="openmeteo",
-        lag_hours=120,
+        lag_hours=1,
         history_start=OM_START,
     ),
     Series(
@@ -88,7 +91,7 @@ SERIES: list[Series] = [
         name="Cloud cover",
         unit="pct",
         source="openmeteo",
-        lag_hours=120,
+        lag_hours=1,
         history_start=OM_START,
     ),
     Series(

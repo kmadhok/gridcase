@@ -63,6 +63,47 @@ DDL = [
         PRIMARY KEY (case_id, receipt_id)
     )
     """,
+    # Case memory (gridcase/memory) and the one scheduled action type (re-check).
+    """
+    CREATE TABLE IF NOT EXISTS cases (
+        case_id         VARCHAR PRIMARY KEY,
+        entity          VARCHAR NOT NULL,
+        metric          VARCHAR NOT NULL,
+        opened_at       TIMESTAMP NOT NULL,
+        as_of           TIMESTAMP NOT NULL,
+        state           VARCHAR NOT NULL,
+        season          VARCHAR NOT NULL,
+        top_hypothesis  VARCHAR,
+        plan_json       VARCHAR,
+        conclusion_json VARCHAR,
+        plan_attempts   INTEGER NOT NULL DEFAULT 0,
+        llm_calls       INTEGER NOT NULL DEFAULT 0,
+        llm_usage_json  VARCHAR,
+        verdicts_json   VARCHAR,
+        recheck_json    VARCHAR,
+        action_json     VARCHAR
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+        task_id    VARCHAR PRIMARY KEY,
+        case_id    VARCHAR NOT NULL,
+        kind       VARCHAR NOT NULL,
+        run_at     TIMESTAMP NOT NULL,
+        status     VARCHAR NOT NULL,
+        created_at TIMESTAMP NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS learned_priors (
+        template_id VARCHAR NOT NULL,
+        ba          VARCHAR NOT NULL,
+        season      VARCHAR NOT NULL,
+        a_delta     DOUBLE NOT NULL DEFAULT 0,
+        b_delta     DOUBLE NOT NULL DEFAULT 0,
+        PRIMARY KEY (template_id, ba, season)
+    )
+    """,
     # Latest known row per key with available_at <= t. Ties on available_at (two synthetic
     # rows) resolve to the later observed_at.
     """

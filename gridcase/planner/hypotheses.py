@@ -38,6 +38,10 @@ class HypothesisTemplate(BaseModel):
     falsifier: str
     prior: Prior
     mandatory: bool = False
+    # tool.output.field holding the MW magnitude this mechanism can account for; None = all
+    explains: str | None = None
+    # mechanisms this one follows from: when one of them is supported, this ranks below it
+    consequence_of: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _valid(self) -> HypothesisTemplate:

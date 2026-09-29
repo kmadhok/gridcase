@@ -58,10 +58,12 @@ class Fit:
         self.coef, self.sigma, self.fill, self.n, self.r2 = coef, sigma, fill, n, r2
 
 
-def fit_baseline(ctx: ToolCtx, metric: str, entity: str) -> tuple[Fit, datetime]:
+def fit_baseline(
+    ctx: ToolCtx, metric: str, entity: str, dims: dict[str, str] | None = None
+) -> tuple[Fit, datetime]:
     refit = refit_date(ctx.as_of)
     train_w = (refit - timedelta(days=365 * TRAIN_YEARS), refit)
-    rows = ctx.metric(metric, entity, train_w)
+    rows = [(r[0], r[-1]) for r in ctx.metric(metric, entity, train_w, dims=dims or {})]
     ts = [t for t, v in rows if v is not None]
     y = np.array([float(v) for _, v in rows if v is not None])
     if len(ts) < MIN_TRAIN_HOURS:

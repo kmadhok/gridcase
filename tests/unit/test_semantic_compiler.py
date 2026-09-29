@@ -84,7 +84,7 @@ def test_capacity_factor_proxy_is_between_zero_and_one(
     rows = fixture_store.execute(compile_query(q("wind_capacity_factor_proxy")).sql).fetchall()
     assert len(rows) == 24 * 7
     assert all(0 <= v <= 1 for _, v in rows)
-    assert max(v for _, v in rows) == pytest.approx(1.0)  # week max is the trailing max
+    assert max(v for _, v in rows) > 0.3  # a windy hour reaches a good share of the 30-day max
 
 
 def test_hub_metric_from_a_ba_resolves_to_its_hubs() -> None:

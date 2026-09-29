@@ -19,6 +19,16 @@ ONTOLOGY_DIR = ROOT / "ontology"
 REGIONS = ["ERCO", "CISO", "PJM", "US48"]
 HISTORY_START = datetime(2018, 7, 1)
 
+# Models: names live in config, never in code. Prices are USD per million tokens (input, output).
+PLANNER_MODEL = os.environ.get("GRIDCASE_PLANNER_MODEL", "claude-opus-5")
+CHEAP_MODEL = os.environ.get("GRIDCASE_CHEAP_MODEL", "claude-sonnet-5")
+MODEL_PRICES: dict[str, tuple[float, float]] = {
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5": (2.0, 10.0),
+    "claude-fable-5-1": (10.0, 50.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+
 
 def eia_api_key() -> str:
     key = os.environ.get("EIA_API_KEY", "").strip()

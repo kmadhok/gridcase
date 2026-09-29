@@ -50,6 +50,7 @@ def contribution_subregion(
         "shares": shares,
         "top_subregion": top,
         "top_share": abs(shares[top]),
+        "top_delta_mw": delta[top],
         "basis": "change vs preceding 7 days"
         if total != 0
         else "abs change (total change is zero)",

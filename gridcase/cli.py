@@ -75,6 +75,40 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     return rc
 
 
+def cmd_replay(args: argparse.Namespace) -> int:
+    import yaml
+
+    from gridcase.investigate import investigate, recheck
+    from gridcase.planner.llm import AnthropicLLM, FakeLLM
+
+    spec = yaml.safe_load((config.ROOT / "bench" / "replay" / f"{args.case}.yaml").read_text())
+    as_of = _parse_date(args.as_of) if args.as_of else spec["as_of"]
+    llm = AnthropicLLM(model=args.model) if args.llm == "anthropic" else FakeLLM()
+    conn = connect(config.DB_PATH)
+    case = investigate(conn, llm, entity=spec["entity"], metric=spec["metric"], as_of=as_of)
+    assert case.conclusion is not None
+    print(
+        f"case {case.case_id} [{case.state}] top={case.conclusion.top_hypothesis} "
+        f"plan_attempts={case.plan_attempts} llm_calls={case.llm_calls} "
+        f"cost=${case.llm_usage.cost_usd:.4f}"
+    )
+    for v in case.conclusion.ranked:
+        print(f"  {v.id:28s} {v.status:9s} conf={v.confidence:.2f} margin={v.margin}")
+    for c in case.conclusion.claims:
+        print(f"  [{c.tier}] {c.text}  <- {','.join(c.receipt_ids) or '-'}")
+    for cv in case.conclusion.caveats:
+        print(f"  ! {cv}")
+    if args.recheck:
+        r = recheck(
+            conn,
+            case.case_id,
+            _parse_date(args.recheck) if args.recheck != "spec" else spec["recheck_as_of"],
+        )
+        print("recheck:", r.verdicts)
+    conn.close()
+    return 0
+
+
 def cmd_init(_: argparse.Namespace) -> int:
     conn = connect(config.DB_PATH)
     n_series, n_ent = one(
@@ -100,6 +134,13 @@ def main(argv: list[str] | None = None) -> int:
         "--live", action="store_true", help="hourly mode: last 3 days to +2 days, real vintages"
     )
     ing.set_defaults(fn=cmd_ingest)
+    rep = sub.add_parser("replay", help="replay a bench/replay case")
+    rep.add_argument("--case", required=True, help="case id, e.g. uri_2021")
+    rep.add_argument("--as-of", help="override the case's as_of (UTC)")
+    rep.add_argument("--llm", choices=["fake", "anthropic"], default="fake")
+    rep.add_argument("--model", help="model id for --llm anthropic; default from config")
+    rep.add_argument("--recheck", help="'spec' to use the case's recheck_as_of, or a UTC datetime")
+    rep.set_defaults(fn=cmd_replay)
     args = p.parse_args(argv)
     return int(args.fn(args))
 

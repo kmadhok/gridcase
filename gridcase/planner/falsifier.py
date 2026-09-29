@@ -162,6 +162,39 @@ def _cmp(left: Any, op: str, right: float | str) -> bool | None:
     }[op]
 
 
+MARGIN_CLIP = 2.0
+
+
+def margin(rule: Rule, outputs: dict[str, Any]) -> float:
+    """How strongly the rule holds: positive when true, negative when false, scaled by the
+    threshold (fuzzy and = min, or = max, not = negate), clipped to +-MARGIN_CLIP.
+    Unknown comparisons contribute 0."""
+    if isinstance(rule, Cmp):
+        left = _lookup(outputs, rule.path)
+        if left is None or isinstance(rule.value, str) or isinstance(left, str | bool):
+            truth = _cmp(left, rule.op, rule.value)
+            return 0.0 if truth is None else (1.0 if truth else -1.0)
+        try:
+            lv = float(left)
+        except (TypeError, ValueError):
+            return 0.0
+        # A zero threshold has no natural scale: the comparison then carries its sign only.
+        scale = abs(rule.value) if rule.value else max(abs(lv), 1.0)
+        if rule.op in ("<", "<="):
+            m = (rule.value - lv) / scale
+        elif rule.op in (">", ">="):
+            m = (lv - rule.value) / scale
+        elif rule.op == "==":
+            m = 1.0 if lv == rule.value else -abs(lv - rule.value) / scale
+        else:
+            m = -1.0 if lv == rule.value else abs(lv - rule.value) / scale
+        return max(-MARGIN_CLIP, min(MARGIN_CLIP, m))
+    if isinstance(rule, Not):
+        return -margin(rule.operand, outputs)
+    parts = [margin(p, outputs) for p in rule.parts]
+    return min(parts) if isinstance(rule, And) else max(parts)
+
+
 def evaluate(rule: Rule, outputs: dict[str, Any]) -> bool | None:
     if isinstance(rule, Cmp):
         return _cmp(_lookup(outputs, rule.path), rule.op, rule.value)

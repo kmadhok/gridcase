@@ -1,0 +1,18 @@
+# Replay case: Winter Storm Uri. as_of is the first hour at which EIA's day-lagged
+# generation data covers the collapse (see DECISIONS, Phase 4); an investigation at
+# 2021-02-15T12:00Z can see the demand miss but not yet the fuel bridge.
+id: uri_2021
+name: Winter Storm Uri
+entity: ERCO
+metric: forecast_error_mw
+as_of: 2021-02-16T12:00:00
+recheck_as_of: 2021-02-18T12:00:00
+ground_truth:
+  ranked: [H2_SUPPLY_SHORTFALL, H4_LOAD_SHED, H1_WEATHER_DEMAND]
+  cause: >-
+    Gas supply and plant freeze-offs cut generation ~16 GW while cold drove demand far above
+    forecast; ~20 GW of firm load shed made reported demand served load.
+sources:
+  - https://www.eia.gov/todayinenergy/detail.php?id=46836
+  - https://www.ferc.gov/media/february-2021-cold-weather-outages-texas-and-south-central-united-states-ferc-nerc-and
+  - docs/phase0_report.md
