@@ -20,7 +20,7 @@ import threading
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +45,7 @@ from gridcase.tools.registry import TOOL_INPUTS, TOOL_NAMES
 
 log = logging.getLogger("gridcase")
 WEB_DIST = config.ROOT / "web" / "dist"
+SETTLE_WINDOW = timedelta(hours=3)  # a forecast revised within this window is not settled yet
 
 
 def _parse(t: str) -> datetime:
@@ -258,16 +259,26 @@ def create_app(
             regions = []
             cases = list_cases(c)
             for ba in config.REGIONS:
+                # EIA publishes aggregate forecasts incrementally (a partial US48 sum can sit
+                # at 40% for hours), so an hour whose forecast moved by more than 5% in the last
+                # SETTLE_HOURS is skipped: the tile shows the latest *settled* hour.
                 row = c.execute(
                     """
                     WITH d AS (SELECT valid_time, value FROM as_of(TIMESTAMP '2100-01-01')
                                WHERE series_id = 'eia.D' AND entity_id = ?),
                          f AS (SELECT valid_time, value FROM as_of(TIMESTAMP '2100-01-01')
-                               WHERE series_id = 'eia.DF' AND entity_id = ?)
+                               WHERE series_id = 'eia.DF' AND entity_id = ?),
+                         unsettled AS (
+                            SELECT DISTINCT o.valid_time
+                            FROM observations o JOIN f USING (valid_time)
+                            WHERE o.series_id = 'eia.DF' AND o.entity_id = ?
+                              AND o.observed_at >= ?
+                              AND abs(o.value - f.value) > 0.05 * abs(f.value))
                     SELECT d.valid_time, d.value, f.value FROM d JOIN f USING (valid_time)
+                    WHERE d.valid_time NOT IN (SELECT valid_time FROM unsettled)
                     ORDER BY d.valid_time DESC LIMIT 1
                     """,
-                    [ba, ba],
+                    [ba, ba, ba, datetime.now(UTC).replace(tzinfo=None) - SETTLE_WINDOW],
                 ).fetchone()
                 open_case = next((x for x in cases if x.entity == ba and x.state != "closed"), None)
                 last_case = open_case or next((x for x in cases if x.entity == ba), None)

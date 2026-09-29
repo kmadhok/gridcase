@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -136,3 +136,48 @@ def test_replay_stream_reports_a_failed_investigation_as_an_error_event(store: P
     kinds = [ln.split(": ", 1)[1] for ln in r.text.splitlines() if ln.startswith("event: ")]
     assert kinds == ["started", "error", "done"]
     assert "no credentials" in r.text
+
+
+def test_map_skips_hours_whose_forecast_is_still_being_revised(store: Path) -> None:
+    """EIA publishes aggregate forecasts incrementally (US48 at 10:00Z on 2026-09-29 read
+    5,104 → 95,514 → 156,731 → 406,123 MW across hourly pulls). The map must show the latest
+    hour whose forecast has settled, not a partial sum that makes a 157% miss."""
+    from gridcase.store.db import append_observations
+    from gridcase.store.models import Observation
+
+    now = datetime.now(UTC).replace(tzinfo=None, minute=0, second=0, microsecond=0)
+    hot, old = now - timedelta(hours=1), now - timedelta(hours=2)
+
+    def obs(series: str, t: datetime, value: float, seen: datetime) -> Observation:
+        return Observation(
+            series_id=series,
+            entity_id="US48",
+            valid_time=t,
+            value=value,
+            observed_at=seen,
+            available_at=seen,
+            source="eia",
+            vintage="observed",
+            raw_hash="x",
+        )
+
+    conn = connect(store)
+    append_observations(
+        conn,
+        [
+            # the settled hour: one forecast vintage, seen long ago
+            obs("eia.D", old, 400_000, old + timedelta(minutes=17)),
+            obs("eia.DF", old, 398_000, old - timedelta(hours=20)),
+            # the latest hour: forecast revised from a partial sum within the last 3 h
+            obs("eia.D", hot, 404_109, hot + timedelta(minutes=17)),
+            obs("eia.DF", hot, 95_514, hot - timedelta(minutes=50)),
+            obs("eia.DF", hot, 156_731, hot + timedelta(minutes=17)),
+        ],
+    )
+    conn.close()
+    app = create_app(db_path=store, token="t", llm_factory=FakeLLM, drain_interval_s=None)
+    with TestClient(app) as client:
+        us48 = next(r for r in client.get("/api/map").json()["regions"] if r["entity"] == "US48")
+    assert us48["latest_hour"] == old.isoformat()
+    assert us48["forecast_mw"] == 398_000
+    assert abs(us48["forecast_error_pct"] - 0.5) < 0.01

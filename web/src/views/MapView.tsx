@@ -69,7 +69,7 @@ export function MapView() {
   return (
     <div className="grid gap-4 md:grid-cols-[1fr_320px]">
       <div>
-        <p className="muted mb-2 text-xs">Actual electricity demand vs. the operator's day-ahead forecast, latest published hour{latest ? ` (${fmtTime(latest)})` : ""}. Orange = less than forecast, green = more.</p>
+        <p className="muted mb-2 text-xs">Actual electricity demand vs. the operator's day-ahead forecast, for the latest hour whose forecast has finished publishing{latest ? ` (${fmtTime(latest)})` : ""}. Orange = less than forecast, green = more.</p>
         <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
           {(regions ?? []).map((r) => (
             <button
