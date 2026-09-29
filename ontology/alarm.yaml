@@ -2,8 +2,8 @@
 # in DECISIONS). Plain rolling statistics, chosen by the user on 2026-09-29 over the fitted
 # detector (docs/plans/2026-09-29_detector_calibration.md, parked for later):
 #
-#   An hour is abnormal when the KPI sits more than k_sigma standard deviations from its own
-#   average over the lookback_days before the recent window. An alarm is min_run abnormal
+#   An hour is abnormal when the KPI sits more than k_sigma standard deviations from its
+#   average for the same hour of the day over the lookback_days before the recent window. An alarm is min_run abnormal
 #   hours in a row on the same side, within the last recent_hours of settled data.
 #   settle_hours: how long after an hour its numbers stop moving (EIA publishes the US48
 #   forecast as a running sum for about a day).
@@ -15,7 +15,7 @@ defaults:
   recent_hours: 24
   settle_hours: 3
   min_history_days: 7
-  bad_forecast_ratio: 0.6   # forecast below 60% of its usual level for the hour = bad data
+  implausible_ratio: 0.4   # demand or forecast below 40% / above 2.5x its usual level = glitch
   skip_dst_days: false
 
 overrides:

@@ -127,9 +127,9 @@ def _claim_for(r: Receipt) -> Claim | None:
         text = (
             f"This investigation opened automatically: demand in {_who(o['entity'])} ran "
             f"{abs(o['worst_value']):.1f}% {o['direction']} its forecast, more than "
-            f"{o['k_sigma']:.0f} standard deviations from its {o['lookback_days']}-day average "
-            f"of {o['mean']:.1f}% (typical spread {o['std']:.1f}%), for {o['run_hours']} "
-            "hours in a row."
+            f"{o['k_sigma']:.0f} standard deviations from its usual {o['mean']:.1f}% for that "
+            f"hour of the day over the previous {o['lookback_days']} days (typical spread "
+            f"{o['std']:.1f}%), for {o['run_hours']} hours in a row."
         )
     elif t == "anomaly.detect":
         text = (

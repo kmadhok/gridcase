@@ -46,13 +46,14 @@ def load(
     recent: dict[int, float] | None = None,
     days: int = 30,
 ) -> None:
-    """Hourly D and DF up to NOW. Normal hours alternate +1% / -1% (mean 0, sd 1); `recent`
+    """Hourly D and DF up to NOW. Normal days alternate +1% / -1% (for every hour of the day:
+    mean 0, sd 1); `recent`
     maps hours-before-NOW (1 = the last hour) to an error in percent."""
     rows = []
     recent = recent or {}
     for k in range(1, days * 24 + 1):
         t = NOW - timedelta(hours=k)
-        pct = recent.get(k, 1.0 if k % 2 else -1.0)
+        pct = recent.get(k, 1.0 if (k // 24) % 2 else -1.0)
         forecast = 50_000.0
         rows.append(_obs("eia.DF", entity, t, forecast, t - timedelta(hours=20)))
         rows.append(_obs("eia.D", entity, t, forecast * (1 + pct / 100), t + timedelta(minutes=30)))
@@ -177,7 +178,7 @@ def test_a_forecast_that_collapses_is_a_data_problem_not_an_alarm(
         bad.append(_obs("eia.DF", "ERCO", t, 400.0, t - timedelta(hours=10)))
     append_observations(db, bad)
     o = check_kpi(db, "ERCO", NOW, PARAMS).output
-    assert o["alarm"] is False and o["n_bad_forecast"] == 3
+    assert o["alarm"] is False and o["n_bad_data"] == 3
 
 
 def test_daylight_saving_switch_days_can_be_skipped(tmp_path: Path) -> None:
@@ -188,7 +189,7 @@ def test_daylight_saving_switch_days_can_be_skipped(tmp_path: Path) -> None:
     rows = []
     for k in range(1, 30 * 24 + 1):
         t = dst + timedelta(hours=24) - timedelta(hours=k)
-        pct = alarm_hours.get(k - 24, 1.0 if k % 2 else -1.0)
+        pct = alarm_hours.get(k - 24, 1.0 if (k // 24) % 2 else -1.0)
         rows.append(_obs("eia.DF", "US48", t, 400_000.0, t - timedelta(hours=20)))
         rows.append(
             _obs("eia.D", "US48", t, 400_000.0 * (1 + pct / 100), t + timedelta(minutes=30))
@@ -207,3 +208,38 @@ def test_us48_skips_clock_change_days_by_default() -> None:
 
     assert alarm_params("US48").skip_dst_days is True
     assert alarm_params("ERCO").skip_dst_days is False
+
+
+def test_a_demand_glitch_is_set_aside(db: duckdb.DuckDBPyConnection) -> None:
+    """PJM 2021-10-19: demand reported as 2,147,480,000 MW (2^31, an overflow)."""
+    load(db)
+    glitch = [
+        _obs("eia.D", "ERCO", NOW - timedelta(hours=k), 2_147_480_000.0, NOW - timedelta(minutes=5))
+        for k in (1, 2, 3)
+    ]
+    append_observations(db, glitch)
+    o = check_kpi(db, "ERCO", NOW, PARAMS).output
+    assert o["alarm"] is False and o["n_bad_data"] == 3
+
+
+def test_each_hour_is_judged_against_the_same_hour_of_day(tmp_path: Path) -> None:
+    """CAISO's midday forecast sits far below demand every sunny day (rooftop solar): a large
+    but usual noon gap is not an alarm; the same gap at night, where it is unusual, is."""
+    conn = connect(tmp_path / "h.duckdb")
+    rows = []
+    for k in range(1, 30 * 24 + 1):
+        t = NOW - timedelta(hours=k)
+        wobble = 1.0 if (k // 24) % 2 else -1.0
+        pct = (70.0 if 17 <= t.hour <= 22 else 0.0) + wobble
+        rows.append(_obs("eia.DF", "CISO", t, 20_000.0, t - timedelta(hours=20)))
+        rows.append(_obs("eia.D", "CISO", t, 20_000.0 * (1 + pct / 100), t + timedelta(minutes=30)))
+    append_observations(conn, rows)
+    assert check_kpi(conn, "CISO", NOW, PARAMS).output["alarm"] is False
+    night = [
+        _obs("eia.D", "CISO", datetime(2024, 3, 1, h), 20_000.0 * 1.7, NOW - timedelta(minutes=1))
+        for h in (5, 6, 7)
+    ]
+    append_observations(conn, night)
+    o = check_kpi(conn, "CISO", NOW, PARAMS).output
+    assert o["alarm"] is True and o["run_start"] == "2024-03-01T05:00:00"
+    conn.close()

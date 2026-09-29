@@ -1,8 +1,10 @@
 """The KPI alarm: plain rolling statistics on one governed KPI (ontology/alarm.yaml).
 
-An hour is abnormal when the KPI sits more than k standard deviations from its own average
-over the `lookback_days` before the recent window; an alarm is `min_run` abnormal hours in a
-row on the same side. The result is a Receipt (tool "kpi.alarm") with the compiled SQL, so a
+An hour is abnormal when the KPI sits more than k standard deviations from its average for
+the same hour of the day over the `lookback_days` before the recent window (today at noon vs.
+the last N noons); an alarm is `min_run` abnormal hours in a row on the same side. Glitches
+(demand or forecast far from its usual level) and EIA placeholders are set aside.
+The result is a Receipt (tool "kpi.alarm") with the compiled SQL, so a
 case opened by the alarm can show exactly why. Pure function of (entity, as_of, params).
 """
 
@@ -11,6 +13,7 @@ from __future__ import annotations
 import math
 import statistics
 import time
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from functools import cache
 from typing import Any
@@ -33,9 +36,9 @@ class AlarmParams(BaseModel):
     recent_hours: int = Field(default=24, ge=1)
     settle_hours: int = Field(default=3, ge=0)
     min_history_days: int = Field(default=7, ge=1)
-    # An hour whose day-ahead forecast is below this share of the usual forecast for that hour
-    # of day is bad data (real grid events move demand, not yesterday's forecast).
-    bad_forecast_ratio: float = Field(default=0.6, gt=0, lt=1)
+    # Demand or forecast below this share (or above its inverse) of its usual level for that
+    # hour of day is a data glitch, set aside (2^31 MW, 14 MW), not an alarm.
+    implausible_ratio: float = Field(default=0.4, gt=0, lt=1)
     # Skip the US daylight-saving switch days (EIA's national sum misaligns on them).
     skip_dst_days: bool = False
 
@@ -81,56 +84,74 @@ def check_kpi(conn: Any, entity: str, as_of: datetime, params: AlarmParams) -> R
     judged_until = as_of - timedelta(hours=params.settle_hours)
     judged_from = judged_until - timedelta(hours=params.recent_hours)
     history_from = judged_from - timedelta(days=params.lookback_days)
+    window = (history_from, judged_until)
 
-    forecast = {
-        t: float(v)
-        for t, v in ctx.metric("demand_forecast", entity, (history_from, judged_until))
-        if v is not None
-    }
-    by_hour: dict[int, list[float]] = {}
-    for t, v in forecast.items():
-        if t < judged_from:
-            by_hour.setdefault(t.hour, []).append(v)
-    usual = {h: statistics.median(vs) for h, vs in by_hour.items()}
+    def series(metric: str) -> dict[datetime, float]:
+        return {t: float(v) for t, v in ctx.metric(metric, entity, window) if v is not None}
+
+    demand, forecast = series("demand"), series("demand_forecast")
+    kpi = series(params.kpi)
+
+    def usual_by_hour(values: dict[datetime, float]) -> dict[int, float]:
+        by_hour: dict[int, list[float]] = defaultdict(list)
+        for t, v in values.items():
+            if t < judged_from:
+                by_hour[t.hour].append(v)
+        return {h: statistics.median(vs) for h, vs in by_hour.items()}
+
+    usual_d, usual_f = usual_by_hour(demand), usual_by_hour(forecast)
     dst: set[date] = set()
     if params.skip_dst_days:
         for y in range(history_from.year, judged_until.year + 1):
             dst |= dst_switch_days(y)
+    lo, hi = params.implausible_ratio, 1 / params.implausible_ratio
+
+    def implausible(v: float | None, usual: float | None) -> bool:
+        return (
+            v is not None and usual is not None and usual > 0 and not lo * usual <= v <= hi * usual
+        )
 
     def verdict(t: datetime, v: float) -> str:
         if t.date() in dst:
             return "dst"
-        f = forecast.get(t)
-        if f is not None and t.hour in usual and f < params.bad_forecast_ratio * usual[t.hour]:
-            return "bad_forecast"
+        if implausible(demand.get(t), usual_d.get(t.hour)) or implausible(
+            forecast.get(t), usual_f.get(t.hour)
+        ):
+            return "bad_data"  # e.g. demand of 2,147,480,000 MW (2^31) or 14 MW
         if v == 0.0:  # exactly 0: EIA placeholder (demand = forecast)
             return "placeholder"
         return "ok"
 
-    history = [
-        float(v)
-        for t, v in ctx.metric(params.kpi, entity, (history_from, judged_from))
-        if v is not None and verdict(t, float(v)) == "ok"
-    ]
-    recent_rows = [
-        (t, float(v), verdict(t, float(v)))
-        for t, v in ctx.metric(params.kpi, entity, (judged_from, judged_until))
-        if v is not None
-    ]
+    # "Normal" is judged hour by hour of the day: today at noon against the last N noons.
+    hist_by_hour: dict[int, list[float]] = defaultdict(list)
+    recent_rows: list[tuple[datetime, float, str]] = []
+    for t in sorted(kpi):
+        v, k = kpi[t], verdict(t, kpi[t])
+        if t < judged_from:
+            if k == "ok":
+                hist_by_hour[t.hour].append(v)
+        else:
+            recent_rows.append((t, v, k))
+    stats: dict[int, tuple[float, float]] = {}
+    for h, vs in hist_by_hour.items():
+        m = sum(vs) / len(vs)
+        sd = math.sqrt(sum((x - m) ** 2 for x in vs) / len(vs))
+        if len(vs) >= params.min_history_days and sd > 0:
+            stats[h] = (m, sd)
     placeholders = sum(1 for *_, k in recent_rows if k == "placeholder")
-    bad_forecast = sum(1 for *_, k in recent_rows if k == "bad_forecast")
+    bad_data = sum(1 for *_, k in recent_rows if k == "bad_data")
     dst_skipped = sum(1 for *_, k in recent_rows if k == "dst")
-    recent = [(t, v) for t, v, k in recent_rows if k == "ok"]
+    recent = [(t, v) for t, v, k in recent_rows if k == "ok" and t.hour in stats]
+    insufficient = len(stats) < 12  # need a usual level for at least half the hours of the day
 
-    n = len(history)
-    mean = sum(history) / n if n else 0.0
-    std = math.sqrt(sum((v - mean) ** 2 for v in history) / n) if n else 0.0
-    insufficient = n < params.min_history_days * 24 or std <= 0.0
+    def z_of(t: datetime, v: float) -> float:
+        m, sd = stats[t.hour]
+        return (v - m) / sd
 
     runs: list[list[tuple[datetime, float, float]]] = []
     run: list[tuple[datetime, float, float]] = []
     for t, v in recent:
-        z = (v - mean) / std if not insufficient else 0.0
+        z = z_of(t, v)
         extreme = abs(z) > params.k_sigma
         joins = run and extreme and t - run[-1][0] == HOUR and (z > 0) == (run[-1][2] > 0)
         if joins:
@@ -143,8 +164,10 @@ def check_kpi(conn: Any, entity: str, as_of: datetime, params: AlarmParams) -> R
         runs.append(run)
 
     alarm = bool(runs) and not insufficient
-    worst_src = runs[-1] if alarm else [(t, v, (v - mean) / std if std else 0.0) for t, v in recent]
+    worst_src = runs[-1] if alarm else [(t, v, z_of(t, v)) for t, v in recent]
     worst = max(worst_src, key=lambda x: abs(x[2]), default=None)
+    mean, std = stats[worst[0].hour] if worst else (0.0, 0.0)
+    n = sum(len(vs) for vs in hist_by_hour.values())
     output: dict[str, Any] = {
         "kpi": params.kpi,
         "entity": entity,
@@ -168,7 +191,7 @@ def check_kpi(conn: Any, entity: str, as_of: datetime, params: AlarmParams) -> R
         "n_recent": len(recent),
         "n_history": n,
         "n_placeholder": placeholders,
-        "n_bad_forecast": bad_forecast,
+        "n_bad_data": bad_data,
         "n_dst_skipped": dst_skipped,
         "insufficient": insufficient,
     }

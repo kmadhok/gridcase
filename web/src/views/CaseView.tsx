@@ -27,7 +27,7 @@ function TriggerNote({ r }: { r: Receipt }) {
   return (
     <div className="panel p-3 text-sm" data-testid="trigger">
       <span className="font-medium">Opened automatically.</span>{" "}
-      Demand ran {worst}% {String(o.direction)} forecast for {String(o.run_hours)} hours in a row, beyond {Number(o.k_sigma)} standard deviations of its usual {Number(o.mean).toFixed(1)}% ± {Number(o.std).toFixed(1)}% over the previous {String(o.lookback_days)} days.{" "}
+      Demand ran {worst}% {String(o.direction)} forecast for {String(o.run_hours)} hours in a row, beyond {Number(o.k_sigma)} standard deviations of its usual {Number(o.mean).toFixed(1)}% ± {Number(o.std).toFixed(1)}% for that hour of the day over the previous {String(o.lookback_days)} days.{" "}
       <button className="muted text-xs underline" onClick={() => setOpen((x) => !x)} aria-expanded={open}>{open ? "hide" : "show"} evidence</button>
       {open && <ReceiptCard r={r} />}
     </div>
