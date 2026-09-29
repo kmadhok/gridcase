@@ -83,6 +83,8 @@ def answer_question(
         return AskResult([note], False, new, 0, usage)
     pool = {**receipts, **{r.receipt_id: r for r in new}}
     checked, dropped = verify(
-        Conclusion(case_id="ask", top_hypothesis=None, ranked=[], claims=answer.sentences), pool
+        Conclusion(case_id="ask", top_hypothesis=None, ranked=[], claims=answer.sentences),
+        pool,
+        drop_uncited_numbers=True,
     )
     return AskResult(checked.claims, answer.refused, new, len(dropped), usage)

@@ -328,3 +328,18 @@ def test_api_stops_when_the_daily_budget_is_spent(store: Path, case: CaseRecord)
     with _client(store, ask_daily_usd=0.0) as client:
         r = client.post("/api/ask", json={"case_id": case.case_id, "question": "q"})
     assert r.status_code == 429 and "budget" in r.json()["detail"]
+
+
+def test_an_uncited_sentence_that_states_a_number_is_dropped(case: CaseRecord) -> None:
+    """Interpretation may explain; it may not state figures. Numbers need their evidence."""
+    asker = FakeAsker(
+        answer=lambda _: Answer(
+            sentences=[
+                Claim(text="Demand came in 28,885 MW below plan.", receipt_ids=[], tier="inferred"),
+                Claim(text="That is a very large miss for this grid.", receipt_ids=[]),
+            ]
+        )
+    )
+    res = answer_question(asker, "q", context=case_context(case), receipts={}, run_check=None)
+    assert res.dropped == 1
+    assert [s.text for s in res.sentences] == ["That is a very large miss for this grid."]

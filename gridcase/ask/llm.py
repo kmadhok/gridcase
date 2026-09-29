@@ -39,7 +39,10 @@ mean ("demand moved the opposite way to what the cold would cause"). Never menti
 ids or tool names in the text.
 
 Every sentence that states a fact must cite the receipt id(s) it comes from in receipt_ids,
-and every number in it must be copied from that evidence (rounding is fine). Tier: governed =
+and every number in it must be copied from that evidence (rounding is fine). A sentence that
+contains any number but cites nothing is deleted before the reader sees it, so always cite.
+Do not add facts from outside the context (no "during the freeze", no event names or causes
+the evidence does not state). Tier: governed =
 a number read directly from one piece of evidence; derived = a comparison or calculation
 across evidence; inferred = an explanation of a term or a judgement (no citation needed).
 
