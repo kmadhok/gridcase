@@ -1,0 +1,20 @@
+# The KPI alarm (governed: changing this changes when GridCase opens an investigation; log it
+# in DECISIONS). Plain rolling statistics, chosen by the user on 2026-09-29 over the fitted
+# detector (docs/plans/2026-09-29_detector_calibration.md, parked for later):
+#
+#   An hour is abnormal when the KPI sits more than k_sigma standard deviations from its own
+#   average over the lookback_days before the recent window. An alarm is min_run abnormal
+#   hours in a row on the same side, within the last recent_hours of settled data.
+#   settle_hours: how long after an hour its numbers stop moving (EIA publishes the US48
+#   forecast as a running sum for about a day).
+defaults:
+  kpi: forecast_error_pct
+  lookback_days: 28
+  k_sigma: 3.0
+  min_run: 3
+  recent_hours: 24
+  settle_hours: 3
+  min_history_days: 7
+
+overrides:
+  US48: {settle_hours: 24}

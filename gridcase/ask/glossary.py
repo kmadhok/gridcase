@@ -52,6 +52,7 @@ CHECKS = {
     "variance.plan_vs_actual": "How big was the miss? Demand vs. the day-ahead forecast.",
     "contribution.subregion": "Was one area driving it? Shares of the change by zone.",
     "baseline.expected": "What was normal for this hour? The model of a typical hour.",
+    "kpi.alarm": "Why was this investigation opened? Demand vs. forecast (%) compared with its own 28-day average and spread; 3 hours in a row beyond 3 standard deviations opens a case.",
     "anomaly.detect": "Was a quantity abnormal? Compares it with its normal range hour by hour.",
 }
 

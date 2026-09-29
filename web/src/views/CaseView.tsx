@@ -20,6 +20,20 @@ function ClaimRow({ claim, i, receipts }: { claim: Claim; i: number; receipts: R
   );
 }
 
+function TriggerNote({ r }: { r: Receipt }) {
+  const [open, setOpen] = useState(false);
+  const o = r.output as Record<string, number | string>;
+  const worst = Math.abs(Number(o.worst_value)).toFixed(1);
+  return (
+    <div className="panel p-3 text-sm" data-testid="trigger">
+      <span className="font-medium">Opened automatically.</span>{" "}
+      Demand ran {worst}% {String(o.direction)} forecast for {String(o.run_hours)} hours in a row, beyond {Number(o.k_sigma)} standard deviations of its usual {Number(o.mean).toFixed(1)}% ± {Number(o.std).toFixed(1)}% over the previous {String(o.lookback_days)} days.{" "}
+      <button className="muted text-xs underline" onClick={() => setOpen((x) => !x)} aria-expanded={open}>{open ? "hide" : "show"} evidence</button>
+      {open && <ReceiptCard r={r} />}
+    </div>
+  );
+}
+
 export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
   const [c, setCase] = useState<CaseFull | null>(initial ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +47,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
   const ranked = c.conclusion?.ranked ?? [];
   const top = c.conclusion?.top_hypothesis;
   const failed = Object.keys(c.step_errors ?? {}).length;
+  const trigger = c.receipts.find((r) => r.tool === "kpi.alarm" && r.output.alarm === true);
 
   return (
     <div className="space-y-4">
@@ -44,6 +59,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           {CASE_STATES[c.state] ?? c.state} · {c.llm_calls} model call{c.llm_calls === 1 ? "" : "s"} · ${c.cost_usd.toFixed(2)}
         </div>
       </header>
+      {trigger && <TriggerNote r={trigger} />}
       {/* minmax(0,1fr): the query <pre> must scroll inside its column, not widen the page */}
       <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
         <Panel title="Possible causes" hint="Each one was tested against the numbers." className="min-w-0">

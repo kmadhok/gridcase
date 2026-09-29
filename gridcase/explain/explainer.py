@@ -121,6 +121,16 @@ def _claim_for(r: Receipt) -> Claim | None:
             f"This check could not see the event hours yet: the data it needs is published with "
             f"a delay and was only available up to {until} UTC."
         )
+    elif t == "kpi.alarm":
+        if not o.get("alarm"):
+            return None
+        text = (
+            f"This investigation opened automatically: demand in {_who(o['entity'])} ran "
+            f"{abs(o['worst_value']):.1f}% {o['direction']} its forecast, more than "
+            f"{o['k_sigma']:.0f} standard deviations from its {o['lookback_days']}-day average "
+            f"of {o['mean']:.1f}% (typical spread {o['std']:.1f}%), for {o['run_hours']} "
+            "hours in a row."
+        )
     elif t == "anomaly.detect":
         text = (
             f"In {_who(o['entity'])}, {_what(o['metric'])} reached {o['max_abs_z']:.1f} times "

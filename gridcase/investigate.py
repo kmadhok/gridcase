@@ -15,6 +15,8 @@ import duckdb
 
 from gridcase.actions.publish import publish_case
 from gridcase.explain.explainer import explain, rank_hypotheses
+from gridcase.ledger.schema import Receipt
+from gridcase.ledger.store import write_receipt
 from gridcase.memory.cases import (
     CaseRecord,
     advance,
@@ -40,8 +42,11 @@ def investigate(
     metric: str,
     as_of: datetime,
     dry_run: bool = True,
+    trigger: Receipt | None = None,
 ) -> CaseRecord:
     case = new_case(conn, entity=entity, metric=metric, as_of=as_of)
+    if trigger is not None:  # the alarm that opened this case is its first piece of evidence
+        write_receipt(conn, case.case_id, trigger)
     window = (as_of - timedelta(hours=WINDOW_HOURS), as_of)
     anomaly = run_tool(
         conn,

@@ -95,3 +95,39 @@ def test_claim_without_numbers_only_needs_its_receipts_to_exist() -> None:
     c = Claim(text="Natural gas was the largest contributor.", receipt_ids=["r1"], tier="governed")
     out, _ = verify(conclusion(c), RECEIPTS)
     assert len(out.claims) == 1
+
+
+def test_the_alarm_that_opened_a_case_gets_a_plain_verified_sentence() -> None:
+    from datetime import datetime
+
+    from gridcase.explain.explainer import _claim_for
+    from gridcase.explain.schema import Conclusion
+    from gridcase.explain.verifier import verify
+    from gridcase.ledger.schema import Receipt
+
+    r = Receipt.build(
+        tool="kpi.alarm",
+        inputs={"entity": "ERCO"},
+        as_of=datetime(2021, 2, 16, 12),
+        output={
+            "entity": "ERCO",
+            "alarm": True,
+            "direction": "below",
+            "run_hours": 30,
+            "worst_value": -39.5,
+            "mean": 0.4,
+            "std": 2.1,
+            "k_sigma": 3.0,
+            "lookback_days": 28,
+        },
+        data_version=None,
+        effect_size=-18.6,
+        runtime_ms=1,
+        sql=[],
+    )
+    claim = _claim_for(r)
+    assert claim is not None and "opened automatically" in claim.text
+    kept, dropped = verify(
+        Conclusion(case_id="c", top_hypothesis=None, ranked=[], claims=[claim]), {r.receipt_id: r}
+    )
+    assert dropped == [] and len(kept.claims) == 1

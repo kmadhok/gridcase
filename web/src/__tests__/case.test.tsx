@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { CaseView } from "../views/CaseView";
@@ -56,5 +56,17 @@ describe("CaseView", () => {
     render(<CaseView id={CASE.case_id} initial={CASE} />);
     await userEvent.click(screen.getByTestId("claim-1"));
     expect(screen.getByText(/nothing in the data backs this sentence/)).toBeInTheDocument();
+  });
+});
+
+describe("automatic cases", () => {
+  it("says why the case was opened, in plain words, with its evidence", async () => {
+    const trigger = { receipt_id: "t1", tool: "kpi.alarm", inputs: {}, as_of: "2021-02-16T12:00:00", data_version: null,
+      output: { alarm: true, direction: "below", run_hours: 30, worst_value: -39.5, mean: 0.4, std: 2.1, k_sigma: 3, lookback_days: 28 },
+      effect_size: -18.6, runtime_ms: 1, sql: [{ sql: "SELECT 1", rows_hash: "x" }] };
+    render(<CaseView id={CASE.case_id} initial={{ ...CASE, receipts: [...CASE.receipts, trigger] }} />);
+    expect(screen.getByTestId("trigger")).toHaveTextContent("Opened automatically. Demand ran 39.5% below forecast for 30 hours in a row");
+    await userEvent.click(within(screen.getByTestId("trigger")).getByRole("button", { name: /show evidence/i }));
+    expect(within(screen.getByTestId("trigger")).getByTestId("receipt")).toHaveTextContent("Why was this investigation opened?");
   });
 });

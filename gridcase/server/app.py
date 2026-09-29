@@ -41,12 +41,13 @@ from gridcase.bench.run import SuiteResult
 from gridcase.bench.score import score
 from gridcase.investigate import investigate
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
-from gridcase.planner.llm import LLM, AnthropicLLM
+from gridcase.planner.llm import LLM, AnthropicLLM, FakeLLM
 from gridcase.server.scheduler import drain_scheduled
 from gridcase.server.tasks import TaskRegistry
 from gridcase.store.db import connect
 from gridcase.tools.base import run_tool
 from gridcase.tools.registry import TOOL_INPUTS, TOOL_NAMES
+from gridcase.watch import watch as run_watch
 
 log = logging.getLogger("gridcase")
 WEB_DIST = config.ROOT / "web" / "dist"
@@ -134,6 +135,7 @@ def create_app(
     llm_factory: Callable[[], LLM] | None = None,
     drain_interval_s: float | None = 600.0,
     ingest_interval_s: float | None = None,
+    watch: bool = False,
     asker_factory: Callable[[], Asker] | None = None,
     ask_per_window: int = 10,
     ask_window_s: float = 600.0,
@@ -255,6 +257,20 @@ def create_app(
                     _live_ingest(cur())
                 except Exception as e:  # noqa: BLE001
                     log.warning("live ingest failed: %s", e)
+                if watch:  # fresh data in: does any region's KPI alarm fire?
+                    c = cur()
+                    try:
+                        run_watch(
+                            c,
+                            datetime.now(UTC).replace(tzinfo=None),
+                            llm_factory,
+                            FakeLLM,
+                            config.auto_paid_cases_per_day(),
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("watch failed: %s", e)
+                    finally:
+                        c.close()
                 next_ingest = now + ingest_interval_s
             if drain_interval_s and now >= next_drain:
                 try:

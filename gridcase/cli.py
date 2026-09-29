@@ -167,6 +167,7 @@ class ServeOptions:
     ingest_interval_s: float | None
     drain_interval_s: float | None
     llm: str = "auto"
+    watch: bool = True
 
 
 def choose_llm_factory(llm: str, has_key: bool) -> Callable[[], LLM]:
@@ -193,6 +194,7 @@ def _serve_options_from(a: argparse.Namespace) -> ServeOptions:
         ingest_interval_s=None if a.no_ingest else float(a.ingest_interval),
         drain_interval_s=None if a.no_drain else float(a.drain_interval),
         llm=a.llm,
+        watch=not a.no_watch,
     )
 
 
@@ -203,6 +205,11 @@ def _add_serve_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--no-ingest", action="store_true", help="do not run the live ingest")
     p.add_argument("--drain-interval", type=float, default=600.0, help="seconds")
     p.add_argument("--no-drain", action="store_true", help="do not run scheduled re-checks")
+    p.add_argument(
+        "--no-watch",
+        action="store_true",
+        help="do not open investigations automatically when the KPI alarm fires",
+    )
     p.add_argument(
         "--llm",
         choices=["auto", "fake", "anthropic"],
@@ -226,6 +233,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         llm_factory=factory,
         ingest_interval_s=opts.ingest_interval_s,
         drain_interval_s=opts.drain_interval_s,
+        watch=opts.watch,
     )
     uvicorn.run(app, host=opts.host, port=opts.port, log_level="info")
     return 0

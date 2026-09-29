@@ -1,6 +1,6 @@
 # Plan: fewer false alarms, better supply-shortfall calls
 
-Status: proposed 2026-09-29, awaiting go. Owner: Claude (Fable). Cost: ~1 day of work + one
+Status: PARKED 2026-09-29 (user chose a plain rolling-statistics alarm for now, `ontology/alarm.yaml`); results below kept for later. Owner: Claude (Fable). Cost: ~1 day of work + one
 3-hour benchmark run on the VPS. Baseline to beat (`bench/results/2026-09-29_fake.json`):
 false alarms **24/100**, synthetic top-1 **48%** (H2 **16%**), replay top-1 **3/5**.
 
@@ -94,3 +94,16 @@ and noisy, and its first-published demand value is the forecast itself. Part A's
 quantile is therefore not optional, and CAISO needs the placeholder rows (D = DF exactly)
 excluded from both the threshold fit and the detector's input; the replay case `caiso_2020`
 is affected.
+
+## Results so far (VPS, seed 1, full store)
+
+| run | false alarms | synthetic top-1 | top-3 | H2 top-1 | replay |
+|---|---|---|---|---|---|
+| main (before) | 24/100 | 48% | 73% | 16% | 3/5 |
+| Part A @ daily-max q0.90 | 15/100 | 49% | 73.5% | 16% | 3/5 |
+| **Part A @ daily-max q0.95** | **6/100** | **51%** | **76.5%** | 12% | 3/5 |
+
+Part A @ 0.95 meets the false-alarm target and costs nothing elsewhere except 4 points of H2
+(1 case in 25). Replay is unchanged (Uri, June 2023 heat, eclipse right; Elliott and CAISO
+2020 still say weather first). Part B runs next at 0.95 (and at 0.90 for comparison); then
+the chosen configuration is confirmed on seed 2.

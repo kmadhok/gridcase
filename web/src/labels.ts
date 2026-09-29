@@ -74,6 +74,7 @@ export function stepQuestion(tool: string, inputs: Record<string, unknown> = {})
     case "variance.plan_vs_actual": return "How big was the miss?";
     case "contribution.subregion": return "Was one area driving it?";
     case "baseline.expected": return "What was normal for this hour?";
+    case "kpi.alarm": return "Why was this investigation opened?";
     case "anomaly.detect":
       if (metric === "supply_gap_mw") return "Was generation short of the forecast?";
       if (metric === "net_interchange") return "Were imports maxed out?";

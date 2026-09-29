@@ -84,3 +84,10 @@ def test_logging_never_echoes_request_urls_that_carry_api_keys() -> None:
     configure_logging()
     assert logging.getLogger("httpx").level >= logging.WARNING
     assert logging.getLogger("httpcore").level >= logging.WARNING
+
+
+def test_serve_watches_for_alarms_by_default_and_can_be_told_not_to() -> None:
+    from gridcase.cli import serve_options
+
+    assert serve_options([]).watch is True
+    assert serve_options(["--no-watch"]).watch is False
