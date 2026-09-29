@@ -46,6 +46,9 @@ from gridcase.tools.registry import TOOL_INPUTS, TOOL_NAMES
 log = logging.getLogger("gridcase")
 WEB_DIST = config.ROOT / "web" / "dist"
 SETTLE_WINDOW = timedelta(hours=3)  # a forecast revised within this window is not settled yet
+# EIA's US48 forecast is a computed sum that keeps filling in for about a day; reporting BAs
+# settle within hours.
+SETTLE_AGE = {"US48": timedelta(hours=24)}
 
 
 def _parse(t: str) -> datetime:
@@ -258,6 +261,7 @@ def create_app(
         try:
             regions = []
             cases = list_cases(c)
+            now = datetime.now(UTC).replace(tzinfo=None)
             for ba in config.REGIONS:
                 # EIA publishes aggregate forecasts incrementally (a partial US48 sum can sit
                 # at 40% for hours), so an hour whose forecast moved by more than 5% in the last
@@ -276,9 +280,11 @@ def create_app(
                               AND abs(o.value - f.value) > 0.05 * abs(f.value))
                     SELECT d.valid_time, d.value, f.value FROM d JOIN f USING (valid_time)
                     WHERE d.valid_time NOT IN (SELECT valid_time FROM unsettled)
+                      AND d.valid_time <= ?
+                      AND d.value <> f.value  -- EIA's first CAISO demand value is the forecast
                     ORDER BY d.valid_time DESC LIMIT 1
                     """,
-                    [ba, ba, ba, datetime.now(UTC).replace(tzinfo=None) - SETTLE_WINDOW],
+                    [ba, ba, ba, now - SETTLE_WINDOW, now - SETTLE_AGE.get(ba, timedelta(0))],
                 ).fetchone()
                 open_case = next((x for x in cases if x.entity == ba and x.state != "closed"), None)
                 last_case = open_case or next((x for x in cases if x.entity == ba), None)

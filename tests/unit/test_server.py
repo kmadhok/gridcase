@@ -151,7 +151,7 @@ def test_map_skips_hours_whose_forecast_is_still_being_revised(store: Path) -> N
     def obs(series: str, t: datetime, value: float, seen: datetime) -> Observation:
         return Observation(
             series_id=series,
-            entity_id="US48",
+            entity_id="PJM",
             valid_time=t,
             value=value,
             observed_at=seen,
@@ -177,7 +177,89 @@ def test_map_skips_hours_whose_forecast_is_still_being_revised(store: Path) -> N
     conn.close()
     app = create_app(db_path=store, token="t", llm_factory=FakeLLM, drain_interval_s=None)
     with TestClient(app) as client:
+        pjm = next(r for r in client.get("/api/map").json()["regions"] if r["entity"] == "PJM")
+    assert pjm["latest_hour"] == old.isoformat()
+    assert pjm["forecast_mw"] == 398_000
+    assert abs(pjm["forecast_error_pct"] - 0.5) < 0.01
+
+
+def test_map_treats_the_us48_aggregate_as_settled_only_after_a_day(store: Path) -> None:
+    """EIA's US48 day-ahead forecast is a computed sum that keeps filling in for ~a day
+    (02-05Z on 2026-09-29 sat 10% low for 10+ hours with no further revision). For the
+    aggregate the tile shows the latest hour at least 24 h old."""
+    from gridcase.store.db import append_observations
+    from gridcase.store.models import Observation
+
+    now = datetime.now(UTC).replace(tzinfo=None, minute=0, second=0, microsecond=0)
+    fresh, day_old = now - timedelta(hours=4), now - timedelta(hours=25)
+
+    def obs(series: str, t: datetime, value: float) -> Observation:
+        seen = t - timedelta(hours=20) if series == "eia.DF" else t + timedelta(minutes=17)
+        return Observation(
+            series_id=series,
+            entity_id="US48",
+            valid_time=t,
+            value=value,
+            observed_at=seen,
+            available_at=seen,
+            source="eia",
+            vintage="observed",
+            raw_hash="x",
+        )
+
+    conn = connect(store)
+    append_observations(
+        conn,
+        [
+            obs("eia.D", day_old, 450_000),
+            obs("eia.DF", day_old, 445_500),
+            obs("eia.D", fresh, 480_040),
+            obs("eia.DF", fresh, 431_921),  # partial sum, unrevised
+        ],
+    )
+    conn.close()
+    app = create_app(db_path=store, token="t", llm_factory=FakeLLM, drain_interval_s=None)
+    with TestClient(app) as client:
         us48 = next(r for r in client.get("/api/map").json()["regions"] if r["entity"] == "US48")
-    assert us48["latest_hour"] == old.isoformat()
-    assert us48["forecast_mw"] == 398_000
-    assert abs(us48["forecast_error_pct"] - 0.5) < 0.01
+    assert us48["latest_hour"] == day_old.isoformat()
+    assert abs(us48["forecast_error_pct"] - 1.01) < 0.01
+
+
+def test_map_skips_placeholder_hours_where_demand_equals_the_forecast(store: Path) -> None:
+    """EIA's first CAISO demand value for an hour is the forecast itself (29,952 → 29,842
+    on revision); an hour whose demand equals its forecast to the MW is not real yet."""
+    from gridcase.store.db import append_observations
+    from gridcase.store.models import Observation
+
+    now = datetime.now(UTC).replace(tzinfo=None, minute=0, second=0, microsecond=0)
+    hot, old = now - timedelta(hours=1), now - timedelta(hours=2)
+
+    def obs(series: str, t: datetime, value: float) -> Observation:
+        seen = t - timedelta(hours=20) if series == "eia.DF" else t + timedelta(minutes=17)
+        return Observation(
+            series_id=series,
+            entity_id="CISO",
+            valid_time=t,
+            value=value,
+            observed_at=seen,
+            available_at=seen,
+            source="eia",
+            vintage="observed",
+            raw_hash="x",
+        )
+
+    conn = connect(store)
+    append_observations(
+        conn,
+        [
+            obs("eia.D", old, 27_959),
+            obs("eia.DF", old, 28_172),
+            obs("eia.D", hot, 26_097),
+            obs("eia.DF", hot, 26_097),  # placeholder
+        ],
+    )
+    conn.close()
+    app = create_app(db_path=store, token="t", llm_factory=FakeLLM, drain_interval_s=None)
+    with TestClient(app) as client:
+        ciso = next(r for r in client.get("/api/map").json()["regions"] if r["entity"] == "CISO")
+    assert ciso["latest_hour"] == old.isoformat()
