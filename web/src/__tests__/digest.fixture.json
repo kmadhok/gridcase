@@ -1,0 +1,1303 @@
+{
+ "day": "2026-10-15",
+ "as_of": "2026-10-15T00:30:00",
+ "period_days": 7,
+ "period_words": {
+  "current": "this week",
+  "previous": "last week"
+ },
+ "windows": {
+  "current": [
+   "2026-10-08T00:00:00",
+   "2026-10-15T00:00:00"
+  ],
+  "previous": [
+   "2026-10-01T00:00:00",
+   "2026-10-08T00:00:00"
+  ],
+  "yesterday": [
+   "2026-10-14T00:00:00",
+   "2026-10-15T00:00:00"
+  ]
+ },
+ "headline": {
+  "text": "Sports took 8 more points of the money this week.",
+  "receipt_ids": [
+   "6ef2cec208fa97a340e8f5b0"
+  ],
+  "tier": "governed",
+  "card": "share_shift"
+ },
+ "totals": {
+  "items": [
+   {
+    "kpi": "volume_usd",
+    "now": 127365.0,
+    "before": 101000.0,
+    "pct_change": 26.10396
+   },
+   {
+    "kpi": "active_traders",
+    "now": 40.0,
+    "before": 30.0,
+    "pct_change": 33.333333
+   },
+   {
+    "kpi": "markets_traded",
+    "now": 6.0,
+    "before": 4.0,
+    "pct_change": 50.0
+   },
+   {
+    "kpi": "new_traders",
+    "now": 10.0,
+    "before": 30.0,
+    "pct_change": -66.666667
+   }
+  ],
+  "sentence": {
+   "text": "$127k was traded this week, 26% more than last week, by 40 active traders.",
+   "receipt_ids": [
+    "280b57992d77846be1970fee"
+   ],
+   "tier": "governed"
+  }
+ },
+ "cards": [
+  {
+   "id": "share_shift",
+   "section": "What changed",
+   "question": "Which category gained share of volume?",
+   "note": "Each category's share of volume, this period against the one before",
+   "data": {
+    "dimension": "category",
+    "segments": [
+     {
+      "segment": "Sports",
+      "now": 0.414086,
+      "before": 0.334653,
+      "change": 0.079432
+     },
+     {
+      "segment": "Politics",
+      "now": 0.321124,
+      "before": 0.332673,
+      "change": -0.011549
+     },
+     {
+      "segment": "Crypto",
+      "now": 0.26479,
+      "before": 0.332673,
+      "change": -0.067883
+     }
+    ],
+    "insufficient": false,
+    "top_gainer": "Sports",
+    "gain": 0.079432,
+    "top_loser": "Crypto",
+    "loss": -0.067883
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "Sports rose from 33% to 41% of all volume this week. Crypto gave up the most, falling from 33% to 26%.",
+    "receipt_ids": [
+     "6ef2cec208fa97a340e8f5b0"
+    ],
+    "tier": "governed"
+   }
+  },
+  {
+   "id": "movers",
+   "section": "What changed",
+   "question": "Which markets came out of nowhere yesterday?",
+   "note": "Each market's volume yesterday against its own daily average",
+   "data": {
+    "markets": [
+     {
+      "market": "Chiefs vs Bills",
+      "now": 1000.0,
+      "usual": 200.0,
+      "change": 800.0,
+      "ratio": 5.0
+     },
+     {
+      "market": "England vs Czechia",
+      "now": 7240.0,
+      "usual": 6871.428571,
+      "change": 368.571429,
+      "ratio": 1.053638
+     },
+     {
+      "market": "Fed decision",
+      "now": 250.0,
+      "usual": 0.0,
+      "change": 250.0,
+      "ratio": null
+     },
+     {
+      "market": "Bitcoin Up or Down",
+      "now": 4925.0,
+      "usual": 4800.0,
+      "change": 125.0,
+      "ratio": 1.026042
+     },
+     {
+      "market": "Senate race",
+      "now": 50.0,
+      "usual": 0.0,
+      "change": 50.0,
+      "ratio": null
+     }
+    ],
+    "baseline_days_used": 7,
+    "insufficient": false
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "Chiefs vs Bills traded 5.0 times its usual daily volume yesterday: $1,000 against about $200.",
+    "receipt_ids": [
+     "2695b383357da27cbf554d1a"
+    ],
+    "tier": "governed"
+   }
+  },
+  {
+   "id": "odds_swings",
+   "section": "What traders believe",
+   "question": "Whose odds moved the most yesterday?",
+   "note": "First against last price of the day; event markets, 20+ trades, moves of 5\u00a2 or more",
+   "data": {
+    "swings": [
+     {
+      "market": "Will the Fed cut?",
+      "outcome": "Yes",
+      "open": 0.3,
+      "close": 0.8,
+      "move": 0.5
+     }
+    ],
+    "outcomes_considered": 2
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "Will the Fed cut? (Yes) went from 30\u00a2 to 80\u00a2 yesterday, the biggest odds move of any event market.",
+    "receipt_ids": [
+     "c97502367f9414c6ab1499cb"
+    ],
+    "tier": "governed"
+   }
+  },
+  {
+   "id": "whales",
+   "section": "Who is trading",
+   "question": "Are whales or regular traders driving the money?",
+   "note": "Share of volume from trades of $1,000 or more, by day",
+   "data": {
+    "kpi": "whale_share",
+    "days": [
+     {
+      "day": "2026-10-08",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-09",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-10",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-11",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-12",
+      "value": 0.105263
+     },
+     {
+      "day": "2026-10-13",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-14",
+      "value": 0.05475
+     }
+    ],
+    "mean": 0.022859,
+    "peak_day": "2026-10-12",
+    "peak_value": 0.105263,
+    "low_day": "2026-10-08",
+    "low_value": 0.0
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "Whales placed 11% of Monday's volume, the highest share this week; the average day was 2%.",
+    "receipt_ids": [
+     "520c3fb67dda85beb11e8d2c"
+    ],
+    "tier": "governed"
+   }
+  },
+  {
+   "id": "retention",
+   "section": "Who is trading",
+   "question": "Do new traders come back the next day?",
+   "note": "Wallets on their first day in our record that traded again the next day",
+   "data": {
+    "days": [
+     {
+      "day": "2026-10-13",
+      "new": 10,
+      "came_back": 4,
+      "rate": 0.4
+     }
+    ],
+    "latest": {
+     "day": "2026-10-13",
+     "new": 10,
+     "came_back": 4,
+     "rate": 0.4
+    },
+    "mean_rate": 0.4
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "40% of the 10 new traders on Tuesday came back the next day.",
+    "receipt_ids": [
+     "d4c1b2234c163bc8d8ea33c7"
+    ],
+    "tier": "governed"
+   }
+  },
+  {
+   "id": "rhythm",
+   "section": "How the market behaves",
+   "question": "When is Polymarket busiest?",
+   "note": "Average volume by weekday and hour, UTC",
+   "data": {
+    "grid": [
+     {
+      "weekday": "Monday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       2700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Tuesday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       800.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Wednesday",
+      "hours": [
+       700.0,
+       1075.0,
+       700.0,
+       750.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       740.0,
+       700.0,
+       700.0,
+       1700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Thursday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Friday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Saturday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Sunday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       5700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     }
+    ],
+    "peak": {
+     "weekday": "Sunday",
+     "hour": 19
+    },
+    "peak_value": 5700.0,
+    "quiet": {
+     "weekday": "Monday",
+     "hour": 0
+    },
+    "quiet_value": 700.0
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "Money peaks on Sundays around 19:00 UTC and is quietest on Mondays around 00:00 UTC.",
+    "receipt_ids": [
+     "12c46e0b8c880285d38d9911"
+    ],
+    "tier": "governed"
+   }
+  },
+  {
+   "id": "concentration",
+   "section": "How the market behaves",
+   "question": "How concentrated is the money?",
+   "note": "Markets ranked by volume until they make up half of it",
+   "data": {
+    "markets": 6,
+    "markets_for_half": 2,
+    "half_share": 0.715581,
+    "total": 127365.0,
+    "top": [
+     {
+      "market": "England vs Czechia",
+      "value": 50540.0
+     },
+     {
+      "market": "Election winner",
+      "value": 40600.0
+     },
+     {
+      "market": "Bitcoin Up or Down",
+      "value": 33725.0
+     },
+     {
+      "market": "Chiefs vs Bills",
+      "value": 2200.0
+     },
+     {
+      "market": "Fed decision",
+      "value": 250.0
+     }
+    ]
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "Half of all volume went to just 2 markets, out of 6 that traded this week.",
+    "receipt_ids": [
+     "cf489572f5497a0de5fb37a4"
+    ],
+    "tier": "governed"
+   }
+  },
+  {
+   "id": "kind",
+   "section": "How the market behaves",
+   "question": "How much is 5-minute crypto betting, and how much is real forecasting?",
+   "note": "Share of volume in recurring Up or Down markets, by day",
+   "data": {
+    "kpi": "recurring_share",
+    "days": [
+     {
+      "day": "2026-10-08",
+      "value": 0.282353
+     },
+     {
+      "day": "2026-10-09",
+      "value": 0.282353
+     },
+     {
+      "day": "2026-10-10",
+      "value": 0.282353
+     },
+     {
+      "day": "2026-10-11",
+      "value": 0.218182
+     },
+     {
+      "day": "2026-10-12",
+      "value": 0.252632
+     },
+     {
+      "day": "2026-10-13",
+      "value": 0.280702
+     },
+     {
+      "day": "2026-10-14",
+      "value": 0.269641
+     }
+    ],
+    "mean": 0.266888,
+    "peak_day": "2026-10-10",
+    "peak_value": 0.282353,
+    "low_day": "2026-10-11",
+    "low_value": 0.218182
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "27% of the money went to short recurring crypto rounds (\"Up or Down\" markets) this week; the rest was on real events.",
+    "receipt_ids": [
+     "7f4ff46417a51fd93cfab7df"
+    ],
+    "tier": "governed"
+   }
+  },
+  {
+   "id": "alarms",
+   "section": "What the watch caught",
+   "question": "What set off an alarm in the last day?",
+   "note": "Investigations the hourly watch opened",
+   "data": {
+    "cases": []
+   },
+   "insufficient": false,
+   "sentence": {
+    "text": "No watched number went outside its usual range in the last day.",
+    "receipt_ids": [],
+    "tier": "inferred"
+   }
+  }
+ ],
+ "coverage": {
+  "gap_minutes": 0,
+  "gaps": 0,
+  "empty_hours": 0,
+  "hours_checked": 336,
+  "freshness_minutes": 58.0,
+  "complete": 0,
+  "before_record_start": 0
+ },
+ "receipts": [
+  {
+   "receipt_id": "6ef2cec208fa97a340e8f5b0",
+   "tool": "digest.share_shift",
+   "inputs": {
+    "current": [
+     "2026-10-08T00:00:00",
+     "2026-10-15T00:00:00"
+    ],
+    "dimension": "category",
+    "previous": [
+     "2026-10-01T00:00:00",
+     "2026-10-08T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "dimension": "category",
+    "segments": [
+     {
+      "segment": "Sports",
+      "now": 0.414086,
+      "before": 0.334653,
+      "change": 0.079432
+     },
+     {
+      "segment": "Politics",
+      "now": 0.321124,
+      "before": 0.332673,
+      "change": -0.011549
+     },
+     {
+      "segment": "Crypto",
+      "now": 0.26479,
+      "before": 0.332673,
+      "change": -0.067883
+     }
+    ],
+    "insufficient": false,
+    "top_gainer": "Sports",
+    "gain": 0.079432,
+    "top_loser": "Crypto",
+    "loss": -0.067883
+   },
+   "effect_size": 0.079432,
+   "runtime_ms": 8,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "ac122d381e4c"
+    }
+   ]
+  },
+  {
+   "receipt_id": "2695b383357da27cbf554d1a",
+   "tool": "digest.movers",
+   "inputs": {
+    "baseline_days": 7,
+    "top_n": 5,
+    "window": [
+     "2026-10-14T00:00:00",
+     "2026-10-15T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "markets": [
+     {
+      "market": "Chiefs vs Bills",
+      "now": 1000.0,
+      "usual": 200.0,
+      "change": 800.0,
+      "ratio": 5.0
+     },
+     {
+      "market": "England vs Czechia",
+      "now": 7240.0,
+      "usual": 6871.428571,
+      "change": 368.571429,
+      "ratio": 1.053638
+     },
+     {
+      "market": "Fed decision",
+      "now": 250.0,
+      "usual": 0.0,
+      "change": 250.0,
+      "ratio": null
+     },
+     {
+      "market": "Bitcoin Up or Down",
+      "now": 4925.0,
+      "usual": 4800.0,
+      "change": 125.0,
+      "ratio": 1.026042
+     },
+     {
+      "market": "Senate race",
+      "now": 50.0,
+      "usual": 0.0,
+      "change": 50.0,
+      "ratio": null
+     }
+    ],
+    "baseline_days_used": 7,
+    "insufficient": false
+   },
+   "effect_size": 800.0,
+   "runtime_ms": 3,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "c09493a9cc21"
+    }
+   ]
+  },
+  {
+   "receipt_id": "c97502367f9414c6ab1499cb",
+   "tool": "digest.odds_swings",
+   "inputs": {
+    "top_n": 5,
+    "window": [
+     "2026-10-14T00:00:00",
+     "2026-10-15T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "swings": [
+     {
+      "market": "Will the Fed cut?",
+      "outcome": "Yes",
+      "open": 0.3,
+      "close": 0.8,
+      "move": 0.5
+     }
+    ],
+    "outcomes_considered": 2
+   },
+   "effect_size": 0.5,
+   "runtime_ms": 1,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "5adbd9d746f0"
+    }
+   ]
+  },
+  {
+   "receipt_id": "520c3fb67dda85beb11e8d2c",
+   "tool": "digest.by_day",
+   "inputs": {
+    "kpi": "whale_share",
+    "window": [
+     "2026-10-08T00:00:00",
+     "2026-10-15T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "kpi": "whale_share",
+    "days": [
+     {
+      "day": "2026-10-08",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-09",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-10",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-11",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-12",
+      "value": 0.105263
+     },
+     {
+      "day": "2026-10-13",
+      "value": 0.0
+     },
+     {
+      "day": "2026-10-14",
+      "value": 0.05475
+     }
+    ],
+    "mean": 0.022859,
+    "peak_day": "2026-10-12",
+    "peak_value": 0.105263,
+    "low_day": "2026-10-08",
+    "low_value": 0.0
+   },
+   "effect_size": 0.105263,
+   "runtime_ms": 0,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "e3e22979e7dd"
+    }
+   ]
+  },
+  {
+   "receipt_id": "d4c1b2234c163bc8d8ea33c7",
+   "tool": "digest.retention",
+   "inputs": {
+    "window": [
+     "2026-10-07T00:00:00",
+     "2026-10-15T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "days": [
+     {
+      "day": "2026-10-13",
+      "new": 10,
+      "came_back": 4,
+      "rate": 0.4
+     }
+    ],
+    "latest": {
+     "day": "2026-10-13",
+     "new": 10,
+     "came_back": 4,
+     "rate": 0.4
+    },
+    "mean_rate": 0.4
+   },
+   "effect_size": 0.4,
+   "runtime_ms": 1,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "b00b88848913"
+    }
+   ]
+  },
+  {
+   "receipt_id": "12c46e0b8c880285d38d9911",
+   "tool": "digest.rhythm",
+   "inputs": {
+    "window": [
+     "2026-10-08T00:00:00",
+     "2026-10-15T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "grid": [
+     {
+      "weekday": "Monday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       2700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Tuesday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       800.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Wednesday",
+      "hours": [
+       700.0,
+       1075.0,
+       700.0,
+       750.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       740.0,
+       700.0,
+       700.0,
+       1700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Thursday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Friday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Saturday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     },
+     {
+      "weekday": "Sunday",
+      "hours": [
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       900.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0,
+       5700.0,
+       700.0,
+       700.0,
+       700.0,
+       700.0
+      ]
+     }
+    ],
+    "peak": {
+     "weekday": "Sunday",
+     "hour": 19
+    },
+    "peak_value": 5700.0,
+    "quiet": {
+     "weekday": "Monday",
+     "hour": 0
+    },
+    "quiet_value": 700.0
+   },
+   "effect_size": 5700.0,
+   "runtime_ms": 1,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "5f2ce550e7d5"
+    }
+   ]
+  },
+  {
+   "receipt_id": "cf489572f5497a0de5fb37a4",
+   "tool": "digest.concentration",
+   "inputs": {
+    "window": [
+     "2026-10-08T00:00:00",
+     "2026-10-15T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "markets": 6,
+    "markets_for_half": 2,
+    "half_share": 0.715581,
+    "total": 127365.0,
+    "top": [
+     {
+      "market": "England vs Czechia",
+      "value": 50540.0
+     },
+     {
+      "market": "Election winner",
+      "value": 40600.0
+     },
+     {
+      "market": "Bitcoin Up or Down",
+      "value": 33725.0
+     },
+     {
+      "market": "Chiefs vs Bills",
+      "value": 2200.0
+     },
+     {
+      "market": "Fed decision",
+      "value": 250.0
+     }
+    ]
+   },
+   "effect_size": 0.715581,
+   "runtime_ms": 0,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "af9a05f77a0e"
+    }
+   ]
+  },
+  {
+   "receipt_id": "7f4ff46417a51fd93cfab7df",
+   "tool": "digest.by_day",
+   "inputs": {
+    "kpi": "recurring_share",
+    "window": [
+     "2026-10-08T00:00:00",
+     "2026-10-15T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "kpi": "recurring_share",
+    "days": [
+     {
+      "day": "2026-10-08",
+      "value": 0.282353
+     },
+     {
+      "day": "2026-10-09",
+      "value": 0.282353
+     },
+     {
+      "day": "2026-10-10",
+      "value": 0.282353
+     },
+     {
+      "day": "2026-10-11",
+      "value": 0.218182
+     },
+     {
+      "day": "2026-10-12",
+      "value": 0.252632
+     },
+     {
+      "day": "2026-10-13",
+      "value": 0.280702
+     },
+     {
+      "day": "2026-10-14",
+      "value": 0.269641
+     }
+    ],
+    "mean": 0.266888,
+    "peak_day": "2026-10-10",
+    "peak_value": 0.282353,
+    "low_day": "2026-10-11",
+    "low_value": 0.218182
+   },
+   "effect_size": 0.282353,
+   "runtime_ms": 0,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "92a08fc65cea"
+    }
+   ]
+  },
+  {
+   "receipt_id": "280b57992d77846be1970fee",
+   "tool": "digest.totals",
+   "inputs": {
+    "current": [
+     "2026-10-08T00:00:00",
+     "2026-10-15T00:00:00"
+    ],
+    "kpis": [
+     "volume_usd",
+     "active_traders",
+     "markets_traded",
+     "new_traders"
+    ],
+    "previous": [
+     "2026-10-01T00:00:00",
+     "2026-10-08T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "days": 7,
+    "items": [
+     {
+      "kpi": "volume_usd",
+      "now": 127365.0,
+      "before": 101000.0,
+      "pct_change": 26.10396
+     },
+     {
+      "kpi": "active_traders",
+      "now": 40.0,
+      "before": 30.0,
+      "pct_change": 33.333333
+     },
+     {
+      "kpi": "markets_traded",
+      "now": 6.0,
+      "before": 4.0,
+      "pct_change": 50.0
+     },
+     {
+      "kpi": "new_traders",
+      "now": 10.0,
+      "before": 30.0,
+      "pct_change": -66.666667
+     }
+    ],
+    "insufficient": false
+   },
+   "effect_size": null,
+   "runtime_ms": 4,
+   "sql": [
+    {
+     "sql": "WITH win AS (\n    SELECT t.*, m.category AS m_category, m.event_title AS m_event_title\n    FROM trades_as_of(TIMESTAMP '2026-10-15 00:30:00') t LEFT JOIN markets m USING (condition_id)\n    WHERE t.ts  \u2026",
+     "rows_hash": "25a61613befb"
+    }
+   ]
+  },
+  {
+   "receipt_id": "ec069f5c48aa59f04740744d",
+   "tool": "data.coverage",
+   "inputs": {
+    "window": [
+     "2026-10-01T00:00:00",
+     "2026-10-15T00:00:00"
+    ]
+   },
+   "as_of": "2026-10-15T00:30:00",
+   "data_version": "2026-10-14T23:32:00",
+   "output": {
+    "gap_minutes": 0,
+    "gaps": 0,
+    "empty_hours": 0,
+    "hours_checked": 336,
+    "freshness_minutes": 58.0,
+    "complete": 0,
+    "before_record_start": 0
+   },
+   "effect_size": 0.0,
+   "runtime_ms": 1,
+   "sql": [
+    {
+     "sql": "SELECT gap_from, gap_to FROM collector_gaps WHERE gap_to > ? AND gap_from < ? AND coalesce(detected_at, gap_to) <= ? \u2026",
+     "rows_hash": "4f53cda18c2b"
+    }
+   ]
+  }
+ ]
+}

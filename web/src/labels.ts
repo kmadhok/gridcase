@@ -85,6 +85,14 @@ export function stepQuestion(tool: string, inputs: Record<string, unknown> = {})
     case "by.odds": return "Long shots or favourites?" + suffix;
     case "by.kind": return "Recurring 5-minute markets or real events?" + suffix;
     case "kpi.alarm": return "Why was this investigation opened?";
+    case "digest.totals": return "How did the period compare with the one before?";
+    case "digest.share_shift": return "Which category gained share of volume?";
+    case "digest.movers": return "Which markets came out of nowhere?";
+    case "digest.odds_swings": return "Whose odds moved the most?";
+    case "digest.by_day": return `${kpiLabel(String(inputs.kpi ?? ""))}, day by day`;
+    case "digest.retention": return "Did new traders come back the next day?";
+    case "digest.rhythm": return "When is trading busiest?";
+    case "digest.concentration": return "How few markets hold half the money?";
     default: return tool;
   }
 }

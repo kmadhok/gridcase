@@ -9,6 +9,7 @@
   --gc-line: #e4e4e0;
   --gc-accent: #b45309; /* amber: the miss */
   --gc-ok: #15803d; /* green: supported */
+  --gc-mark: #cfcfc8; /* grey chart marks: everything the sentence is not about */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -20,6 +21,7 @@
     --gc-line: #2e2e2b;
     --gc-accent: #f59e0b;
     --gc-ok: #4ade80;
+    --gc-mark: #4a4a45;
   }
 }
 

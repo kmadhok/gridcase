@@ -139,6 +139,39 @@ export interface CatalogResponse {
   dimensions: { id: string; label: string; values: string[] | null }[];
 }
 
+export interface DigestSentence {
+  text: string;
+  receipt_ids: string[];
+  tier: Tier;
+}
+
+export interface DigestCard {
+  id: string;
+  section: string;
+  question: string;
+  note: string;
+  insufficient: boolean;
+  sentence: DigestSentence;
+  // the check's output (chart data); its shape depends on the card
+  data: Record<string, unknown>;
+}
+
+export interface Digest {
+  day: string;
+  as_of: string;
+  period_days: number;
+  period_words: { current: string; previous: string };
+  windows: { current: [string, string]; previous: [string, string] | null; yesterday: [string, string] };
+  headline: (DigestSentence & { card: string }) | null;
+  totals: {
+    items: { kpi: string; now: number; before: number | null; pct_change: number | null }[];
+    sentence: DigestSentence | null;
+  };
+  cards: DigestCard[];
+  coverage: { gap_minutes: number; empty_hours: number } | null;
+  receipts: Receipt[];
+}
+
 async function get<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
@@ -148,6 +181,8 @@ async function get<T>(url: string): Promise<T> {
 export const api = {
   now: () => get<NowResponse>("/api/now"),
   catalog: () => get<CatalogResponse>("/api/catalog"),
+  digest: (day?: string) => get<Digest>(day ? `/api/digest/${encodeURIComponent(day)}` : "/api/digest"),
+  digests: () => get<{ day: string }[]>("/api/digests"),
   cases: () => get<CaseSummary[]>("/api/cases"),
   case: (id: string) => get<CaseFull>(`/api/cases/${encodeURIComponent(id)}`),
   ask,

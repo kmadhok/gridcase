@@ -277,7 +277,7 @@ CARDS: list[tuple[str, str, str, str]] = [
         "odds_swings",
         "What traders believe",
         "Whose odds moved the most yesterday?",
-        "First against last price of the day; event markets, 20 or more trades",
+        "First against last price of the day; event markets, 20+ trades, moves of 5¢ or more",
     ),
     (
         "whales",

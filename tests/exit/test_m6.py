@@ -253,6 +253,7 @@ def test_5_the_biggest_odds_swing_once_per_market(digest: dict[str, Any]) -> Non
     assert markets.count("Will the Fed cut?") == 1
     assert "Will the Senate flip?" not in markets  # 10 trades: too few
     assert not any("Up or Down" in m for m in markets)  # recurring rounds swing by design
+    assert all(abs(s["close"] - s["open"]) >= 0.05 for s in swings)  # flat outcomes are not news
 
 
 def test_6_four_of_ten_new_traders_came_back(digest: dict[str, Any]) -> None:

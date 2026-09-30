@@ -1,6 +1,6 @@
 # MarketCase (repo: gridcase)
 
-A governed analytics agent for Polymarket: a few KPIs a product team owns are defined once in a semantic layer; every hour each is checked against its usual level; when one moves outside its range the agent investigates why (which market, category, trade size, trader type or odds band moved) and writes an answer where every number links to its query. A PM can also ask questions. Current plan: docs/plans/2026-09-29_polymarket_pivot.md, then docs/plans/2026-09-29_kpi_expansion.md (M7). The power-grid version (original spec docs/SPEC.md) is kept at tag `v1-power-grid`.
+A governed analytics agent for Polymarket: a few KPIs a product team owns are defined once in a semantic layer; every hour each is checked against its usual level; when one moves outside its range the agent investigates why (which market, category, trade size, trader type or odds band moved) and writes an answer where every number links to its query. A PM can also ask questions. Current plan: docs/plans/2026-09-29_polymarket_pivot.md, then docs/plans/2026-09-29_kpi_expansion.md (M7), then docs/plans/2026-09-30_daily_digest.md (M6 digest, M8 public hosting). The power-grid version (original spec docs/SPEC.md) is kept at tag `v1-power-grid`.
 
 ## Stack
 - Python 3.12, uv for env and deps, ruff + mypy --strict, pytest + hypothesis
@@ -29,6 +29,7 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 - uv run gridcase collect            # save live trades (runs as the gridcase-collector service)
 - uv run gridcase refresh            # load collected trades + categorise markets once
 - uv run gridcase investigate --kpi volume_usd --segment category=Sports [--as-of ...]
+- uv run gridcase digest [--day YYYY-MM-DD]   # build the morning read (the server does it at 00:30 UTC)
 - uv run gridcase serve
 
 ## Data caveats you must respect

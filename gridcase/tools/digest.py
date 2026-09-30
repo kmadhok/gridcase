@@ -22,6 +22,7 @@ from gridcase.tools.registry import (
 )
 
 DAY = timedelta(days=1)
+MIN_SWING = 0.05  # an outcome that moved less than 5 cents is not news
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 Out = tuple[dict[str, Any], float | None]
 
@@ -134,7 +135,7 @@ def odds_swings(ctx: ToolCtx, inputs: SwingsInputs) -> Out:
         return {seg: float(v) for seg, v in rows if v is not None}
 
     opening, closing = prices("opening_price"), prices("closing_price")
-    considered = [s for s in opening if s in closing]
+    considered = [s for s in opening if s in closing and abs(closing[s] - opening[s]) >= MIN_SWING]
     # biggest move first; of a market's mirror outcomes, name the one that rose
     considered.sort(
         key=lambda s: (-round(abs(closing[s] - opening[s]), 6), closing[s] < opening[s], s)
