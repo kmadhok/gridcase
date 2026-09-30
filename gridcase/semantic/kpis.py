@@ -260,9 +260,27 @@ def compile_kpi(q: KpiQuery) -> CompiledKpi:
     body, used, sqls = _body(q, kpi, kpis)
 
     as_of, lo, hi = _ts(q.as_of), _ts(q.window[0]), _ts(q.window[1])
-    dim_cols = ",\n               ".join(f"{d.sql} AS d_{d.id}" for d in dims.values())
-    # a market's first trade in our record, only when a KPI asks for it
-    new_markets = any("first_market_ts" in s for s in sqls)
+    # only the dimensions this query refers to, and the first-trade lookups (a scan of our
+    # whole record) only when a KPI or dimension needs them
+    used_dims = [
+        d
+        for d in dims.values()
+        if d.id in q.filters or d.id == q.group_by or any(f"d_{d.id}" in x for x in sqls)
+    ]
+    dim_sqls = [d.sql for d in used_dims]
+    dim_cols = "".join(f",\n               {d.sql} AS d_{d.id}" for d in used_dims)
+    wallets = any("first_ts" in x for x in [*sqls, *dim_sqls])
+    wallet_cte = (
+        f"""
+first_seen AS (
+    SELECT wallet, min(ts) AS first_ts FROM trades_as_of({as_of})
+    WHERE wallet IN (SELECT DISTINCT wallet FROM win) GROUP BY wallet
+),"""
+        if wallets
+        else ""
+    )
+    wallet_join = " JOIN first_seen USING (wallet)" if wallets else ""
+    new_markets = any("first_market_ts" in x for x in [*sqls, *dim_sqls])
     market_cte = (
         f"""
 market_first AS (
@@ -278,15 +296,10 @@ market_first AS (
     SELECT t.*, m.category AS m_category, m.event_title AS m_event_title
     FROM trades_as_of({as_of}) t LEFT JOIN markets m USING (condition_id)
     WHERE t.ts >= {lo} AND t.ts < {hi}
-),
-first_seen AS (
-    SELECT wallet, min(ts) AS first_ts FROM trades_as_of({as_of})
-    WHERE wallet IN (SELECT DISTINCT wallet FROM win) GROUP BY wallet
-),{market_cte}
+),{wallet_cte}{market_cte}
 e AS (
-    SELECT win.ts, win.wallet, win.usd, win.price, win.condition_id, win.asset{market_col},
-               {dim_cols}
-    FROM win JOIN first_seen USING (wallet){market_join}
+    SELECT win.ts, win.wallet, win.usd, win.price, win.condition_id, win.asset{market_col}{dim_cols}
+    FROM win{wallet_join}{market_join}
 ),
 {body}"""
     return CompiledKpi(sql=sql, kpi=q.kpi, measures=used)

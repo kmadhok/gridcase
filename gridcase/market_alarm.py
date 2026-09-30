@@ -81,6 +81,52 @@ def _gap_hours(conn: duckdb.DuckDBPyConnection, lo: datetime, hi: datetime) -> s
     return out
 
 
+# Settled hours never change: the collector sees a trade within ~15 minutes and the server
+# loads every 5, so an hour that ended SETTLED_AFTER ago has all its trades. Their values are
+# kept per store and series, and only newer hours are queried. Keys include the store's file.
+SETTLED_AFTER = timedelta(hours=1)
+_MAX_CACHED = 200_000
+_cache: dict[tuple[str, str, str, datetime], float | None] = {}
+
+
+def clear_cache() -> None:
+    _cache.clear()
+
+
+def _store(conn: duckdb.DuckDBPyConnection) -> str:
+    row = conn.execute(
+        "SELECT coalesce(path, database_name) FROM duckdb_databases() "
+        "WHERE database_name = current_database()"
+    ).fetchone()
+    return str(row[0]) if row else ""
+
+
+def _hour_values(
+    conn: duckdb.DuckDBPyConnection, q: KpiQuery, series: WatchedSeries, as_of: datetime
+) -> dict[datetime, float]:
+    lo, hi = q.window
+    key = (_store(conn), series.kpi, series.segment)
+
+    def settled(h: datetime) -> bool:
+        return h + HOUR + SETTLED_AFTER <= as_of
+
+    hours = [lo + i * HOUR for i in range(int((hi - lo) / HOUR))]
+    first_missing = next((h for h in hours if not (settled(h) and (*key, h) in _cache)), hi)
+    out = {h: _cache[(*key, h)] for h in hours if h < first_missing}
+    if first_missing < hi:
+        fresh_q = q.model_copy(update={"window": (first_missing, hi)})
+        fresh = {t: v for t, v in conn.execute(compile_kpi(fresh_q).sql).fetchall()}
+        if len(_cache) > _MAX_CACHED:
+            _cache.clear()
+        for h in hours:
+            if h >= first_missing:
+                v = fresh.get(h)
+                out[h] = None if v is None else float(v)
+                if settled(h):
+                    _cache[(*key, h)] = out[h]
+    return {h: v for h, v in out.items() if v is not None}
+
+
 @dataclass
 class Hourly:
     """Each complete hour's value next to its usual level for that hour of the day."""
@@ -124,16 +170,11 @@ def hourly(
         else judged_until
     )
     lo = max(record_start, judged_from - timedelta(days=p.lookback_days))
-    q = KpiQuery(
-        kpi=series.kpi,
-        grain="hour",
-        window=(lo, max(judged_until, lo + HOUR)),
-        as_of=as_of,
-        filters=series.filters,
-    )
-    compiled = compile_kpi(q)
-    raw = [tuple(r) for r in conn.execute(compiled.sql).fetchall()]
-    values: dict[datetime, float] = {t: float(v) for t, v in raw if v is not None}
+    hi = max(judged_until, lo + HOUR)
+    q = KpiQuery(kpi=series.kpi, grain="hour", window=(lo, hi), as_of=as_of, filters=series.filters)
+    compiled = compile_kpi(q)  # the audit query: re-running it reproduces every hour below
+    values = _hour_values(conn, q, series, as_of)
+    raw = sorted(values.items())
     gaps = _gap_hours(conn, lo, judged_until)
 
     def value_at(h: datetime) -> float | None:

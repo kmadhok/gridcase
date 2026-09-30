@@ -7,10 +7,15 @@ from typing import Any
 
 import duckdb
 
+from gridcase.market_alarm import clear_cache
+
 
 def add_trades(conn: duckdb.DuckDBPyConnection, rows: list[dict[str, Any]]) -> None:
     """Each row: ts, wallet, usd (price defaults to 0.5, so size = usd / price), and optional
-    condition_id, asset, side, title, event_slug, collected_at (default ts + 2 minutes)."""
+    condition_id, asset, side, title, event_slug, collected_at (default ts + 2 minutes).
+    Tests write into the past, which live collection never does, so the alarm's cache of
+    settled hours is cleared."""
+    clear_cache()
     for i, r in enumerate(rows):
         price = float(r.get("price", 0.5))
         usd = float(r["usd"])
