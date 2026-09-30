@@ -1,6 +1,6 @@
 # MarketCase — KPI expansion plan (M7)
 
-Status: proposed 2026-09-29, awaiting review. Nothing here is implemented.
+Status: approved and implemented 2026-09-29 (M7a–M7c); see docs/DECISIONS.md.
 
 ## Why
 

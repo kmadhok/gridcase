@@ -35,6 +35,7 @@ from gridcase import config
 from gridcase.ask.context import case_context, now_context
 from gridcase.ask.engine import Asker, answer_question, case_checker, checker_at
 from gridcase.ask.llm import default_asker_factory
+from gridcase.catalog import catalog
 from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
 from gridcase.market_alarm import load_watch, series_view
@@ -356,6 +357,15 @@ def create_app(
             },
             "cases": cases,
         }
+
+    @app.get("/api/catalog")
+    def api_catalog() -> dict[str, Any]:
+        """Every KPI in plain words, its governed definition and its last complete hour."""
+        c = cur()
+        try:
+            return catalog(c, now())
+        finally:
+            c.close()
 
     @app.post("/api/ask")
     def api_ask(req: AskRequest, request: Request) -> dict[str, Any]:

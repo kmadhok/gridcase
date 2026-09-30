@@ -1,6 +1,6 @@
 # MarketCase (repo: gridcase)
 
-A governed analytics agent for Polymarket: a few KPIs a product team owns are defined once in a semantic layer; every hour each is checked against its usual level; when one moves outside its range the agent investigates why (which market, category, trade size, trader type or odds band moved) and writes an answer where every number links to its query. A PM can also ask questions. Current plan: docs/plans/2026-09-29_polymarket_pivot.md. The power-grid version (original spec docs/SPEC.md) is kept at tag `v1-power-grid`.
+A governed analytics agent for Polymarket: a few KPIs a product team owns are defined once in a semantic layer; every hour each is checked against its usual level; when one moves outside its range the agent investigates why (which market, category, trade size, trader type or odds band moved) and writes an answer where every number links to its query. A PM can also ask questions. Current plan: docs/plans/2026-09-29_polymarket_pivot.md, then docs/plans/2026-09-29_kpi_expansion.md (M7). The power-grid version (original spec docs/SPEC.md) is kept at tag `v1-power-grid`.
 
 ## Stack
 - Python 3.12, uv for env and deps, ruff + mypy --strict, pytest + hypothesis

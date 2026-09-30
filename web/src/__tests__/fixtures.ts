@@ -1,4 +1,4 @@
-import type { CaseFull, NowResponse, Receipt, SeriesView } from "../api";
+import type { CaseFull, NowResponse, Receipt, SeriesView, CatalogResponse } from "../api";
 
 export const RECEIPT: Receipt = {
   receipt_id: "r1", tool: "by.market", inputs: { kpi: "volume_usd", filters: {} }, as_of: "2026-10-05T14:20:00",
@@ -72,4 +72,20 @@ export const NOW: NowResponse = {
   ],
   freshness: { newest_trade: "2026-10-05T14:18:00", record_starts: "2026-09-29T19:37:00", minutes_behind: 2 },
   cases: [{ ...CASE, entity: "category=Sports", segment: "category=Sports", case_id: "sports-1" }],
+};
+
+export const CATALOG: CatalogResponse = {
+  as_of: "2026-10-05T14:20:00",
+  hour: ["2026-10-05T13:00:00", "2026-10-05T14:00:00"],
+  kpis: [
+    { id: "volume_usd", label: "Trading volume", description: "Dollars traded (shares x price), summed over trades.", unit: "usd", formula: "Dollars traded (shares x price), summed over trades.", definition: "sum(usd)", watched: true, status: "normal", value: 3_830_000 },
+    { id: "whale_share", label: "Whale share of volume", description: "Share of dollars traded that came from trades of $1,000 or more.", unit: "share", formula: "Whale volume ÷ Trading volume", definition: "whale_volume / volume_usd", watched: true, status: "normal", value: 0.54 },
+    { id: "buy_share", label: "Buy share", description: "Share of dollars traded that bought shares rather than sold them.", unit: "share", formula: "Buy volume ÷ Trading volume", definition: "buy_volume / volume_usd", watched: false, status: null, value: 0.7 },
+    { id: "odds_flips", label: "Odds flips", description: "Outcomes whose price crossed 50 cents within the period.", unit: "count", formula: "Worked out for each outcome, then combined", definition: "per asset: min(price) AS lo; then count(*)", watched: true, status: "learning", value: 125 },
+  ],
+  dimensions: [
+    { id: "category", label: "Category", values: ["Sports", "Politics", "Crypto"] },
+    { id: "size_band", label: "Trade size", values: ["under $10", "$10-100", "$100-1k", "$1k+"] },
+    { id: "market", label: "Market", values: null },
+  ],
 };

@@ -120,6 +120,25 @@ async function ask(target: AskTarget, question: string): Promise<AskResponse> {
   return data as AskResponse;
 }
 
+export interface CatalogKpi {
+  id: string;
+  label: string;
+  description: string;
+  unit: string;
+  formula: string;
+  definition: string;
+  watched: boolean;
+  status: "alarm" | "normal" | "learning" | null;
+  value: number | null;
+}
+
+export interface CatalogResponse {
+  as_of: string;
+  hour: [string, string];
+  kpis: CatalogKpi[];
+  dimensions: { id: string; label: string; values: string[] | null }[];
+}
+
 async function get<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
@@ -128,6 +147,7 @@ async function get<T>(url: string): Promise<T> {
 
 export const api = {
   now: () => get<NowResponse>("/api/now"),
+  catalog: () => get<CatalogResponse>("/api/catalog"),
   cases: () => get<CaseSummary[]>("/api/cases"),
   case: (id: string) => get<CaseFull>(`/api/cases/${encodeURIComponent(id)}`),
   ask,
