@@ -26,6 +26,53 @@ measures:
     unit: count
     sql: count(DISTINCT wallet) FILTER (WHERE d_trader_type = 'new')
     additive: false
+  markets_traded:
+    label: Markets traded
+    description: Distinct markets with at least one trade.
+    unit: count
+    sql: count(DISTINCT condition_id)
+    additive: false
+  new_markets:
+    label: New markets
+    description: Markets whose first trade in our record happened in that period.
+    unit: count
+    sql: count(DISTINCT condition_id) FILTER (WHERE ts = first_market_ts)
+    additive: false
+  whale_volume:
+    label: Whale volume
+    description: Dollars traded in trades of $1,000 or more.
+    unit: usd
+    sql: sum(usd) FILTER (WHERE d_size_band = '$1k+')
+    additive: true
+    internal: true
+  sure_thing_volume:
+    label: Sure-thing volume
+    description: Dollars traded on outcomes priced above 95 cents.
+    unit: usd
+    sql: sum(usd) FILTER (WHERE price > 0.95)
+    additive: true
+    internal: true
+  buy_volume:
+    label: Buy volume
+    description: Dollars spent buying shares.
+    unit: usd
+    sql: sum(usd) FILTER (WHERE d_side = 'buy')
+    additive: true
+    internal: true
+  recurring_volume:
+    label: Recurring-market volume
+    description: Dollars traded in recurring short markets such as 5-minute crypto Up or Down.
+    unit: usd
+    sql: sum(usd) FILTER (WHERE d_market_kind = 'recurring')
+    additive: true
+    internal: true
+  longshot_trades:
+    label: Long-shot trades
+    description: Trades on outcomes priced under 10 cents.
+    unit: count
+    sql: count(*) FILTER (WHERE price < 0.10)
+    additive: true
+    internal: true
 
 derived:
   avg_trade_usd:
@@ -40,6 +87,85 @@ derived:
     unit: share
     expr: 1 - new_traders / active_traders
     weight: active_traders
+  trades_per_trader:
+    label: Trades per trader
+    description: Trades divided by active traders.
+    unit: ratio
+    expr: trades / active_traders
+    weight: active_traders
+  whale_share:
+    label: Whale share of volume
+    description: Share of dollars traded that came from trades of $1,000 or more.
+    unit: share
+    expr: whale_volume / volume_usd
+    weight: volume_usd
+  sure_thing_share:
+    label: Sure-thing share
+    description: Share of dollars traded on outcomes priced above 95 cents (near-certain).
+    unit: share
+    expr: sure_thing_volume / volume_usd
+    weight: volume_usd
+  buy_share:
+    label: Buy share
+    description: Share of dollars traded that bought shares rather than sold them.
+    unit: share
+    expr: buy_volume / volume_usd
+    weight: volume_usd
+  longshot_share:
+    label: Long-shot share
+    description: Share of trades on outcomes priced under 10 cents (lottery tickets).
+    unit: share
+    expr: longshot_trades / trades
+    weight: trades
+  recurring_share:
+    label: Recurring-market share
+    description: Share of dollars traded in recurring short markets (5-minute crypto Up or Down).
+    unit: share
+    expr: recurring_volume / volume_usd
+    weight: volume_usd
+
+# a slice's share of a measure: the filters pick the slice, the whole is everything traded
+shares:
+  volume_share:
+    label: Share of volume
+    description: The slice's share of all dollars traded (for example Sports' share).
+    unit: share
+    of: volume_usd
+
+# aggregated per item first (an outcome, a wallet, a market), then across items
+nested:
+  odds_flips:
+    label: Odds flips
+    description: >-
+      Outcomes whose price crossed 50 cents within the period (from under 45 to over 55 cents,
+      at least 5 trades): the favourite changed. Recurring 5-minute markets are left out.
+    unit: count
+    per: asset
+    where: d_market_kind = 'event'
+    inner: {lo: min(price), hi: max(price), n: count(*)}
+    outer: count(*) FILTER (WHERE lo < 0.45 AND hi > 0.55 AND n >= 5)
+    empty_is_zero: true
+  whale_count:
+    label: Whale wallets
+    description: Wallets that traded $10,000 or more in the period.
+    unit: count
+    per: wallet
+    inner: {v: sum(usd)}
+    outer: count(*) FILTER (WHERE v >= 10000)
+    empty_is_zero: true
+  top_market_share:
+    label: Top market's share
+    description: The biggest market's share of dollars traded; high means one event dominates.
+    unit: share
+    per: d_market
+    inner: {v: sum(usd)}
+    outer: max(v) / nullif(sum(v), 0)
+    breakdown_as: volume_usd
+
+# numeric trade fields a question may put a limit on (>= or <)
+numeric:
+  trade_usd: usd
+  price: price
 
 dimensions:
   category:
@@ -69,3 +195,7 @@ dimensions:
       CASE WHEN price < 0.2 THEN 'longshot' WHEN price > 0.8 THEN 'favourite'
       ELSE 'toss-up' END
     values: [longshot, toss-up, favourite]
+  market_kind:
+    label: Market kind
+    sql: CASE WHEN title ILIKE '%up or down%' THEN 'recurring' ELSE 'event' END
+    values: [event, recurring]

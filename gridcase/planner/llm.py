@@ -19,6 +19,7 @@ from gridcase.ledger.schema import Receipt
 from gridcase.planner.context import PlanContext
 from gridcase.planner.hypotheses import load_templates
 from gridcase.planner.schema import InvestigationPlan
+from gridcase.semantic.kpis import FilterValue
 
 log = logging.getLogger("gridcase")
 
@@ -58,7 +59,7 @@ def default_plan_response(
     case_id: str,
     kpi: str,
     as_of: Any,
-    filters: dict[str, str] | None = None,
+    filters: dict[str, FilterValue] | None = None,
     record_days: int = 30,
 ) -> InvestigationPlan:
     """A template-default plan built without a store, for tests and validator examples."""

@@ -19,6 +19,7 @@ from gridcase.planner.schema import InvestigationPlan, ToolStep
 
 ToolName = Literal[
     "by.category",
+    "by.kind",
     "by.market",
     "by.odds",
     "by.size",
@@ -48,10 +49,21 @@ class Filter(BaseModel):
     value: str
 
 
+class LimitIn(BaseModel):
+    """A numeric condition on each trade: trade_usd or price, >= or <."""
+
+    model_config = ConfigDict(extra="forbid")
+    field: Literal["trade_usd", "price"]
+    op: Literal[">=", "<"]
+    value: float
+
+
 class KpiIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kpi: str
+    # repeat a dimension to allow several of its segments (category Sports or Crypto)
     filters: list[Filter] = Field(default_factory=list)
+    limits: list[LimitIn] = Field(default_factory=list)
     window: Window
     baseline_days: int = 7
     top_n: int = 5  # breakdowns only
@@ -72,6 +84,7 @@ LLM_INPUTS: dict[str, type[BaseModel]] = {
     "by.size": KpiIn,
     "by.trader": KpiIn,
     "by.odds": KpiIn,
+    "by.kind": KpiIn,
 }
 
 
@@ -89,13 +102,21 @@ class LLMPlan(BaseModel):
     budget_steps: int = 12
 
 
+def _group_filters(filters: list[dict[str, str]]) -> dict[str, str | list[str]]:
+    """[{category: Sports}, {category: Crypto}] -> {category: [Sports, Crypto]}."""
+    grouped: dict[str, list[str]] = {}
+    for f in filters:
+        grouped.setdefault(f["dimension"], []).append(f["value"])
+    return {d: vs[0] if len(vs) == 1 else vs for d, vs in grouped.items()}
+
+
 def _registry_shape(tool: str, raw: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, v in raw.items():
         if k == "window" and isinstance(v, dict):
             out[k] = [v["start"], v["end"]]
         elif k == "filters" and isinstance(v, list):
-            out[k] = {f["dimension"]: f["value"] for f in v}
+            out[k] = _group_filters(v)
         elif k == "top_n" and not tool.startswith("by."):
             continue
         else:
@@ -134,7 +155,11 @@ def _model_shape(k: str, v: Any) -> Any:
     if k == "window":
         return {"start": v[0], "end": v[1]}
     if k == "filters" and isinstance(v, dict):
-        return [{"dimension": d, "value": x} for d, x in sorted(v.items())]
+        return [
+            {"dimension": d, "value": x}
+            for d, xs in sorted(v.items())
+            for x in ([xs] if isinstance(xs, str) else xs)
+        ]
     return v
 
 

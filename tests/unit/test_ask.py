@@ -246,7 +246,7 @@ def test_case_context_carries_causes_falsifiers_evidence_and_glossary(case: Case
 
 def test_every_check_tool_has_a_strict_schema_with_real_properties() -> None:
     tools = check_tools()
-    assert len(tools) == 7
+    assert len(tools) == 8
     for t in tools:
         assert t["strict"] is True and t["name"].startswith("check_")
         props = t["input_schema"]["properties"]

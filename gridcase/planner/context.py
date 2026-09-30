@@ -11,6 +11,7 @@ import duckdb
 from pydantic import BaseModel, Field
 
 from gridcase.planner.hypotheses import HypothesisTemplate, load_templates
+from gridcase.semantic.kpis import Filters, FilterValue
 
 BASELINE_DAYS = 7
 DEFAULT_WINDOW_HOURS = 6
@@ -19,7 +20,7 @@ DEFAULT_WINDOW_HOURS = 6
 class PlanContext(BaseModel):
     case_id: str
     kpi: str
-    filters: dict[str, str] = Field(default_factory=dict)
+    filters: dict[str, FilterValue] = Field(default_factory=dict)
     as_of: datetime
     window: tuple[datetime, datetime]
     baseline_days: int = BASELINE_DAYS
@@ -42,7 +43,7 @@ def fill_inputs(inputs: dict[str, Any], ctx: PlanContext) -> dict[str, Any]:
     return {k: values.get(v, v) if isinstance(v, str) else v for k, v in inputs.items()}
 
 
-def applies(t: HypothesisTemplate, filters: dict[str, str], record_days: int) -> bool:
+def applies(t: HypothesisTemplate, filters: Filters, record_days: int) -> bool:
     for pre in t.preconditions:
         kind, _, arg = pre.partition(":")
         if kind == "unfiltered" and arg in filters:
@@ -70,7 +71,7 @@ def build_context(
     conn: duckdb.DuckDBPyConnection,
     case_id: str,
     kpi: str,
-    filters: dict[str, str],
+    filters: dict[str, FilterValue],
     as_of: datetime,
     window: tuple[datetime, datetime],
     change: dict[str, Any],

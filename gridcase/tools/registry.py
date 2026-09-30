@@ -8,10 +8,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from gridcase.semantic.kpis import FilterValue, Limit
+
 
 class KpiWindow(BaseModel):
     kpi: str
-    filters: dict[str, str] = Field(default_factory=dict)
+    filters: dict[str, FilterValue] = Field(default_factory=dict)
+    limits: list[Limit] = Field(default_factory=list)
     window: tuple[datetime, datetime]
     # compared with the same hours on each of this many previous days
     baseline_days: int = Field(default=7, ge=1, le=28)
@@ -33,6 +36,7 @@ BREAKDOWNS: dict[str, str] = {
     "by.size": "size_band",
     "by.trader": "trader_type",
     "by.odds": "odds_band",
+    "by.kind": "market_kind",
 }
 
 TOOL_INPUTS: dict[str, type[BaseModel]] = {

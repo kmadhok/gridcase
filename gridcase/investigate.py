@@ -32,7 +32,7 @@ from gridcase.planner.executor import ExecutionResult, evaluate_hypotheses, exec
 from gridcase.planner.hypotheses import load_templates
 from gridcase.planner.llm import LLM
 from gridcase.planner.planner import make_plan
-from gridcase.semantic.kpis import segment_label
+from gridcase.semantic.kpis import Filters, segment_label
 from gridcase.tools.base import ToolError, run_tool
 
 PRIOR_SEASON = "all"  # learned priors are kept per (driver, KPI); markets have no seasons
@@ -43,7 +43,7 @@ def investigate(
     llm: LLM,
     kpi: str,
     as_of: datetime,
-    filters: dict[str, str] | None = None,
+    filters: Filters | None = None,
     trigger: Receipt | None = None,
     dry_run: bool = True,
 ) -> CaseRecord:

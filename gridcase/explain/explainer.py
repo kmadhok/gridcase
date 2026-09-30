@@ -14,7 +14,7 @@ from gridcase.explain.schema import Claim, Conclusion, HypothesisVerdict, Status
 from gridcase.explain.verifier import verify
 from gridcase.ledger.schema import Receipt
 from gridcase.planner.hypotheses import Prior, load_templates, mandatory_ids
-from gridcase.semantic.kpis import load_kpis
+from gridcase.semantic.kpis import Filters, load_kpis
 
 if TYPE_CHECKING:
     from gridcase.planner.executor import ExecutionResult
@@ -101,14 +101,19 @@ DIM_WORDS = {
     "size_band": "trade size",
     "trader_type": "trader",
     "odds_band": "odds",
+    "market_kind": "market kind",
 }
 
 
-def _kpi_words(kpi: str, filters: dict[str, str] | None) -> str:
+def _kpi_words(kpi: str, filters: Filters | None) -> str:
     kpis, _ = load_kpis()
     label = kpis[kpi].label.lower() if kpi in kpis else kpi.replace("_", " ")
+
+    def words(v: str | list[str]) -> str:
+        return v if isinstance(v, str) else " or ".join(v)
+
     seg = ", ".join(
-        f"{v}" if k == "category" else f"{DIM_WORDS.get(k, k)} {v}"
+        words(v) if k == "category" else f"{DIM_WORDS.get(k, k)} {words(v)}"
         for k, v in sorted((filters or {}).items())
     )
     return f"{label} in {seg}" if seg else label

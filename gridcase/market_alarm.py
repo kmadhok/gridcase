@@ -22,7 +22,15 @@ from pydantic import BaseModel, Field
 
 from gridcase.config import ONTOLOGY_DIR
 from gridcase.ledger.schema import Receipt
-from gridcase.semantic.kpis import KpiQuery, Measure, compile_kpi, load_kpis, segment_label
+from gridcase.semantic.kpis import (
+    FilterValue,
+    KpiQuery,
+    Measure,
+    Nested,
+    compile_kpi,
+    load_kpis,
+    segment_label,
+)
 from gridcase.tools.base import rows_hash
 
 HOUR = timedelta(hours=1)
@@ -30,7 +38,7 @@ HOUR = timedelta(hours=1)
 
 class WatchedSeries(BaseModel):
     kpi: str
-    filters: dict[str, str] = Field(default_factory=dict)
+    filters: dict[str, FilterValue] = Field(default_factory=dict)
 
     @property
     def segment(self) -> str:
@@ -97,7 +105,8 @@ def hourly(
     kpis, _ = load_kpis()
     kpi = kpis[series.kpi]
     log_scale = series.kpi in p.log_scale
-    zero_fill = isinstance(kpi, Measure)  # no trades in an hour means 0, not unknown
+    # no trades in an hour means 0, not unknown
+    zero_fill = isinstance(kpi, Measure) or (isinstance(kpi, Nested) and kpi.empty_is_zero)
 
     judged_until = (as_of - timedelta(minutes=p.settle_minutes)).replace(
         minute=0, second=0, microsecond=0

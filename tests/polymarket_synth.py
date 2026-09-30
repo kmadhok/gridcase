@@ -10,7 +10,7 @@ import duckdb
 
 def add_trades(conn: duckdb.DuckDBPyConnection, rows: list[dict[str, Any]]) -> None:
     """Each row: ts, wallet, usd (price defaults to 0.5, so size = usd / price), and optional
-    condition_id, side, title, event_slug, collected_at (default ts + 2 minutes)."""
+    condition_id, asset, side, title, event_slug, collected_at (default ts + 2 minutes)."""
     for i, r in enumerate(rows):
         price = float(r.get("price", 0.5))
         usd = float(r["usd"])
@@ -25,7 +25,7 @@ def add_trades(conn: duckdb.DuckDBPyConnection, rows: list[dict[str, Any]]) -> N
                 usd / price,
                 price,
                 usd,
-                "asset",
+                r.get("asset", f"{r.get('condition_id', 'c1')}-yes"),
                 r.get("condition_id", "c1"),
                 "slug",
                 r.get("event_slug", "ev"),

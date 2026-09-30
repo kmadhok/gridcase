@@ -48,6 +48,7 @@ CHECKS = {
     "by.size": "Big or small trades? The change broken down by trade size.",
     "by.trader": "New or returning traders? The change broken down by trader type.",
     "by.odds": "Long shots or favourites? The change broken down by the odds traded.",
+    "by.kind": "Recurring 5-minute markets or real events? The change broken down by market kind.",
     "kpi.alarm": "Why was this investigation opened? The KPI for each hour vs the same hour of the day on previous days; 2 hours in a row beyond 3 standard deviations (or 1 beyond 5) opens a case.",
 }
 
