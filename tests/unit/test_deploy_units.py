@@ -50,3 +50,23 @@ def test_collector_runs_forever_and_restarts_on_failure() -> None:
 def test_install_script_enables_the_collector_in_every_mode() -> None:
     text = (DEPLOY / "install.sh").read_text()
     assert "enable --now gridcase-collector.service" in text
+
+
+def test_tunnel_publishes_the_server_without_mcp() -> None:
+    """kanumadhok.com/marketcase reaches the VPS through a Cloudflare Tunnel (outbound only: no
+    port opened). The tunnel refuses MCP at Cloudflare's edge, before the app's own check."""
+    import yaml
+
+    s = _unit("gridcase-tunnel.service")
+    execs = " ; ".join(s["ExecStart"])
+    assert "cloudflared" in execs and "tunnel" in execs and "run" in execs
+    assert "--no-autoupdate" in execs  # updates are a deploy decision, not a surprise
+    assert s["Restart"] == ["always"]
+    cfg = yaml.safe_load((DEPLOY / "cloudflared-marketcase.yml").read_text())
+    rules = cfg["ingress"]
+    assert rules[0]["service"] == "http_status:404" and "mcp" in rules[0]["path"]
+    assert rules[1]["hostname"] == "marketcase.kanumadhok.com"
+    assert rules[1]["service"] == "http://100.115.94.44:8710"
+    assert rules[-1] == {"service": "http_status:404"}  # anything else: nothing
+    text = (DEPLOY / "install.sh").read_text()
+    assert "cert.pem" in text and "enable --now gridcase-tunnel.service" in text

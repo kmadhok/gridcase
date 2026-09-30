@@ -41,7 +41,7 @@ def auto_paid_cases_per_day() -> int:
 
 def ask_daily_usd() -> float:
     """Spending cap for the question box per UTC day; questions are refused once it is spent."""
-    return float(os.environ.get("GRIDCASE_ASK_DAILY_USD", "5.0"))
+    return float(os.environ.get("GRIDCASE_ASK_DAILY_USD", "2.0"))
 
 
 def has_anthropic_api_key() -> bool:

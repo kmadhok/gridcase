@@ -92,6 +92,41 @@ def _case_full(c: CaseRecord) -> dict[str, Any]:
     }
 
 
+PUBLIC_PREFIX = "/marketcase"  # kanumadhok.com/marketcase forwards here with its path
+TUNNEL_HEADER = b"cf-connecting-ip"  # added by Cloudflare to everything through the tunnel
+
+
+class PublicEdge:
+    """ASGI wrapper for the public route: serve everything under /marketcase as well as at /,
+    and refuse MCP (which can start paid investigations) to anything that came through the
+    Cloudflare Tunnel. Tailscale requests carry no Cloudflare header and are unaffected."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "http":
+            path: str = scope["path"]
+            if path == PUBLIC_PREFIX or path.startswith(PUBLIC_PREFIX + "/"):
+                path = path[len(PUBLIC_PREFIX) :] or "/"
+                scope = {**scope, "path": path, "raw_path": path.encode()}
+            public = any(k == TUNNEL_HEADER for k, _ in scope["headers"])
+            if public and (path == "/mcp" or path.startswith("/mcp/")):
+                await send({"type": "http.response.start", "status": 404, "headers": []})
+                await send({"type": "http.response.body", "body": b""})
+                return
+        await self.app(scope, receive, send)
+
+
+def visitor(request: Request) -> str:
+    """Who is asking, for the per-visitor limit: through the tunnel, the first address in
+    X-Forwarded-For (the visitor, ahead of Vercel's and Cloudflare's hops); else the peer."""
+    if TUNNEL_HEADER.decode() in request.headers:
+        first = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        return first or request.headers[TUNNEL_HEADER.decode()]
+    return request.client.host if request.client else "?"
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     case_id: str | None = None
@@ -429,7 +464,7 @@ def create_app(
                     case = get_case(c, req.case_id)
                 except KeyError as e:
                     raise HTTPException(404, f"unknown case {req.case_id}") from e
-                limiter.admit(request.client.host if request.client else "?")
+                limiter.admit(visitor(request))
                 res = answer_question(
                     asker_factory(),
                     req.question,
@@ -438,7 +473,7 @@ def create_app(
                     run_check=case_checker(c, case),
                 )
             else:
-                limiter.admit(request.client.host if request.client else "?")
+                limiter.admit(visitor(request))
                 at = now()
                 ctx, receipts = now_context(c, at)
                 res = answer_question(
@@ -462,4 +497,5 @@ def create_app(
     app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"]))
     if WEB_DIST.exists():
         app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="ui")
+    app.add_middleware(PublicEdge)
     return app

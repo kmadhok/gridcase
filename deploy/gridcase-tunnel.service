@@ -1,0 +1,18 @@
+# User unit: the Cloudflare Tunnel that publishes the MarketCase server at
+# marketcase.kanumadhok.com (and, through the portfolio site's rewrite, kanumadhok.com/marketcase).
+# It only makes outbound connections to Cloudflare: no port is opened on this host. The tunnel's
+# credentials live in ~/.cloudflared (created by `cloudflared tunnel login` / `tunnel create`),
+# never in this repository. Install with deploy/install.sh.
+[Unit]
+Description=MarketCase public tunnel (Cloudflare)
+After=network-online.target gridcase-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cloudflared --no-autoupdate tunnel --config %h/.cloudflared/marketcase.yml run
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

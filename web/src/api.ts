@@ -1,3 +1,7 @@
+import { BASE_PATH } from "./basePath";
+
+const API = `${BASE_PATH}api`;
+
 export type Tier = "governed" | "derived" | "inferred";
 export type Status = "open" | "supported" | "refuted" | "confirmed" | "superseded";
 
@@ -114,7 +118,7 @@ export type AskTarget = { caseId: string } | { page: "now" };
 
 async function ask(target: AskTarget, question: string): Promise<AskResponse> {
   const body = "caseId" in target ? { case_id: target.caseId, question } : { page: target.page, question };
-  const r = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch(`${API}/ask`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const data = await r.json();
   if (!r.ok) throw new Error(typeof data?.detail === "string" ? data.detail : `The question box failed (${r.status}).`);
   return data as AskResponse;
@@ -179,12 +183,12 @@ async function get<T>(url: string): Promise<T> {
 }
 
 export const api = {
-  now: () => get<NowResponse>("/api/now"),
-  catalog: () => get<CatalogResponse>("/api/catalog"),
-  digest: (day?: string) => get<Digest>(day ? `/api/digest/${encodeURIComponent(day)}` : "/api/digest"),
-  digests: () => get<{ day: string }[]>("/api/digests"),
-  cases: () => get<CaseSummary[]>("/api/cases"),
-  case: (id: string) => get<CaseFull>(`/api/cases/${encodeURIComponent(id)}`),
+  now: () => get<NowResponse>(`${API}/now`),
+  catalog: () => get<CatalogResponse>(`${API}/catalog`),
+  digest: (day?: string) => get<Digest>(day ? `${API}/digest/${encodeURIComponent(day)}` : `${API}/digest`),
+  digests: () => get<{ day: string }[]>(`${API}/digests`),
+  cases: () => get<CaseSummary[]>(`${API}/cases`),
+  case: (id: string) => get<CaseFull>(`${API}/cases/${encodeURIComponent(id)}`),
   ask,
 };
 

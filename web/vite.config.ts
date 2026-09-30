@@ -5,9 +5,10 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  base: "/marketcase/", // = src/basePath.ts; the server's test_m8 checks the built page uses it
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:8710",
+      "/marketcase/api": "http://127.0.0.1:8710",
       "/mcp": "http://127.0.0.1:8710",
     },
   },

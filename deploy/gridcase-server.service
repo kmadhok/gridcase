@@ -1,7 +1,7 @@
 # User unit: the MarketCase server (MCP at /mcp, JSON API at /api, UI at /). Install with
 # deploy/install.sh. It is the only process that writes the DuckDB store: it loads collected
 # trades every 5 minutes, runs the hourly watch and the follow-up checks itself.
-# Bound to the Tailscale address only; public hosting (kanumadhok.com) is a later decision.
+# Bound to the Tailscale address; the public reaches it only through gridcase-tunnel.
 # Secrets (.env: ANTHROPIC_API_KEY, GRIDCASE_API_TOKEN) are read by python-dotenv
 # from WorkingDirectory; nothing is set here.
 [Unit]

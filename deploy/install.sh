@@ -3,6 +3,8 @@
 #   gridcase-collector: saves every Polymarket trade (raw files only, never the database)
 #   gridcase-server:    loads trades, runs the hourly watch, serves MCP + API + UI (the only
 #                       process that writes the DuckDB store)
+#   gridcase-tunnel:    publishes the server at kanumadhok.com/marketcase through a Cloudflare
+#                       Tunnel; enabled only once `cloudflared tunnel login` has authorised it
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
@@ -23,4 +25,13 @@ fi
 systemctl --user enable --now gridcase-collector.service
 systemctl --user enable --now gridcase-server.service
 systemctl --user restart gridcase-server.service
+if [ -f "$HOME/.cloudflared/cert.pem" ]; then
+  install -m 0644 "$here/gridcase-tunnel.service" "$dest/gridcase-tunnel.service"
+  install -m 0600 "$here/cloudflared-marketcase.yml" "$HOME/.cloudflared/marketcase.yml"
+  systemctl --user daemon-reload
+  systemctl --user enable --now gridcase-tunnel.service
+  systemctl --user restart gridcase-tunnel.service
+else
+  echo "Cloudflare not authorised yet (no ~/.cloudflared/cert.pem): public tunnel skipped" >&2
+fi
 systemctl --user status gridcase-server.service --no-pager | head -5 || true
