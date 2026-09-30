@@ -18,6 +18,16 @@ describe("NowView", () => {
     expect(within(sports).getByRole("img")).toBeInTheDocument(); // the sparkline
   });
 
+  it("shows how the market behaves in its own row", () => {
+    render(<NowView initial={NOW} />);
+    const row = screen.getByRole("region", { name: "How the market behaves" });
+    expect(within(row).getByTestId("tile-whale_share")).toHaveTextContent("Whale share of volume");
+    expect(within(row).getByTestId("tile-whale_share")).toHaveTextContent("54%");
+    expect(within(row).getByTestId("tile-trades_per_trader")).toHaveTextContent("7.95");
+    const team = screen.getByRole("region", { name: "Team KPIs" });
+    expect(within(team).queryByTestId("tile-whale_share")).toBeNull();
+  });
+
   it("links an unusual KPI to its investigation in one click", async () => {
     render(<NowView initial={NOW} />);
     const sports = screen.getByTestId("tile-volume_usd · category=Sports");

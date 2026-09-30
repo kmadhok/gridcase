@@ -47,7 +47,7 @@ def test_1_now_shows_every_watched_kpi_against_its_usual_band(market_store: Path
     with TestClient(_app(market_store)) as client:
         now = client.get("/api/now").json()
     watched, _ = load_watch()
-    assert len(now["series"]) == len(watched) == 13
+    assert len(now["series"]) == len(watched) == 18
     first = now["series"][0]
     assert first["kpi"] == "volume_usd" and first["segment"] == "all" and first["label"]
     assert len(first["points"]) == 48 and {"t", "value", "usual", "low", "high"} <= set(
@@ -110,7 +110,7 @@ def test_3_the_now_context_offers_citable_evidence_for_every_team_kpi(market_sto
     ctx, receipts = now_context(conn, AS_OF)
     conn.close()
     tools = sorted(r.tool for r in receipts.values())
-    assert tools.count("kpi.compare") == 5 and "by.category" in tools
+    assert tools.count("kpi.compare") == 10 and "by.category" in tools
     assert {s["series"] for s in ctx["series"]} >= {"volume_usd", "active_traders"}
     assert all("cite_as" in e for e in ctx["evidence"])
 

@@ -42,28 +42,28 @@ measures:
     label: Whale volume
     description: Dollars traded in trades of $1,000 or more.
     unit: usd
-    sql: sum(usd) FILTER (WHERE d_size_band = '$1k+')
+    sql: coalesce(sum(usd) FILTER (WHERE d_size_band = '$1k+'), 0)
     additive: true
     internal: true
   sure_thing_volume:
     label: Sure-thing volume
     description: Dollars traded on outcomes priced above 95 cents.
     unit: usd
-    sql: sum(usd) FILTER (WHERE price > 0.95)
+    sql: coalesce(sum(usd) FILTER (WHERE price > 0.95), 0)
     additive: true
     internal: true
   buy_volume:
     label: Buy volume
     description: Dollars spent buying shares.
     unit: usd
-    sql: sum(usd) FILTER (WHERE d_side = 'buy')
+    sql: coalesce(sum(usd) FILTER (WHERE d_side = 'buy'), 0)
     additive: true
     internal: true
   recurring_volume:
     label: Recurring-market volume
     description: Dollars traded in recurring short markets such as 5-minute crypto Up or Down.
     unit: usd
-    sql: sum(usd) FILTER (WHERE d_market_kind = 'recurring')
+    sql: coalesce(sum(usd) FILTER (WHERE d_market_kind = 'recurring'), 0)
     additive: true
     internal: true
   longshot_trades:

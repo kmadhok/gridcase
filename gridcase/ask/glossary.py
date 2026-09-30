@@ -52,12 +52,22 @@ CHECKS = {
     "kpi.alarm": "Why was this investigation opened? The KPI for each hour vs the same hour of the day on previous days; 2 hours in a row beyond 3 standard deviations (or 1 beyond 5) opens a case.",
 }
 
+
+def _kpi_definitions() -> dict[str, str]:
+    """Every KPI a reader may meet, defined once in ontology/kpis.yaml."""
+    from gridcase.semantic.kpis import Measure, load_kpis
+
+    kpis, _ = load_kpis()
+    return {
+        k.label.lower(): k.description
+        for k in kpis.values()
+        if not (isinstance(k, Measure) and k.internal)
+    }
+
+
 GLOSSARY = {
-    "trading volume": "Dollars traded: shares times price, summed over trades.",
-    "active traders": "Distinct wallets that traded.",
+    **_kpi_definitions(),
     "new traders": "Wallets whose first trade in our record was that day (our record starts 29 Sep 2026).",
-    "average trade size": "Trading volume divided by the number of trades.",
-    "returning-trader share": "The share of active traders who had traded on an earlier day.",
     "usual level": "The average for the same hours of the day on previous days.",
     "share of the change": "How much of the difference from the usual level a segment accounts for.",
     "evidence supports": "The check that could have ruled this driver out did not.",
@@ -68,6 +78,9 @@ GLOSSARY = {
     "computed": "A sentence whose number is calculated from measured numbers.",
     "interpretation": "A sentence that is the writer's judgement; no evidence link.",
     "long shot": "An outcome priced under 20 cents (under a 20% chance).",
-    "whale": "A trade of $1,000 or more.",
+    "whale": "A trade of $1,000 or more (a whale wallet: one that traded $10,000 or more).",
+    "sure thing": "An outcome priced above 95 cents: the market thinks it is nearly certain.",
+    "odds flip": "An outcome whose price crossed 50 cents: the favourite changed.",
+    "recurring market": "A short market that repeats, such as Bitcoin Up or Down every 5 minutes.",
     "point in time": "Investigations use only trades our collector had seen by then, so they can be replayed honestly.",
 }

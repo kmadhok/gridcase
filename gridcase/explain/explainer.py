@@ -128,7 +128,17 @@ def _amount(kpi: str, v: float | None) -> str:
         return f"${v:,.0f}" if abs(v) >= 100 else f"${v:,.2f}"
     if unit == "share":
         return f"{100 * v:.0f}%"
+    if unit == "ratio":
+        return f"{v:,.2f}"
     return f"{v:,.0f}"
+
+
+def _change(kpi: str, v: float | None) -> str:
+    """A change in the KPI's units; a change in a share is in percentage points."""
+    kpis, _ = load_kpis()
+    if v is not None and kpi in kpis and kpis[kpi].unit == "share":
+        return f"{100 * abs(v):.0f} percentage points"
+    return _amount(kpi, None if v is None else abs(v))
 
 
 def _claim_for(r: Receipt) -> Claim | None:
@@ -137,13 +147,19 @@ def _claim_for(r: Receipt) -> Claim | None:
     o = r.output
     t = r.tool
     if t == "kpi.alarm":
-        if o.get("status") != "alarm" or not o.get("ratio"):
+        if o.get("status") != "alarm" or o.get("value") is None:
             return None
         hours = o["run_hours"]
-        text = (
-            f"This investigation opened automatically: {_kpi_words(o['kpi'], o.get('filters'))} "
+        what = _kpi_words(o["kpi"], o.get("filters"))
+        now, usual = _amount(o["kpi"], o["value"]), _amount(o["kpi"], o["expected"])
+        size = (
             f"was {o['ratio']:.1f} times its usual level for that hour of the day "
-            f"({_amount(o['kpi'], o['value'])} against about {_amount(o['kpi'], o['expected'])}), "
+            f"({now} against about {usual})"
+            if o.get("ratio")
+            else f"was {now} against a usual level of about {usual} for that hour of the day"
+        )
+        text = (
+            f"This investigation opened automatically: {what} {size}, "
             f"{hours} hour{'s' if hours != 1 else ''} in a row."
         )
     elif t == "kpi.compare":
@@ -151,25 +167,28 @@ def _claim_for(r: Receipt) -> Claim | None:
         if o.get("insufficient") or o.get("expected") is None:
             text = f"There are no earlier days in our record to compare {what} with yet."
         else:
+            pct = o.get("pct_change")
+            change = f" ({pct:+.0f}%)" if pct is not None else ""
             text = (
                 f"Over these hours {what} was {_amount(o['kpi'], o['now'])}, against about "
                 f"{_amount(o['kpi'], o['expected'])} on the same hours of the previous "
-                f"{o['baseline_days_used']} days ({o['pct_change']:+.0f}%)."
+                f"{o['baseline_days_used']} days{change}."
             )
     elif t.startswith("by."):
         dim = DIM_WORDS.get(o.get("dimension", ""), o.get("dimension", ""))
+        unit_kpi = o.get("explained_by") or o["kpi"]  # the top market's share: by volume
         share, seg = o.get("top_share"), o.get("top_segment")
         if o.get("insufficient") or share is None or seg is None:
             text = f"Broken down by {dim}, no single segment stands out."
         elif share > 1:
             text = (
                 f"Broken down by {dim}, {seg} moved by more than the whole change "
-                f"({_amount(o['kpi'], o['top_change'])}); other segments moved the other way."
+                f"({_change(unit_kpi, o['top_change'])}); other segments moved the other way."
             )
         else:
             text = (
                 f"Broken down by {dim}, {seg} accounts for {100 * share:.0f}% of the change "
-                f"({_amount(o['kpi'], o['top_change'])})."
+                f"({_change(unit_kpi, o['top_change'])})."
             )
     elif t == "data.coverage":
         if o.get("complete"):

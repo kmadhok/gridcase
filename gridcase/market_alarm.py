@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cache
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 import yaml
@@ -39,6 +39,11 @@ HOUR = timedelta(hours=1)
 class WatchedSeries(BaseModel):
     kpi: str
     filters: dict[str, FilterValue] = Field(default_factory=dict)
+    group: Literal["team", "behaviour", "category"] | None = None  # where the Now page shows it
+
+    @property
+    def tile_group(self) -> str:
+        return self.group or ("category" if "category" in self.filters else "team")
 
     @property
     def segment(self) -> str:
@@ -313,6 +318,7 @@ def series_view(
         "label": kpis[series.kpi].label,
         "unit": kpis[series.kpi].unit,
         "segment": series.segment,
+        "group": series.tile_group,
         "filters": series.filters,
         "status": verdict["status"],
         "direction": verdict["direction"],

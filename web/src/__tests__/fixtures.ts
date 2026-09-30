@@ -66,6 +66,8 @@ export const NOW: NowResponse = {
     series({}),
     series({ series: "active_traders", kpi: "active_traders", label: "Active traders", unit: "count", latest: { t: "2026-10-05T13:00:00", value: 5200, usual: 5000 }, points: points(5000, 1) }),
     series({ series: "new_traders", kpi: "new_traders", label: "New traders", unit: "count", status: "learning", history_days: 1, latest: { t: "2026-10-05T13:00:00", value: 300, usual: null }, points: points(300, 1) }),
+    series({ series: "whale_share", kpi: "whale_share", label: "Whale share of volume", unit: "share", group: "behaviour", latest: { t: "2026-10-05T13:00:00", value: 0.54, usual: 0.5 }, points: points(0.5, 1) }),
+    series({ series: "trades_per_trader", kpi: "trades_per_trader", label: "Trades per trader", unit: "ratio", group: "behaviour", latest: { t: "2026-10-05T13:00:00", value: 7.95, usual: 8.1 }, points: points(8.1, 1) }),
     series({ series: "volume_usd · category=Sports", segment: "category=Sports", filters: { category: "Sports" }, status: "alarm", direction: "up", ratio: 3.1, latest: { t: "2026-10-05T13:00:00", value: 2_400_000, usual: 780_000 }, points: points(780_000, 3.1) }),
   ],
   freshness: { newest_trade: "2026-10-05T14:18:00", record_starts: "2026-09-29T19:37:00", minutes_behind: 2 },

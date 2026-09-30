@@ -1,13 +1,25 @@
 // Plain-language labels for everything the engine names with an id. The ids stay available
 // in title attributes for engineers; they never appear as visible text (see plain_language test).
 
-export const KPIS: Record<string, { label: string; unit: "usd" | "count" | "share" }> = {
+export const KPIS: Record<string, { label: string; unit: "usd" | "count" | "share" | "ratio" }> = {
   volume_usd: { label: "Trading volume", unit: "usd" },
   trades: { label: "Trades", unit: "count" },
   active_traders: { label: "Active traders", unit: "count" },
   new_traders: { label: "New traders", unit: "count" },
   avg_trade_usd: { label: "Average trade size", unit: "usd" },
   returning_share: { label: "Returning-trader share", unit: "share" },
+  markets_traded: { label: "Markets traded", unit: "count" },
+  new_markets: { label: "New markets", unit: "count" },
+  trades_per_trader: { label: "Trades per trader", unit: "ratio" },
+  whale_share: { label: "Whale share of volume", unit: "share" },
+  sure_thing_share: { label: "Sure-thing share", unit: "share" },
+  buy_share: { label: "Buy share", unit: "share" },
+  longshot_share: { label: "Long-shot share", unit: "share" },
+  recurring_share: { label: "Recurring-market share", unit: "share" },
+  volume_share: { label: "Share of volume", unit: "share" },
+  odds_flips: { label: "Odds flips", unit: "count" },
+  whale_count: { label: "Whale wallets", unit: "count" },
+  top_market_share: { label: "Top market's share", unit: "share" },
 };
 
 export const kpiLabel = (id: string): string => KPIS[id]?.label ?? id.replace(/_/g, " ");
@@ -59,7 +71,9 @@ export function segmentName(segment: string): string {
 
 /** The question each investigation step answers, in words a non-analyst can read. */
 export function stepQuestion(tool: string, inputs: Record<string, unknown> = {}): string {
-  const within = Object.values((inputs.filters as Record<string, string>) ?? {}).join(", ");
+  const within = Object.values((inputs.filters as Record<string, string | string[]>) ?? {})
+    .map((v) => (Array.isArray(v) ? v.join(" or ") : v))
+    .join(", ");
   const suffix = within ? ` (within ${within})` : "";
   switch (tool) {
     case "kpi.compare": return "How big was the change?" + suffix;
@@ -69,6 +83,7 @@ export function stepQuestion(tool: string, inputs: Record<string, unknown> = {})
     case "by.size": return "Big trades or small ones?" + suffix;
     case "by.trader": return "New traders or returning ones?" + suffix;
     case "by.odds": return "Long shots or favourites?" + suffix;
+    case "by.kind": return "Recurring 5-minute markets or real events?" + suffix;
     case "kpi.alarm": return "Why was this investigation opened?";
     default: return tool;
   }
@@ -89,5 +104,6 @@ export function fmtValue(unit: string, v: number | null | undefined): string {
     return `$${v.toLocaleString(undefined, { maximumFractionDigits: v < 100 ? 2 : 0 })}`;
   }
   if (unit === "share") return `${Math.round(100 * v)}%`;
+  if (unit === "ratio") return v.toFixed(2);
   return Math.round(v).toLocaleString();
 }

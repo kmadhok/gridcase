@@ -9,7 +9,7 @@ params:
   k_sigma: 3.0             # an hour is unusual beyond this many standard deviations ...
   min_run: 2               # ... for this many hours in a row on the same side,
   single_hour_sigma: 5.0   # or one hour beyond this many
-  log_scale: [volume_usd, trades, active_traders, new_traders, avg_trade_usd]  # a 3x jump and a 3x drop count the same
+  log_scale: [volume_usd, trades, active_traders, new_traders, avg_trade_usd, markets_traded, odds_flips]  # a 3x jump and a 3x drop count the same
   min_sd: {log: 0.05, linear: 0.01}  # floor on the spread, so a very regular hour cannot alarm on noise
   warmup_days: {new_traders: 7, returning_share: 7}  # "new" means new to our record, which starts 2026-09-29
 
@@ -19,6 +19,12 @@ watched:
   - {kpi: new_traders}
   - {kpi: avg_trade_usd}
   - {kpi: returning_share}
+  # how the market behaves (added 2026-09-29, M7)
+  - {kpi: markets_traded, group: behaviour}
+  - {kpi: whale_share, group: behaviour}
+  - {kpi: sure_thing_share, group: behaviour}
+  - {kpi: odds_flips, group: behaviour}
+  - {kpi: top_market_share, group: behaviour}
   - {kpi: volume_usd, filters: {category: Sports}}
   - {kpi: volume_usd, filters: {category: Politics}}
   - {kpi: volume_usd, filters: {category: Crypto}}

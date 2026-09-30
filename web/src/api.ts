@@ -85,7 +85,8 @@ export interface SeriesView {
   label: string;
   unit: "usd" | "count" | "share" | string;
   segment: string;
-  filters: Record<string, string>;
+  group?: "team" | "behaviour" | "category";
+  filters: Record<string, string | string[]>;
   status: "alarm" | "normal" | "learning";
   direction: "up" | "down" | null;
   ratio: number | null;

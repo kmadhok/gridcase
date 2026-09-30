@@ -81,8 +81,10 @@ export function NowView({ initial }: { initial?: NowResponse }) {
   if (!now) return <p className="muted">Loading live Polymarket data…</p>;
 
   const caseFor = (s: SeriesView) => now.cases.find((c) => c.metric === s.kpi && c.segment === s.segment && c.state !== "closed")?.case_id;
-  const team = now.series.filter((s) => s.segment === "all");
-  const categories = now.series.filter((s) => s.segment !== "all");
+  const groupOf = (s: SeriesView) => s.group ?? (s.segment === "all" ? "team" : "category");
+  const team = now.series.filter((s) => groupOf(s) === "team");
+  const behaviour = now.series.filter((s) => groupOf(s) === "behaviour");
+  const categories = now.series.filter((s) => groupOf(s) === "category");
   return (
     <div className="space-y-4">
       <header>
@@ -95,6 +97,14 @@ export function NowView({ initial }: { initial?: NowResponse }) {
       <section aria-label="Team KPIs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {team.map((s) => <Tile key={s.series} s={s} caseId={caseFor(s)} />)}
       </section>
+      {behaviour.length > 0 && (
+        <>
+          <h2 className="text-sm font-semibold uppercase tracking-wide muted">How the market behaves</h2>
+          <section aria-label="How the market behaves" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {behaviour.map((s) => <Tile key={s.series} s={s} caseId={caseFor(s)} />)}
+          </section>
+        </>
+      )}
       <h2 className="text-sm font-semibold uppercase tracking-wide muted">Volume by category</h2>
       <section aria-label="Volume by category" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {categories.map((s) => <Tile key={s.series} s={s} caseId={caseFor(s)} />)}
