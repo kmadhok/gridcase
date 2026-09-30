@@ -358,7 +358,7 @@ def build_digest(conn: duckdb.DuckDBPyConnection, day: date, as_of: datetime) ->
         return r
 
     first = _first_full_day(conn, as_of)
-    follow_lo = max(current[1] - 8 * DAY, first or current[0])
+    follow_lo = min(max(current[1] - 8 * DAY, first or current[0]), current[0])
     runs: dict[str, tuple[str, dict[str, Any], Callable[[dict[str, Any]], str]]] = {
         "share_shift": (
             "digest.share_shift",
@@ -491,8 +491,13 @@ def list_digests(conn: duckdb.DuckDBPyConnection) -> list[dict[str, str]]:
 
 def due_day(conn: duckdb.DuckDBPyConnection, wall: datetime, settle: timedelta) -> date | None:
     """The day whose digest is due at `wall`: today's, once `settle` has passed midnight so the
-    last trades of yesterday are collected, if it has not been built yet."""
-    if wall - datetime.combine(wall.date(), time()) < settle:
+    last trades of yesterday are collected, if yesterday is wholly in our record (collection
+    may have begun mid-day) and it has not been built yet."""
+    midnight = datetime.combine(wall.date(), time())
+    if wall - midnight < settle:
+        return None
+    first = _first_full_day(conn, wall)
+    if first is None or first > midnight - DAY:  # yesterday is not wholly in our record
         return None
     day = wall.date()
     row = conn.execute("SELECT count(*) FROM digests WHERE day = ?", [day]).fetchone()

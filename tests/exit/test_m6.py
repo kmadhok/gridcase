@@ -18,7 +18,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from gridcase.digest import build_digest, get_digest
+from gridcase.digest import build_digest, due_day, get_digest
 from gridcase.explain.schema import Claim, Conclusion
 from gridcase.explain.verifier import numbers_in, verify
 from gridcase.ledger.schema import Receipt
@@ -333,3 +333,27 @@ def test_12_the_api_serves_stored_digests(store: Path) -> None:
         assert client.get("/api/digest/2026-10-15").json()["day"] == "2026-10-15"
         assert client.get("/api/digests").json() == [{"day": "2026-10-15"}]
         assert client.get("/api/digest/2026-01-01").status_code == 404
+
+
+def test_13_the_first_digest_waits_for_a_whole_day(tmp_path: Path) -> None:
+    """Collection began mid-evening: a digest of those few hours would mislead, so the first
+    one is due only once a whole UTC day is in the record, and then every day after 00:30."""
+    conn = connect(tmp_path / "young.duckdb")
+    add_trades(
+        conn,
+        [
+            {"ts": datetime(2026, 9, 29, 19, 40) + timedelta(minutes=m), "wallet": "a", "usd": 50.0}
+            for m in range(0, 260, 5)
+        ],
+    )
+    settle = timedelta(minutes=30)
+    assert due_day(conn, datetime(2026, 9, 30, 19, 0), settle) is None  # only 4 hours of Sep 29
+    add_trades(
+        conn, [{"ts": datetime(2026, 9, 30, h), "wallet": "a", "usd": 50.0} for h in range(24)]
+    )
+    assert due_day(conn, datetime(2026, 10, 1, 0, 10), settle) is None  # not settled yet
+    assert due_day(conn, datetime(2026, 10, 1, 0, 40), settle) == date(2026, 10, 1)
+    d = build_digest(conn, date(2026, 10, 1), datetime(2026, 10, 1, 0, 40))
+    assert not any("could not be answered" in c["sentence"]["text"] for c in d["cards"])
+    assert due_day(conn, datetime(2026, 10, 1, 5, 0), settle) is None  # built already
+    conn.close()
