@@ -55,14 +55,10 @@ CHECKS = {
 
 def _kpi_definitions() -> dict[str, str]:
     """Every KPI a reader may meet, defined once in ontology/kpis.yaml."""
-    from gridcase.semantic.kpis import Measure, load_kpis
+    from gridcase.semantic.kpis import is_internal, load_kpis
 
     kpis, _ = load_kpis()
-    return {
-        k.label.lower(): k.description
-        for k in kpis.values()
-        if not (isinstance(k, Measure) and k.internal)
-    }
+    return {k.label.lower(): k.description for k in kpis.values() if not is_internal(k)}
 
 
 GLOSSARY = {

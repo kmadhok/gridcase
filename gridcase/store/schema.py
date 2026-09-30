@@ -48,6 +48,16 @@ DDL = [
         created_at TIMESTAMP NOT NULL
     )
     """,
+    # The daily digest (gridcase/digest.py): one row per day; its receipts are in the ledger
+    # under case_id 'digest-<day>'.
+    """
+    CREATE TABLE IF NOT EXISTS digests (
+        day         DATE PRIMARY KEY,
+        as_of       TIMESTAMP NOT NULL,
+        created_at  TIMESTAMP NOT NULL,
+        digest_json VARCHAR NOT NULL
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS learned_priors (
         template_id VARCHAR NOT NULL,

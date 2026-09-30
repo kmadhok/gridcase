@@ -75,6 +75,7 @@ class Nested(BaseModel):
     where: str = "TRUE"
     empty_is_zero: bool = False
     breakdown_as: str | None = None  # explain changes by breaking down this KPI instead
+    internal: bool = False
 
 
 class Dimension(BaseModel):
@@ -85,6 +86,11 @@ class Dimension(BaseModel):
 
 
 Kpi = Measure | Derived | Share | Nested
+
+
+def is_internal(kpi: Kpi) -> bool:
+    """A building block of other KPIs or of the digest, not listed in the catalog."""
+    return bool(getattr(kpi, "internal", False))
 
 
 class Limit(BaseModel):

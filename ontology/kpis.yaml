@@ -161,6 +161,26 @@ nested:
     inner: {v: sum(usd)}
     outer: max(v) / nullif(sum(v), 0)
     breakdown_as: volume_usd
+  # building blocks of the digest's odds swings: an outcome's first and last price in the
+  # period (ties broken by price), for outcomes with 20+ trades in event markets
+  opening_price:
+    label: Opening price
+    description: An outcome's first price in the period (event markets, 20 or more trades).
+    unit: share
+    per: asset
+    where: d_market_kind = 'event'
+    inner: {p: "arg_min(price, (ts, price))", n: count(*)}
+    outer: max(p) FILTER (WHERE n >= 20)
+    internal: true
+  closing_price:
+    label: Closing price
+    description: An outcome's last price in the period (event markets, 20 or more trades).
+    unit: share
+    per: asset
+    where: d_market_kind = 'event'
+    inner: {p: "arg_max(price, (ts, price))", n: count(*)}
+    outer: max(p) FILTER (WHERE n >= 20)
+    internal: true
 
 # numeric trade fields a question may put a limit on (>= or <)
 numeric:
@@ -199,3 +219,9 @@ dimensions:
     label: Market kind
     sql: CASE WHEN title ILIKE '%up or down%' THEN 'recurring' ELSE 'event' END
     values: [event, recurring]
+  outcome:
+    label: Outcome
+    sql: title || ' · ' || outcome
+  first_seen_day:
+    label: First day in our record
+    sql: strftime(CAST(first_ts AS DATE), '%Y-%m-%d')

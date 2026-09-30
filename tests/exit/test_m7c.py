@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from gridcase.market_alarm import load_watch
 from gridcase.planner.llm import FakeLLM
-from gridcase.semantic.kpis import Measure, load_kpis
+from gridcase.semantic.kpis import is_internal, load_kpis
 from gridcase.server.app import create_app
 from tests.polymarket_synth import AS_OF
 
@@ -37,7 +37,7 @@ def catalog(market_store: Path) -> dict[str, Any]:
 
 def test_1_every_readable_kpi_is_listed_with_a_plain_definition(catalog: dict[str, Any]) -> None:
     kpis, _ = load_kpis()
-    readable = {k for k, v in kpis.items() if not (isinstance(v, Measure) and v.internal)}
+    readable = {k for k, v in kpis.items() if not is_internal(v)}
     listed = {k["id"]: k for k in catalog["kpis"]}
     assert set(listed) == readable
     assert "whale_volume" not in listed  # a building block, not a KPI

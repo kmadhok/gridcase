@@ -18,6 +18,7 @@ from gridcase.semantic.kpis import (
     Measure,
     Nested,
     Share,
+    is_internal,
     load_kpis,
     run_kpi,
 )
@@ -69,7 +70,7 @@ def catalog(conn: duckdb.DuckDBPyConnection, as_of: datetime) -> dict[str, Any]:
     lo = hi - timedelta(hours=1)
     rows = []
     for kid, kpi in kpis.items():
-        if isinstance(kpi, Measure) and kpi.internal:
+        if is_internal(kpi):
             continue
         got = run_kpi(conn, KpiQuery(kpi=kid, grain="total", window=(lo, hi), as_of=as_of))
         value = got[0][-1] if got else None

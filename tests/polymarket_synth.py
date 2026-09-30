@@ -12,7 +12,7 @@ from gridcase.market_alarm import clear_cache
 
 def add_trades(conn: duckdb.DuckDBPyConnection, rows: list[dict[str, Any]]) -> None:
     """Each row: ts, wallet, usd (price defaults to 0.5, so size = usd / price), and optional
-    condition_id, asset, side, title, event_slug, collected_at (default ts + 2 minutes).
+    condition_id, asset, side, outcome, title, event_slug, collected_at (default ts + 2 minutes).
     Tests write into the past, which live collection never does, so the alarm's cache of
     settled hours is cleared."""
     clear_cache()
@@ -34,7 +34,7 @@ def add_trades(conn: duckdb.DuckDBPyConnection, rows: list[dict[str, Any]]) -> N
                 r.get("condition_id", "c1"),
                 "slug",
                 r.get("event_slug", "ev"),
-                "Yes",
+                r.get("outcome", "Yes"),
                 r.get("title", "Will it happen?"),
                 "tx",
                 r.get("collected_at", ts + timedelta(minutes=2)),

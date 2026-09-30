@@ -21,13 +21,18 @@ from pydantic import BaseModel, ValidationError
 from gridcase.ledger.schema import Receipt
 from gridcase.ledger.store import write_receipt
 from gridcase.semantic.kpis import KpiQuery, compile_kpi
-from gridcase.tools.registry import TOOL_INPUTS
+from gridcase.tools.registry import ALL_INPUTS
 
 Rows = list[tuple[Any, ...]]
 ToolFn = Callable[["ToolCtx", Any], tuple[dict[str, Any], float | None]]
 
 TOOLS: dict[str, ToolFn] = {}
-_IMPLS = ["gridcase.tools.compare", "gridcase.tools.breakdown", "gridcase.tools.coverage"]
+_IMPLS = [
+    "gridcase.tools.compare",
+    "gridcase.tools.breakdown",
+    "gridcase.tools.coverage",
+    "gridcase.tools.digest",
+]
 HOUR = timedelta(hours=1)
 
 
@@ -37,7 +42,7 @@ class ToolError(ValueError):
 
 def tool(name: str) -> Callable[[ToolFn], ToolFn]:
     def deco(fn: ToolFn) -> ToolFn:
-        if name not in TOOL_INPUTS:
+        if name not in ALL_INPUTS:
             raise RuntimeError(f"{name} is not in the registry")
         TOOLS[name] = fn
         return fn
@@ -46,7 +51,7 @@ def tool(name: str) -> Callable[[ToolFn], ToolFn]:
 
 
 def _ensure_loaded() -> None:
-    if len(TOOLS) < len(TOOL_INPUTS):
+    if len(TOOLS) < len(ALL_INPUTS):
         for mod in _IMPLS:
             importlib.import_module(mod)
 
@@ -133,7 +138,7 @@ def run_tool(
     _ensure_loaded()
     if name not in TOOLS:
         raise ToolError(f"unknown tool {name!r}")
-    model = TOOL_INPUTS[name]
+    model = ALL_INPUTS[name]
     try:
         parsed = inputs if isinstance(inputs, model) else model.model_validate(dict(inputs))
     except ValidationError as e:

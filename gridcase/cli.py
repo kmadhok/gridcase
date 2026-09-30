@@ -7,7 +7,7 @@ import logging
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from gridcase import config
 from gridcase.planner.llm import LLM
@@ -80,6 +80,23 @@ class ServeOptions:
     drain_interval_s: float | None
     llm: str = "auto"
     watch: bool = True
+
+
+def cmd_digest(args: argparse.Namespace) -> int:
+    """Build (or rebuild) one day's morning read; the server does this after 00:30 UTC."""
+    from gridcase.digest import build_digest
+
+    as_of = datetime.now(UTC).replace(tzinfo=None)
+    day = date.fromisoformat(args.day) if args.day else as_of.date()
+    conn = connect(config.DB_PATH)
+    d = build_digest(conn, day, max(as_of, datetime.combine(day, datetime.min.time())))
+    conn.close()
+    print(f"digest {d['day']} (period {d['period_days']} days)")
+    if d["headline"]:
+        print(f"  {d['headline']['text']}")
+    for c in d["cards"]:
+        print(f"  - {c['sentence']['text']}")
+    return 0
 
 
 def choose_llm_factory(llm: str, has_key: bool) -> Callable[[], LLM]:
@@ -171,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
     inv.add_argument("--as-of", help="UTC; default now")
     inv.add_argument("--llm", choices=["auto", "fake", "anthropic"], default="auto")
     inv.set_defaults(fn=cmd_investigate)
+    dig = sub.add_parser("digest", help="build the morning read for a day (default today)")
+    dig.add_argument("--day", help="YYYY-MM-DD; covers up to that day's 00:00 UTC")
+    dig.set_defaults(fn=cmd_digest)
     srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
     _add_serve_args(srv)
     srv.set_defaults(fn=cmd_serve)

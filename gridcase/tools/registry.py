@@ -46,3 +46,52 @@ TOOL_INPUTS: dict[str, type[BaseModel]] = {
 }
 
 TOOL_NAMES: list[str] = sorted(TOOL_INPUTS)
+
+Window = tuple[datetime, datetime]
+
+
+class TotalsInputs(BaseModel):
+    kpis: list[str]
+    current: Window
+    previous: Window | None = None
+
+
+class ShareShiftInputs(BaseModel):
+    dimension: str = "category"
+    current: Window
+    previous: Window | None = None
+
+
+class MoversInputs(BaseModel):
+    window: Window  # one day
+    baseline_days: int = Field(default=7, ge=1, le=28)
+    top_n: int = Field(default=5, ge=1, le=20)
+
+
+class SwingsInputs(BaseModel):
+    window: Window
+    top_n: int = Field(default=5, ge=1, le=20)
+
+
+class ByDayInputs(BaseModel):
+    kpi: str
+    window: Window
+
+
+class PeriodInputs(BaseModel):
+    window: Window
+
+
+# the daily digest's checks: run by the digest only, not offered to the planner or the model
+DIGEST_INPUTS: dict[str, type[BaseModel]] = {
+    "digest.totals": TotalsInputs,
+    "digest.share_shift": ShareShiftInputs,
+    "digest.movers": MoversInputs,
+    "digest.odds_swings": SwingsInputs,
+    "digest.by_day": ByDayInputs,
+    "digest.retention": PeriodInputs,
+    "digest.rhythm": PeriodInputs,
+    "digest.concentration": PeriodInputs,
+}
+
+ALL_INPUTS: dict[str, type[BaseModel]] = {**TOOL_INPUTS, **DIGEST_INPUTS}

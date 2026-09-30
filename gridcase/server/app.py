@@ -19,7 +19,7 @@ import time
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -36,6 +36,7 @@ from gridcase.ask.context import case_context, now_context
 from gridcase.ask.engine import Asker, answer_question, case_checker, checker_at
 from gridcase.ask.llm import default_asker_factory
 from gridcase.catalog import catalog
+from gridcase.digest import build_digest, due_day, get_digest, latest_digest, list_digests
 from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
 from gridcase.market_alarm import load_watch, series_view
@@ -51,6 +52,7 @@ from gridcase.tools.registry import TOOL_INPUTS, TOOL_NAMES
 
 log = logging.getLogger("gridcase")
 WEB_DIST = config.ROOT / "web" / "dist"
+DIGEST_SETTLE = timedelta(minutes=30)  # the last trades of the day are collected by then
 
 
 def _parse(t: str) -> datetime:
@@ -278,6 +280,17 @@ def create_app(
                         log.warning("market watch failed: %s", e)
                     finally:
                         c.close()
+                if watch:
+                    c = cur()
+                    try:
+                        day = due_day(c, wall, DIGEST_SETTLE)
+                        if day is not None:
+                            build_digest(c, day, wall)
+                            log.info("digest built for %s", day)
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("digest failed: %s", e)
+                    finally:
+                        c.close()
             if drain_interval_s and now >= next_drain:
                 try:
                     drain_scheduled(cur())
@@ -366,6 +379,41 @@ def create_app(
             return catalog(c, now())
         finally:
             c.close()
+
+    @app.get("/api/digests")
+    def api_digests() -> list[dict[str, str]]:
+        c = cur()
+        try:
+            return list_digests(c)
+        finally:
+            c.close()
+
+    @app.get("/api/digest")
+    def api_digest_latest() -> dict[str, Any]:
+        """The newest morning read."""
+        c = cur()
+        try:
+            d = latest_digest(c)
+        finally:
+            c.close()
+        if d is None:
+            raise HTTPException(404, "no digest yet")
+        return d
+
+    @app.get("/api/digest/{day}")
+    def api_digest(day: str) -> dict[str, Any]:
+        try:
+            when = date.fromisoformat(day)
+        except ValueError as e:
+            raise HTTPException(422, "day must be YYYY-MM-DD") from e
+        c = cur()
+        try:
+            d = get_digest(c, when)
+        finally:
+            c.close()
+        if d is None:
+            raise HTTPException(404, f"no digest for {day}")
+        return d
 
     @app.post("/api/ask")
     def api_ask(req: AskRequest, request: Request) -> dict[str, Any]:
