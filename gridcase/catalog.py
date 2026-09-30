@@ -3,6 +3,7 @@ whether it is watched, and its value over the last complete hour."""
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -26,16 +27,21 @@ PER_WORDS = {"asset": "outcome", "wallet": "wallet", "d_market": "market", "cond
 
 def _formula(kpi: Kpi, kpis: dict[str, Kpi]) -> str:
     if isinstance(kpi, Derived):
-        text = kpi.expr
-        for name in sorted(identifiers(parse_expr(kpi.expr)), key=len, reverse=True):
-            text = text.replace(name, kpis[name].label)
+        names = identifiers(parse_expr(kpi.expr))
+        text = re.sub(
+            r"[A-Za-z_]\w*", lambda m: kpis[m[0]].label if m[0] in names else m[0], kpi.expr
+        )
         return text.replace(" / ", " ÷ ").replace(" * ", " × ")
     if isinstance(kpi, Share):
         label = kpis[kpi.of].label
         return f"{label} in the slice ÷ {label} overall"
     if isinstance(kpi, Nested):
         return f"Worked out for each {PER_WORDS.get(kpi.per, kpi.per)}, then combined"
-    return kpi.description
+    return (
+        "Counted once per distinct item"
+        if "DISTINCT" in kpi.sql
+        else ("Counted over trades" if kpi.sql.startswith("count") else "Added up over trades")
+    )
 
 
 def _definition(kpi: Kpi) -> str:

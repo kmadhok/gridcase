@@ -67,3 +67,10 @@ def test_3_dimensions_are_listed_for_slicing(catalog: dict[str, Any]) -> None:
     dims = {d["id"]: d for d in catalog["dimensions"]}
     assert {"category", "market", "size_band", "market_kind"} <= set(dims)
     assert dims["category"]["label"] == "Category" and "Sports" in dims["category"]["values"]
+
+
+def test_4_formulas_name_each_part_once(catalog: dict[str, Any]) -> None:
+    listed = {k["id"]: k for k in catalog["kpis"]}
+    assert listed["longshot_share"]["formula"] == "Long-shot trades ÷ Trades"
+    assert listed["returning_share"]["formula"] == "1 - New traders ÷ Active traders"
+    assert listed["volume_usd"]["formula"] == "Added up over trades"
