@@ -41,4 +41,4 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 ## Deployment
 - Production runs on the VPS (ssh alias `vps`, ubuntu, Tailscale 100.115.94.44), not the laptop. Two user systemd units: gridcase-collector (raw files only) and gridcase-server (the only DuckDB writer: loads trades every 5 minutes, hourly watch, follow-ups, MCP + API + UI on port 8710). `deploy/install.sh` installs both. The laptop is for development.
 - The VPS has its own .env. Copying the laptop .env there is allowed only with `scp` on the user's say-so (2026-09-28); its contents never pass through Claude's context, output, or logs. The T3, Hermes and podcast work already on the host must not be disturbed. Do not change its SSH host keys, T3 state or existing timers.
-- Public hosting will be under the user's domain kanumadhok.com (not scheduled).
+- Public at https://www.kanumadhok.com/marketcase (Vercel rewrite → marketcase.kanumadhok.com → Cloudflare Tunnel unit gridcase-tunnel → the server). MCP is never public; the question box is capped at $2/day.
