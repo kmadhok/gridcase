@@ -1,0 +1,96 @@
+version: 2
+
+models:
+  - name: dim_markets
+    description: One row per market that traded, with its category and kind.
+    columns:
+      - name: condition_id
+        data_tests: [unique, not_null]
+      - name: market_name
+        description: The event's title when known, else the market question (semantic layer dimension `market`).
+      - name: category
+        description: Semantic layer dimension `category`; markets the metadata API does not know are Other.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Sports, Politics, Crypto, Culture, "Economy & Finance", "Tech & Science", Weather, Other]
+      - name: market_kind
+        description: recurring = a title containing "Up or Down" (5-minute and hourly crypto rounds); else event.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [event, recurring]
+
+  - name: dim_wallets
+    description: One row per wallet, with its first trade in our record.
+    columns:
+      - name: wallet
+        data_tests: [unique, not_null]
+      - name: first_day
+        description: The UTC day of the wallet's first trade in our record; a trade that day makes it a new trader.
+
+  - name: fct_trades
+    description: One row per fill, with the semantic layer's dimensions resolved.
+    columns:
+      - name: trade_id
+        data_tests: [unique, not_null]
+      - name: condition_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_markets')
+                field: condition_id
+      - name: wallet
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_wallets')
+                field: wallet
+      - name: side
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [buy, sell]
+      - name: size_band
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [under $10, $10-100, $100-1k, $1k+]
+      - name: price
+        description: The outcome's price in dollars, i.e. the chance traders give it.
+        data_tests:
+          - between:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+  - name: metrics_daily
+    description: >
+      The team's KPIs by UTC day. Each column has the id and meaning of the governed KPI in
+      ontology/kpis.yaml; a test checks every value against the semantic layer.
+    columns:
+      - name: day
+        data_tests: [unique, not_null]
+      - name: volume_usd
+        description: Dollars traded.
+      - name: active_traders
+        description: Distinct wallets that traded.
+      - name: new_traders
+        description: Distinct wallets whose first trade in our record was that day.
+      - name: whale_share
+        description: Share of dollars from trades of $1,000 or more.
+        data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
+      - name: sure_thing_share
+        description: Share of dollars on outcomes priced above 95 cents.
+        data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
+      - name: buy_share
+        data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
+      - name: longshot_share
+        description: Share of trades on outcomes priced under 10 cents.
+        data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
+      - name: recurring_share
+        description: Share of dollars in recurring Up or Down markets.
+        data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
+      - name: returning_share
+        data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]

@@ -37,6 +37,7 @@ from gridcase.ask.engine import Asker, answer_question, case_checker, checker_at
 from gridcase.ask.llm import default_asker_factory
 from gridcase.catalog import catalog
 from gridcase.digest import build_digest, due_day, get_digest, latest_digest, list_digests
+from gridcase.ingest.export import export_markets
 from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
 from gridcase.market_alarm import load_watch, series_view
@@ -174,6 +175,7 @@ def create_app(
     ask_per_window: int = 10,
     ask_window_s: float = 600.0,
     ask_daily_usd: float | None = None,
+    dbt_docs_dir: Path | None = None,
 ) -> FastAPI:
     db_path = db_path or config.DB_PATH
     token = token if token is not None else config.api_token()
@@ -297,6 +299,7 @@ def create_app(
                     log.info(
                         "polymarket refresh: %d new trades, %d new markets", r.new, r.markets_added
                     )
+                    export_markets(c, config.EXPORT_DIR / "markets.parquet")
                 except Exception as e:  # noqa: BLE001
                     log.warning("polymarket refresh failed: %s", e)
                 finally:
@@ -495,6 +498,9 @@ def create_app(
         }
 
     app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"]))
+    docs = dbt_docs_dir or config.DBT_DIR / "target"
+    if (docs / "index.html").exists():  # `gridcase dbt docs generate` writes it
+        app.mount("/dbt", StaticFiles(directory=str(docs), html=True), name="dbt-docs")
     if WEB_DIST.exists():
         app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="ui")
     app.add_middleware(PublicEdge)

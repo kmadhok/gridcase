@@ -3,6 +3,7 @@
 #   gridcase-collector: saves every Polymarket trade (raw files only, never the database)
 #   gridcase-server:    loads trades, runs the hourly watch, serves MCP + API + UI (the only
 #                       process that writes the DuckDB store)
+#   gridcase-dbt:       hourly dbt build of the warehouse (dbt/) and its docs (timer)
 #   gridcase-tunnel:    publishes the server at kanumadhok.com/marketcase through a Cloudflare
 #                       Tunnel; enabled only once `cloudflared tunnel login` has authorised it
 set -euo pipefail
@@ -10,7 +11,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 dest="$HOME/.config/systemd/user"
 mkdir -p "$dest"
-for f in gridcase-server.service gridcase-collector.service; do
+for f in gridcase-server.service gridcase-collector.service gridcase-dbt.service gridcase-dbt.timer; do
   install -m 0644 "$here/$f" "$dest/$f"
 done
 # The power-grid version ran an hourly ingest timer; make sure it is gone.
@@ -25,6 +26,7 @@ fi
 systemctl --user enable --now gridcase-collector.service
 systemctl --user enable --now gridcase-server.service
 systemctl --user restart gridcase-server.service
+systemctl --user enable --now gridcase-dbt.timer
 if [ -f "$HOME/.cloudflared/cert.pem" ]; then
   install -m 0644 "$here/gridcase-tunnel.service" "$dest/gridcase-tunnel.service"
   install -m 0600 "$here/cloudflared-marketcase.yml" "$HOME/.cloudflared/marketcase.yml"

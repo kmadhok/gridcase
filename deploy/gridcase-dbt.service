@@ -1,0 +1,12 @@
+# User unit: build the dbt warehouse (dbt/) from the collector's raw files and the server's
+# market export, run its tests, and regenerate the docs the server publishes at /dbt.
+# dbt writes only data/warehouse.duckdb, never the server's store. Run by gridcase-dbt.timer.
+[Unit]
+Description=MarketCase dbt warehouse build
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/Claude/Projects/gridcase
+ExecStart=%h/.local/bin/uv run gridcase dbt build
+ExecStart=%h/.local/bin/uv run gridcase dbt docs generate
+Nice=10

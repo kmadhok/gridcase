@@ -1,0 +1,22 @@
+# MarketCase warehouse: models the collector's raw Polymarket trades into facts, dimensions and
+# daily metrics. Metric meanings come from ontology/kpis.yaml (the semantic layer); the mart
+# uses the same ids, and tests/exit/test_m9.py proves its numbers equal the governed KPIs.
+name: marketcase
+version: "1.0.0"
+profile: marketcase
+config-version: 2
+
+model-paths: [models]
+macro-paths: [macros]
+test-paths: [tests]
+target-path: target
+clean-targets: [target]
+
+models:
+  marketcase:
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table

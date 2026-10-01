@@ -70,3 +70,15 @@ def test_tunnel_publishes_the_server_without_mcp() -> None:
     assert rules[-1] == {"service": "http_status:404"}  # anything else: nothing
     text = (DEPLOY / "install.sh").read_text()
     assert "cert.pem" in text and "enable --now gridcase-tunnel.service" in text
+
+
+def test_dbt_builds_the_warehouse_and_its_docs_every_hour() -> None:
+    s = _unit("gridcase-dbt.service")
+    execs = " ; ".join(s["ExecStart"])
+    assert "gridcase dbt build" in execs and "gridcase dbt docs generate" in execs
+    assert s["Type"] == ["oneshot"]
+    assert s["WorkingDirectory"][0].endswith("/gridcase")
+    t = _unit("gridcase-dbt.timer")
+    assert t["OnCalendar"] == ["*-*-* *:20:00"]  # after the server's 5-minute loads settle
+    assert t["Persistent"] == ["true"]
+    assert "enable --now gridcase-dbt.timer" in (DEPLOY / "install.sh").read_text()

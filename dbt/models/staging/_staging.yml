@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: stg_polymarket__trades
+    description: >
+      Every Polymarket fill our collector saw, kept once. Read straight from the collector's raw
+      gzip JSONL files (Polymarket's public trades feed reaches back only ~11 minutes, so these
+      files are the only history). Incremental: each run reads only recent files.
+    columns:
+      - name: trade_id
+        description: md5 of (transactionHash, asset, side, size, price); the same key the app's loader uses.
+        data_tests: [unique, not_null]
+      - name: ts
+        description: When the trade happened (UTC).
+        data_tests: [not_null]
+      - name: wallet
+        description: The trader's proxy wallet.
+        data_tests: [not_null]
+      - name: usd
+        description: Dollars traded, size x price.
+      - name: collected_at
+        description: When our collector saw it (UTC). The app never uses a trade before this time.
+        data_tests: [not_null]
+      - name: source_file
+        description: The raw file the kept copy came from.
+
+  - name: stg_polymarket__markets
+    description: >
+      Market metadata from Polymarket's public metadata API, with a category assigned from
+      ontology/categories.yaml (tags, then title keywords). Exported by the server after each refresh.
+    columns:
+      - name: condition_id
+        data_tests: [unique, not_null]

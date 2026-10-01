@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -99,6 +100,23 @@ def cmd_digest(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_dbt(args: list[str]) -> int:
+    from dbt.cli.main import dbtRunner
+
+    res = dbtRunner().invoke(args)
+    return 0 if res.success else 1
+
+
+def cmd_dbt(args: argparse.Namespace) -> int:
+    """Run dbt on the warehouse project (dbt/) with this deployment's paths: the collector's
+    raw files, the server's market export and dbt's own DuckDB file."""
+    os.environ.setdefault("MARKETCASE_RAW", str(config.RAW_DIR / "polymarket"))
+    os.environ.setdefault("MARKETCASE_EXPORTS", str(config.EXPORT_DIR))
+    os.environ.setdefault("MARKETCASE_WAREHOUSE", str(config.WAREHOUSE_PATH))
+    dirs = ["--project-dir", str(config.DBT_DIR), "--profiles-dir", str(config.DBT_DIR)]
+    return run_dbt([*args.dbt_args, *dirs])
+
+
 def choose_llm_factory(llm: str, has_key: bool) -> Callable[[], LLM]:
     """auto = the real planner when a key is present, else the template FakeLLM (logged)."""
     from gridcase.planner.llm import AnthropicLLM, FakeLLM
@@ -191,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
     dig = sub.add_parser("digest", help="build the morning read for a day (default today)")
     dig.add_argument("--day", help="YYYY-MM-DD; covers up to that day's 00:00 UTC")
     dig.set_defaults(fn=cmd_digest)
+    dbt = sub.add_parser("dbt", help="run dbt on the warehouse (e.g. `gridcase dbt build`)")
+    dbt.add_argument("dbt_args", nargs=argparse.REMAINDER, help="passed to dbt")
+    dbt.set_defaults(fn=cmd_dbt)
     srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
     _add_serve_args(srv)
     srv.set_defaults(fn=cmd_serve)

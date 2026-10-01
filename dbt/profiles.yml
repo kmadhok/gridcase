@@ -1,0 +1,8 @@
+# Paths come from the environment; `gridcase dbt ...` sets them from gridcase/config.py.
+marketcase:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('MARKETCASE_WAREHOUSE') }}"
+      threads: 1

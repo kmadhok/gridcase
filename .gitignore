@@ -16,3 +16,7 @@ web/dist/
 .DS_Store
 logs/
 .claude/worktrees/
+dbt/target/
+dbt/logs/
+dbt/.user.yml
+logs/

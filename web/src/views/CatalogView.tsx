@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type CatalogKpi, type CatalogResponse } from "../api";
+import { BASE_PATH } from "../basePath";
 import { fmtTime, fmtValue } from "../labels";
 
 const STATUS_TEXT: Record<string, string> = {
@@ -75,6 +76,13 @@ export function CatalogView({ initial }: { initial?: CatalogResponse }) {
           ))}
         </dl>
       </section>
+      <p className="muted text-sm">
+        The same KPIs are also built as daily tables in a dbt warehouse, with tests that check them against these
+        definitions.{" "}
+        <a className="underline underline-offset-2" style={{ color: "var(--gc-ink)" }} href={`${BASE_PATH}dbt/`}>
+          See how the data is modelled →
+        </a>
+      </p>
     </div>
   );
 }

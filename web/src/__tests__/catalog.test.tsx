@@ -25,6 +25,11 @@ describe("KPI catalog", () => {
     expect(screen.getByText(/Category/)).toBeInTheDocument();
   });
 
+  it("links to the warehouse's data models", () => {
+    render(<CatalogView initial={CATALOG} />);
+    expect(screen.getByRole("link", { name: /how the data is modelled/i })).toHaveAttribute("href", "/marketcase/dbt/");
+  });
+
   it("keeps the exact definition out of sight until asked", async () => {
     render(<CatalogView initial={CATALOG} />);
     const code = within(screen.getByTestId("kpi-whale_share")).getByTestId("definition");

@@ -13,6 +13,9 @@ load_dotenv(ROOT / ".env")
 DATA_DIR = Path(os.environ.get("GRIDCASE_DATA_DIR", ROOT / "data"))
 DB_PATH = Path(os.environ.get("GRIDCASE_DB", DATA_DIR / "gridcase.duckdb"))
 RAW_DIR = DATA_DIR / "raw"
+EXPORT_DIR = DATA_DIR / "exports"  # files the server writes for the dbt warehouse
+WAREHOUSE_PATH = DATA_DIR / "warehouse.duckdb"  # dbt's own DuckDB file (dbt/)
+DBT_DIR = ROOT / "dbt"
 ONTOLOGY_DIR = ROOT / "ontology"
 
 
