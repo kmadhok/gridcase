@@ -352,3 +352,23 @@ def test_short_evidence_codes_resolve_to_full_receipt_ids(case: CaseRecord) -> N
         run_check=None,
     )
     assert res.dropped == 0 and res.sentences[0].receipt_ids == [r.receipt_id]
+
+
+def _optional_params(schema: Any) -> int:
+    """Properties a strict schema leaves optional, counted over every nested object."""
+    if isinstance(schema, list):
+        return sum(_optional_params(s) for s in schema)
+    if not isinstance(schema, dict):
+        return 0
+    own = len(set(schema.get("properties", {})) - set(schema.get("required", [])))
+    return own + sum(_optional_params(v) for v in schema.values())
+
+
+def test_strict_tools_stay_within_the_apis_optional_parameter_limit() -> None:
+    """The API refuses a request whose strict tools have more than 24 optional parameters in
+    total (found live: adding trade-size limits took every question to 30 and every answer
+    failed). Every field the model sees is required; Python still fills in the defaults."""
+    from gridcase.ask.llm import answer_tool
+
+    schemas = [t["input_schema"] for t in [*check_tools(), answer_tool()]]
+    assert _optional_params(schemas) == 0

@@ -62,10 +62,25 @@ do something), call submit_answer with refused=true and no sentences. Always fin
 submit_answer; keep answers to at most five sentences."""
 
 
+def _all_required(schema: Any) -> Any:
+    """Every property required, in every nested object. The API allows at most 24 optional
+    parameters across a request's strict tools; the model fills in each field (an empty list,
+    the usual 7 days) and Python keeps its defaults for callers that leave them out."""
+    if isinstance(schema, list):
+        return [_all_required(s) for s in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {k: _all_required(v) for k, v in schema.items()}
+    if isinstance(out.get("properties"), dict):
+        out["required"] = list(out["properties"])
+    return out
+
+
 def _strict(model: Any) -> dict[str, Any]:
     from anthropic import transform_schema
 
-    return transform_schema(model.model_json_schema())
+    schema: dict[str, Any] = _all_required(transform_schema(model.model_json_schema()))
+    return schema
 
 
 def check_name(tool: str) -> str:
