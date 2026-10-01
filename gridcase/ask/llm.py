@@ -1,6 +1,7 @@
 """Askers: a deterministic FakeAsker (tests, and the demo without an API key) and the
-Anthropic tool loop. Checks are strict tools whose input shapes are the planner's typed ones
-(`llm_schema.LLM_INPUTS`); the answer is a forced `submit_answer` tool call."""
+Anthropic tool loop. Checks are tools whose input shapes are the planner's typed ones
+(`llm_schema.LLM_INPUTS`), validated in Python (a malformed call returns an error the model can
+correct); the answer is a forced, strict `submit_answer` tool call."""
 
 from __future__ import annotations
 
@@ -94,7 +95,7 @@ def check_tools() -> list[dict[str, Any]]:
             "description": CHECKS.get(tool, tool)
             + " Read-only; runs on the data as known at the investigation's point in time.",
             "input_schema": _strict(model),
-            "strict": True,
+            "strict": False,  # strict grammars for 8 tools exceed the API limit; see test_ask
         }
         for tool, model in sorted(LLM_INPUTS.items())
     ]

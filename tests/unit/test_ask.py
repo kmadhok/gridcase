@@ -244,11 +244,11 @@ def test_case_context_carries_causes_falsifiers_evidence_and_glossary(case: Case
     assert "usual level" in ctx["glossary"] and "ruled out" in ctx["glossary"]
 
 
-def test_every_check_tool_has_a_strict_schema_with_real_properties() -> None:
+def test_every_check_tool_has_a_schema_with_real_properties() -> None:
     tools = check_tools()
     assert len(tools) == 8
     for t in tools:
-        assert t["strict"] is True and t["name"].startswith("check_")
+        assert t["name"].startswith("check_")  # strict only for the answer: see below
         props = t["input_schema"]["properties"]
         assert "window" in props and (t["name"] == "check_data_coverage" or "kpi" in props)
     answer_schema = transform_schema(Answer.model_json_schema())
@@ -364,11 +364,13 @@ def _optional_params(schema: Any) -> int:
     return own + sum(_optional_params(v) for v in schema.values())
 
 
-def test_strict_tools_stay_within_the_apis_optional_parameter_limit() -> None:
-    """The API refuses a request whose strict tools have more than 24 optional parameters in
-    total (found live: adding trade-size limits took every question to 30 and every answer
-    failed). Every field the model sees is required; Python still fills in the defaults."""
+def test_strict_tools_stay_within_the_apis_grammar_limits() -> None:
+    """Found live: with trade-size limits the eight strict tools broke the API's limits (30
+    optional parameters, then "compiled grammar is too large") and every question failed.
+    Only the answer, which the code must parse, is strict; a malformed check call already comes
+    back to the model as an error it can correct."""
     from gridcase.ask.llm import answer_tool
 
-    schemas = [t["input_schema"] for t in [*check_tools(), answer_tool()]]
-    assert _optional_params(schemas) == 0
+    assert not any(t.get("strict") for t in check_tools())
+    answer = answer_tool()
+    assert answer["strict"] is True and _optional_params(answer["input_schema"]) == 0
