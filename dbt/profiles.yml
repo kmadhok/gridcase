@@ -6,3 +6,5 @@ marketcase:
       type: duckdb
       path: "{{ env_var('MARKETCASE_WAREHOUSE') }}"
       threads: 1
+      settings:
+        memory_limit: "1GB"  # DuckDB spills to disk past this; keeps the build inside the Airflow unit's MemoryMax
