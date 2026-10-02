@@ -6,18 +6,23 @@ Description=MarketCase Airflow warehouse scheduler
 [Service]
 Type=simple
 Restart=on-failure
-MemoryMax=1500M
+# Airflow idles near 1 GB and the dbt build (DuckDB capped at 1 GB) peaks at 1.3 GB.
+MemoryMax=2600M
 Nice=10
 WorkingDirectory=%h/Documents/Claude/Projects/gridcase
 ExecStart=%h/Documents/Claude/Projects/gridcase/orchestration/airflow/.venv/bin/airflow standalone
 Environment=AIRFLOW_HOME=%h/.local/share/marketcase-airflow
 Environment=AIRFLOW__CORE__DAGS_FOLDER=%h/Documents/Claude/Projects/gridcase/orchestration/airflow/dags
 Environment=AIRFLOW__CORE__LOAD_EXAMPLES=False
+Environment=AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
 Environment=AIRFLOW__API__HOST=100.115.94.44
 Environment=AIRFLOW__API__PORT=8711
+Environment=AIRFLOW__API__WORKERS=1
 Environment=AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://100.115.94.44:8711/execution/
 Environment=GRIDCASE_ROOT=%h/Documents/Claude/Projects/gridcase
 Environment=UV=%h/.local/bin/uv
+# standalone starts its scheduler, API server and DAG processor as `airflow ...` subprocesses.
+Environment=PATH=%h/Documents/Claude/Projects/gridcase/orchestration/airflow/.venv/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]
 WantedBy=default.target

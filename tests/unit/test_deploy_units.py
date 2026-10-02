@@ -77,7 +77,7 @@ def test_airflow_schedules_the_warehouse_and_binds_tailscale_only() -> None:
     root = "%h/Documents/Claude/Projects/gridcase"
     assert s["Type"] == ["simple"]
     assert s["Restart"] == ["on-failure"]
-    assert s["MemoryMax"] == ["1500M"]
+    assert s["MemoryMax"] == ["2600M"]  # Airflow idles near 1 GB; dbt peaks at 1.3 GB
     assert s["Nice"] == ["10"]
     assert s["WorkingDirectory"] == [root]
     assert s["ExecStart"] == [f"{root}/orchestration/airflow/.venv/bin/airflow standalone"]
@@ -85,11 +85,15 @@ def test_airflow_schedules_the_warehouse_and_binds_tailscale_only() -> None:
     assert env["AIRFLOW_HOME"] == "%h/.local/share/marketcase-airflow"
     assert env["AIRFLOW__CORE__DAGS_FOLDER"] == f"{root}/orchestration/airflow/dags"
     assert env["AIRFLOW__CORE__LOAD_EXAMPLES"] == "False"
+    assert env["AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION"] == "False"  # else nothing ever runs
     assert env["AIRFLOW__API__HOST"] == "100.115.94.44"
     assert env["AIRFLOW__API__PORT"] == "8711"
     assert env["AIRFLOW__CORE__EXECUTION_API_SERVER_URL"] == "http://100.115.94.44:8711/execution/"
     assert env["GRIDCASE_ROOT"] == root
     assert env["UV"] == "%h/.local/bin/uv"
+    # standalone starts its scheduler, API server and DAG processor as `airflow ...` children.
+    assert env["PATH"].startswith(f"{root}/orchestration/airflow/.venv/bin:")
+    assert env["AIRFLOW__API__WORKERS"] == "1"
     assert not any("KEY" in v or "TOKEN" in v for vals in s.values() for v in vals)
 
 
