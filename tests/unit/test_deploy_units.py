@@ -72,13 +72,37 @@ def test_tunnel_publishes_the_server_without_mcp() -> None:
     assert "cert.pem" in text and "enable --now gridcase-tunnel.service" in text
 
 
-def test_dbt_builds_the_warehouse_and_its_docs_every_hour() -> None:
-    s = _unit("gridcase-dbt.service")
-    execs = " ; ".join(s["ExecStart"])
-    assert "gridcase dbt build" in execs and "gridcase dbt docs generate" in execs
-    assert s["Type"] == ["oneshot"]
-    assert s["WorkingDirectory"][0].endswith("/gridcase")
-    t = _unit("gridcase-dbt.timer")
-    assert t["OnCalendar"] == ["*-*-* *:20:00"]  # after the server's 5-minute loads settle
-    assert t["Persistent"] == ["true"]
-    assert "enable --now gridcase-dbt.timer" in (DEPLOY / "install.sh").read_text()
+def test_airflow_schedules_the_warehouse_and_binds_tailscale_only() -> None:
+    s = _unit("gridcase-airflow.service")
+    root = "%h/Documents/Claude/Projects/gridcase"
+    assert s["Type"] == ["simple"]
+    assert s["Restart"] == ["on-failure"]
+    assert s["MemoryMax"] == ["1500M"]
+    assert s["Nice"] == ["10"]
+    assert s["WorkingDirectory"] == [root]
+    assert s["ExecStart"] == [f"{root}/orchestration/airflow/.venv/bin/airflow standalone"]
+    env = dict(value.split("=", 1) for value in s["Environment"])
+    assert env["AIRFLOW_HOME"] == "%h/.local/share/marketcase-airflow"
+    assert env["AIRFLOW__CORE__DAGS_FOLDER"] == f"{root}/orchestration/airflow/dags"
+    assert env["AIRFLOW__CORE__LOAD_EXAMPLES"] == "False"
+    assert env["AIRFLOW__API__HOST"] == "100.115.94.44"
+    assert env["AIRFLOW__API__PORT"] == "8711"
+    assert env["AIRFLOW__CORE__EXECUTION_API_SERVER_URL"] == "http://100.115.94.44:8711/execution/"
+    assert env["GRIDCASE_ROOT"] == root
+    assert env["UV"] == "%h/.local/bin/uv"
+    assert not any("KEY" in v or "TOKEN" in v for vals in s.values() for v in vals)
+
+
+def test_install_script_replaces_the_dbt_timer_with_airflow() -> None:
+    text = (DEPLOY / "install.sh").read_text()
+    assert 'if [ ! -d "$root/orchestration/airflow/.venv" ]; then' in text
+    assert 'bash "$root/orchestration/airflow/setup.sh"' in text
+    assert "enable --now gridcase-airflow.service" in text
+    assert "disable --now gridcase-dbt.timer" in text
+    assert 'rm -f "$dest/gridcase-dbt.timer" "$dest/gridcase-dbt.service"' in text
+    install_loop = text.split("for f in ", 1)[1].split("; do", 1)[0]
+    assert "gridcase-airflow.service" in install_loop
+    assert "gridcase-dbt" not in install_loop
+    assert "enable --now gridcase-dbt.timer" not in text
+    assert not (DEPLOY / "gridcase-dbt.service").exists()
+    assert not (DEPLOY / "gridcase-dbt.timer").exists()

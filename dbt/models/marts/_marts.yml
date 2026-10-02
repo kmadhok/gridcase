@@ -94,3 +94,33 @@ models:
         data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
       - name: returning_share
         data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
+
+  - name: metrics_hourly_by_category
+    description: Existing daily KPI formulas by UTC hour and category; only hours with trades appear.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "(cast(hour as varchar) || '|' || category)"
+    columns:
+      - name: hour
+        data_tests: [not_null]
+      - name: day
+        data_tests: [not_null]
+      - name: category
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Sports, Politics, Crypto, Culture, "Economy & Finance", "Tech & Science", Weather, Other]
+      - name: volume_usd
+        description: Dollars traded.
+      - name: trades
+        description: Number of fills.
+      - name: active_traders
+        description: Distinct wallets within this hour and category; not additive across categories.
+      - name: whale_share
+        description: Share of dollars from trades of $1,000 or more.
+        data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
+      - name: buy_share
+        description: Share of dollars from buys.
+        data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]

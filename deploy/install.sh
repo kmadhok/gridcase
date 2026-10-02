@@ -3,7 +3,7 @@
 #   gridcase-collector: saves every Polymarket trade (raw files only, never the database)
 #   gridcase-server:    loads trades, runs the hourly watch, serves MCP + API + UI (the only
 #                       process that writes the DuckDB store)
-#   gridcase-dbt:       hourly dbt build of the warehouse (dbt/) and its docs (timer)
+#   gridcase-airflow:   hourly source checks, dbt build/docs and publication (replaces dbt timer)
 #   gridcase-tunnel:    publishes the server at kanumadhok.com/marketcase through a Cloudflare
 #                       Tunnel; enabled only once `cloudflared tunnel login` has authorised it
 set -euo pipefail
@@ -11,12 +11,18 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 dest="$HOME/.config/systemd/user"
 mkdir -p "$dest"
-for f in gridcase-server.service gridcase-collector.service gridcase-dbt.service gridcase-dbt.timer; do
+if [ ! -d "$root/orchestration/airflow/.venv" ]; then
+  bash "$root/orchestration/airflow/setup.sh"
+fi
+for f in gridcase-server.service gridcase-collector.service gridcase-airflow.service; do
   install -m 0644 "$here/$f" "$dest/$f"
 done
 # The power-grid version ran an hourly ingest timer; make sure it is gone.
 systemctl --user disable --now gridcase-ingest.timer 2>/dev/null || true
 rm -f "$dest/gridcase-ingest.timer" "$dest/gridcase-ingest.service"
+# Airflow replaces the warehouse timer; never leave both schedulers enabled.
+systemctl --user disable --now gridcase-dbt.timer 2>/dev/null || true
+rm -f "$dest/gridcase-dbt.timer" "$dest/gridcase-dbt.service"
 systemctl --user daemon-reload
 if command -v npm >/dev/null 2>&1; then
   (cd "$root/web" && npm ci --no-audit --no-fund && npm run build)
@@ -26,7 +32,7 @@ fi
 systemctl --user enable --now gridcase-collector.service
 systemctl --user enable --now gridcase-server.service
 systemctl --user restart gridcase-server.service
-systemctl --user enable --now gridcase-dbt.timer
+systemctl --user enable --now gridcase-airflow.service
 if [ -f "$HOME/.cloudflared/cert.pem" ]; then
   install -m 0644 "$here/gridcase-tunnel.service" "$dest/gridcase-tunnel.service"
   install -m 0600 "$here/cloudflared-marketcase.yml" "$HOME/.cloudflared/marketcase.yml"

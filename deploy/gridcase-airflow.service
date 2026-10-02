@@ -1,0 +1,23 @@
+# User unit: schedule source checks, dbt build/docs and mart publication with Airflow.
+# API/UI is reachable only on Tailscale; gridcase loads its secrets from the repo's .env.
+[Unit]
+Description=MarketCase Airflow warehouse scheduler
+
+[Service]
+Type=simple
+Restart=on-failure
+MemoryMax=1500M
+Nice=10
+WorkingDirectory=%h/Documents/Claude/Projects/gridcase
+ExecStart=%h/Documents/Claude/Projects/gridcase/orchestration/airflow/.venv/bin/airflow standalone
+Environment=AIRFLOW_HOME=%h/.local/share/marketcase-airflow
+Environment=AIRFLOW__CORE__DAGS_FOLDER=%h/Documents/Claude/Projects/gridcase/orchestration/airflow/dags
+Environment=AIRFLOW__CORE__LOAD_EXAMPLES=False
+Environment=AIRFLOW__API__HOST=100.115.94.44
+Environment=AIRFLOW__API__PORT=8711
+Environment=AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://100.115.94.44:8711/execution/
+Environment=GRIDCASE_ROOT=%h/Documents/Claude/Projects/gridcase
+Environment=UV=%h/.local/bin/uv
+
+[Install]
+WantedBy=default.target

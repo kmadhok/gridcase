@@ -31,6 +31,12 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 - uv run gridcase investigate --kpi volume_usd --segment category=Sports [--as-of ...]
 - uv run gridcase digest [--day YYYY-MM-DD]   # build the morning read (the server does it at 00:30 UTC)
 - uv run gridcase serve
+- uv run gridcase dbt build          # build and test the local warehouse
+- uv run gridcase dbt docs generate
+- uv run gridcase warehouse check-sources [--max-age-minutes 15]
+- uv run gridcase warehouse publish  # MotherDuck; skips without MOTHERDUCK_TOKEN
+- bash orchestration/airflow/setup.sh  # separate Python 3.12 Airflow environment
+- orchestration/airflow/.venv/bin/pytest orchestration/airflow/tests -q
 
 ## Data caveats you must respect
 - Polymarket's public trades feed reaches back only ~10,000 trades (~11 minutes) and is CDN-cached for 5 minutes: history exists only because the collector saves it (10,000-trade pages every 4 minutes). Never assume a backfill is possible.
@@ -39,6 +45,8 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 - Markets missing from the metadata API are categorised by title keywords (ontology/categories.yaml), else Other.
 
 ## Deployment
-- Production runs on the VPS (ssh alias `vps`, ubuntu, Tailscale 100.115.94.44), not the laptop. Two user systemd units: gridcase-collector (raw files only) and gridcase-server (the only DuckDB writer: loads trades every 5 minutes, hourly watch, follow-ups, MCP + API + UI on port 8710). `deploy/install.sh` installs both. The laptop is for development.
+- Production runs on the VPS (ssh alias `vps`, ubuntu, Tailscale 100.115.94.44), not the laptop. User systemd units: gridcase-collector (raw files only), gridcase-server (the only writer to the app's DuckDB store: loads trades every 5 minutes, hourly watch, follow-ups, MCP + API + UI on port 8710), and gridcase-airflow (the separate dbt warehouse). `deploy/install.sh` installs them and retires the gridcase-dbt timer. The laptop is for development.
+- Airflow runs in its own `orchestration/airflow/.venv` (3.3.2, Python 3.12), with its UI only on Tailscale at http://100.115.94.44:8711. The hourly :20 DAG checks source freshness, runs dbt build, generates docs, then publishes three marts to MotherDuck. No catchup, one active run, two retries; standalone uses SQLite under `~/.local/share/marketcase-airflow`, with a 1500M memory cap.
+- `MOTHERDUCK_TOKEN` lives in the VPS repo's `.env`, loaded by the gridcase CLI; never put it in units or DAGs. Without it, publication skips successfully. `MARKETCASE_PUBLISH_TARGET` defaults to `md:marketcase`; a file path supports local verification. Hex connects to MotherDuck database `marketcase` (see `docs/hex.md`).
 - The VPS has its own .env. Copying the laptop .env there is allowed only with `scp` on the user's say-so (2026-09-28); its contents never pass through Claude's context, output, or logs. The T3, Hermes and podcast work already on the host must not be disturbed. Do not change its SSH host keys, T3 state or existing timers.
 - Public at https://www.kanumadhok.com/marketcase (Vercel rewrite → marketcase.kanumadhok.com → Cloudflare Tunnel unit gridcase-tunnel → the server). MCP is never public; the question box is capped at $2/day.

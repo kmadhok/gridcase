@@ -117,6 +117,14 @@ def cmd_dbt(args: argparse.Namespace) -> int:
     return run_dbt([*args.dbt_args, *dirs])
 
 
+def cmd_warehouse(args: argparse.Namespace) -> int:
+    from gridcase.warehouse import check_sources, publish
+
+    if args.warehouse_cmd == "check-sources":
+        return check_sources(args.max_age_minutes)
+    return publish()
+
+
 def choose_llm_factory(llm: str, has_key: bool) -> Callable[[], LLM]:
     """auto = the real planner when a key is present, else the template FakeLLM (logged)."""
     from gridcase.planner.llm import AnthropicLLM, FakeLLM
@@ -212,6 +220,12 @@ def main(argv: list[str] | None = None) -> int:
     dbt = sub.add_parser("dbt", help="run dbt on the warehouse (e.g. `gridcase dbt build`)")
     dbt.add_argument("dbt_args", nargs=argparse.REMAINDER, help="passed to dbt")
     dbt.set_defaults(fn=cmd_dbt)
+    warehouse = sub.add_parser("warehouse", help="check sources or publish the dbt marts")
+    warehouse.set_defaults(fn=cmd_warehouse)
+    warehouse_sub = warehouse.add_subparsers(dest="warehouse_cmd", required=True)
+    check = warehouse_sub.add_parser("check-sources", help="fail when warehouse inputs are stale")
+    check.add_argument("--max-age-minutes", type=float, default=15)
+    warehouse_sub.add_parser("publish", help="copy the marts to MotherDuck (or a local file)")
     srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
     _add_serve_args(srv)
     srv.set_defaults(fn=cmd_serve)
