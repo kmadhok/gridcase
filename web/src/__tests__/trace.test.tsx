@@ -73,4 +73,9 @@ describe("Step by step", () => {
     expect(timeline).toHaveTextContent("Wrote the explanation (from templates, no model)");
     expect(timeline.textContent).not.toContain("$");
   });
+  it("a free case's header says no model was used instead of a $0.00 model cost", () => {
+    render(<CaseView id={CASE.case_id} initial={{ ...CASE, cost_usd: 0 }} />);
+    expect(screen.getByText(/standard playbook, no model/)).toBeInTheDocument();
+    expect(screen.queryByText(/model calls? · \$0\.00/)).not.toBeInTheDocument();
+  });
 });

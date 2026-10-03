@@ -61,7 +61,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           Why did {kpiLabel(c.metric).toLowerCase()} move? · {segmentName(c.entity)} · {fmtTime(c.as_of)}
         </h1>
         <div className="muted text-sm" title={`case ${c.case_id} · state ${c.state}`}>
-          {CASE_STATES[c.state] ?? c.state} · {c.llm_calls} model call{c.llm_calls === 1 ? "" : "s"} · ${c.cost_usd.toFixed(2)}
+          {CASE_STATES[c.state] ?? c.state} · {c.cost_usd > 0 ? `${c.llm_calls} model call${c.llm_calls === 1 ? "" : "s"} · $${c.cost_usd.toFixed(2)}` : "standard playbook, no model"}
         </div>
       </header>
       {trigger && <TriggerNote r={trigger} />}
