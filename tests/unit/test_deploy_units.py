@@ -94,6 +94,7 @@ def test_airflow_schedules_the_warehouse_and_binds_tailscale_only() -> None:
     # standalone starts its scheduler, API server and DAG processor as `airflow ...` children.
     assert env["PATH"].startswith(f"{root}/orchestration/airflow/.venv/bin:")
     assert env["AIRFLOW__API__WORKERS"] == "1"
+    assert env["AIRFLOW__CORE__PARALLELISM"] == "2"  # one chain; default 32 idle workers OOM
     assert not any("KEY" in v or "TOKEN" in v for vals in s.values() for v in vals)
 
 
