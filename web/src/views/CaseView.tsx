@@ -4,6 +4,7 @@ import { HypothesisName, Panel, StatusBadge, TierBadge, pct } from "../component
 import { CASE_STATES, HYPOTHESES, KPIS, TIERS, fmtTime, fmtValue, kpiLabel, segmentName, stepQuestion } from "../labels";
 import { AskPanel } from "./AskPanel";
 import { ReceiptCard } from "./ReceiptCard";
+import { TraceView } from "./TraceView";
 
 function ClaimRow({ claim, i, receipts }: { claim: Claim; i: number; receipts: Record<string, Receipt> }) {
   const [open, setOpen] = useState(false);
@@ -120,6 +121,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           </Panel>
         </div>
       </div>
+      <TraceView key={c.case_id} caseId={c.case_id} />
       <AskPanel target={{ caseId: c.case_id }} receipts={receipts} asOf={c.as_of} />
     </div>
   );

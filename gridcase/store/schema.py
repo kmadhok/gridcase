@@ -5,6 +5,20 @@ from __future__ import annotations
 import duckdb
 
 DDL = [
+    """
+    CREATE TABLE IF NOT EXISTS case_trace (
+        case_id     VARCHAR NOT NULL,
+        seq         INTEGER NOT NULL,
+        parent_seq  INTEGER,
+        kind        VARCHAR NOT NULL CHECK (kind IN ('stage', 'tool', 'llm')),
+        name        VARCHAR NOT NULL,
+        started_at  TIMESTAMP NOT NULL,
+        ms          DOUBLE NOT NULL,
+        status      VARCHAR NOT NULL CHECK (status IN ('ok', 'error')),
+        detail_json VARCHAR NOT NULL,
+        PRIMARY KEY (case_id, seq)
+    )
+    """,
     # Evidence ledger: append-only receipts per case (gridcase/ledger).
     """
     CREATE TABLE IF NOT EXISTS ledger (

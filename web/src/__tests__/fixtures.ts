@@ -1,4 +1,4 @@
-import type { CaseFull, NowResponse, Receipt, SeriesView, CatalogResponse } from "../api";
+import type { CaseTrace, CaseFull, NowResponse, Receipt, SeriesView, CatalogResponse } from "../api";
 
 export const RECEIPT: Receipt = {
   receipt_id: "r1", tool: "by.market", inputs: { kpi: "volume_usd", filters: {} }, as_of: "2026-10-05T14:20:00",
@@ -88,4 +88,20 @@ export const CATALOG: CatalogResponse = {
     { id: "size_band", label: "Trade size", values: ["under $10", "$10-100", "$100-1k", "$1k+"] },
     { id: "market", label: "Market", values: null },
   ],
+};
+
+export const TRACE: CaseTrace = {
+  recorded: true,
+  totals: { wall_ms: 14200, model_calls: 3, input_tokens: 500, output_tokens: 80, cost_usd: 0.15, checks_run: 2, checks_failed: 1 },
+  spans: [
+    { seq: 0, parent_seq: null, kind: "stage", name: "compare", offset_ms: 0, ms: 200, status: "ok", detail: {} },
+    { seq: 1, parent_seq: 0, kind: "tool", name: "kpi.compare", offset_ms: 10, ms: 180, status: "ok", detail: { inputs: { kpi: "volume_usd" }, receipt_id: "r0" } },
+    { seq: 2, parent_seq: null, kind: "llm", name: "plan", offset_ms: 200, ms: 4000, status: "ok", detail: { attempts: 2, cost_usd: 0.05, model: "test-model" } },
+    { seq: 3, parent_seq: null, kind: "stage", name: "execute", offset_ms: 4200, ms: 1900, status: "ok", detail: {} },
+    { seq: 4, parent_seq: 3, kind: "tool", name: "data.coverage", offset_ms: 4200, ms: 500, status: "ok", detail: { step_id: "s1", receipt_id: "r1", inputs: {} } },
+    { seq: 5, parent_seq: 3, kind: "tool", name: "by.market", offset_ms: 4700, ms: 1400, status: "error", detail: { step_id: "s2", inputs: { kpi: "volume_usd" }, error: "by.market failed" } },
+    { seq: 6, parent_seq: null, kind: "llm", name: "explain", offset_ms: 6100, ms: 8000, status: "ok", detail: { cost_usd: 0.10, model: "test-model" } },
+    { seq: 7, parent_seq: null, kind: "stage", name: "verify", offset_ms: 14100, ms: 20, status: "ok", detail: { kept: 6, dropped: 1, interpretation: 1 } },
+    { seq: 8, parent_seq: null, kind: "stage", name: "publish", offset_ms: 14120, ms: 80, status: "ok", detail: {} },
+  ].map((s) => ({ ...s, started_at: "2026-10-03T12:00:00" })) as CaseTrace["spans"],
 };

@@ -7,6 +7,7 @@ re-applied; no model call.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -34,7 +35,9 @@ from gridcase.planner.llm import LLM
 from gridcase.planner.planner import make_plan
 from gridcase.semantic.kpis import Filters, segment_label
 from gridcase.tools.base import ToolError, run_tool
+from gridcase.trace import Tracer, active_tracer
 
+log = logging.getLogger("gridcase")
 PRIOR_SEASON = "all"  # learned priors are kept per (driver, KPI); markets have no seasons
 
 
@@ -51,77 +54,107 @@ def investigate(
     or the last complete hours before as_of when a person asks."""
     filters = dict(filters or {})
     case = new_case(conn, entity=segment_label(filters), metric=kpi, as_of=as_of)
-    if trigger is not None:  # the alarm that opened this case is its first piece of evidence
-        write_receipt(conn, case.case_id, trigger)
-    window = case_window(as_of, trigger.output if trigger is not None else None)
-    compare = run_tool(
-        conn,
-        "kpi.compare",
-        {"kpi": kpi, "filters": filters, "window": window, "baseline_days": BASELINE_DAYS},
-        as_of,
-        case_id=case.case_id,
-    )
+    tracer = Tracer()
+    token = active_tracer.set(tracer)
+    try:
+        if trigger is not None:  # the alarm that opened this case is its first piece of evidence
+            write_receipt(conn, case.case_id, trigger)
+        window = case_window(as_of, trigger.output if trigger is not None else None)
+        with tracer.span("stage", "compare"):
+            compare = run_tool(
+                conn,
+                "kpi.compare",
+                {"kpi": kpi, "filters": filters, "window": window, "baseline_days": BASELINE_DAYS},
+                as_of,
+                case_id=case.case_id,
+            )
 
-    priors = {t.id: effective_prior(conn, t.id, kpi, PRIOR_SEASON) for t in load_templates()}
-    similar = [
-        {"case_id": c.case_id, "as_of": c.as_of.isoformat(), "top_hypothesis": c.top_hypothesis}
-        for c in similar_cases(conn, case.entity, kpi, case.season)
-    ]
-    ctx = build_context(
-        conn,
-        case.case_id,
-        kpi,
-        filters,
-        as_of,
-        window,
-        compare.output,
-        priors={h: p.mean() for h, p in priors.items()},
-        trigger=trigger.output if trigger is not None else None,
-        similar_cases=similar,
-    )
-    plan, attempts, usage = make_plan(llm, ctx)
-    case.plan, case.plan_attempts = plan, attempts
-    case.llm_usage = case.llm_usage + usage
-    case.llm_calls += attempts
-    save_case(conn, case)
-    advance(conn, case.case_id, "planned")
-
-    advance(conn, case.case_id, "executing")
-    result = execute_plan(conn, plan, case.case_id)
-    case = get_case(conn, case.case_id)
-    case.plan, case.plan_attempts = plan, attempts
-
-    ranked = rank_hypotheses(result, priors, change_size(compare.output))
-    conclusion, dropped, u2 = explain(
-        llm, case.case_id, ranked, case.receipts, ctx.model_dump(mode="json")
-    )
-    usual = within_usual_range(compare.output)
-    if usual:
-        conclusion = conclusion.model_copy(update={"caveats": [*conclusion.caveats, usual]})
-    case.step_errors = dict(result.errors)
-    if result.errors:
-        failed = ", ".join(
-            f"{sid} ({next((s.tool for s in plan.steps if s.step_id == sid), '?')}): {msg[:80]}"
-            for sid, msg in result.errors.items()
+        priors = {t.id: effective_prior(conn, t.id, kpi, PRIOR_SEASON) for t in load_templates()}
+        similar = [
+            {"case_id": c.case_id, "as_of": c.as_of.isoformat(), "top_hypothesis": c.top_hypothesis}
+            for c in similar_cases(conn, case.entity, kpi, case.season)
+        ]
+        ctx = build_context(
+            conn,
+            case.case_id,
+            kpi,
+            filters,
+            as_of,
+            window,
+            compare.output,
+            priors={h: p.mean() for h, p in priors.items()},
+            trigger=trigger.output if trigger is not None else None,
+            similar_cases=similar,
         )
-        note = (
-            f"{len(result.errors)} of {len(plan.steps)} planned steps failed and produced no "
-            f"evidence: {failed}"
-        )
-        conclusion = conclusion.model_copy(update={"caveats": [*conclusion.caveats, note]})
-    case.conclusion = conclusion
-    case.top_hypothesis = conclusion.top_hypothesis
-    case.llm_usage = case.llm_usage + u2
-    case.llm_calls = llm.calls
-    case.recheck = None
-    save_case(conn, case)
-    advance(conn, case.case_id, "concluded")
+        with tracer.span("llm", "plan") as detail:
+            plan, attempts, usage = make_plan(llm, ctx)
+            detail.update(usage.model_dump(), attempts=attempts)
+        case.plan, case.plan_attempts = plan, attempts
+        case.llm_usage = case.llm_usage + usage
+        case.llm_calls += attempts
+        save_case(conn, case)
+        advance(conn, case.case_id, "planned")
 
-    case = get_case(conn, case.case_id)
-    case.action = publish_case(conn, case, dry_run=dry_run) | {"dropped_claims": dropped}
-    save_case(conn, case)
-    advance(conn, case.case_id, "action_taken")
-    return get_case(conn, case.case_id)
+        advance(conn, case.case_id, "executing")
+        with tracer.span("stage", "execute"):
+            execute_seq = len(tracer.spans) - 1
+            result = execute_plan(conn, plan, case.case_id)
+            executed = [sid for sid in result.order if result.step_status[sid] != "skipped"]
+            checks = [s for s in tracer.spans if s.parent_seq == execute_seq]
+            # One run_tool per step that ran; if that ever changes, leave the rows unlabelled.
+            if len(checks) == len(executed):
+                for span, sid in zip(checks, executed, strict=True):
+                    span.detail["step_id"] = sid
+        case = get_case(conn, case.case_id)
+        case.plan, case.plan_attempts = plan, attempts
+
+        ranked = rank_hypotheses(result, priors, change_size(compare.output))
+        with tracer.span("llm", "explain") as detail:
+            conclusion, dropped, u2 = explain(
+                llm, case.case_id, ranked, case.receipts, ctx.model_dump(mode="json")
+            )
+            detail.update(u2.model_dump())
+        # explain already verified the claims; record only its returned counts here.
+        with tracer.span("stage", "verify") as detail:
+            detail.update(
+                kept=len(conclusion.claims),
+                dropped=len(dropped),
+                interpretation=sum(c.tier == "inferred" for c in conclusion.claims),
+            )
+        usual = within_usual_range(compare.output)
+        if usual:
+            conclusion = conclusion.model_copy(update={"caveats": [*conclusion.caveats, usual]})
+        case.step_errors = dict(result.errors)
+        if result.errors:
+            failed = ", ".join(
+                f"{sid} ({next((s.tool for s in plan.steps if s.step_id == sid), '?')}): {msg[:80]}"
+                for sid, msg in result.errors.items()
+            )
+            note = (
+                f"{len(result.errors)} of {len(plan.steps)} planned steps failed and produced no "
+                f"evidence: {failed}"
+            )
+            conclusion = conclusion.model_copy(update={"caveats": [*conclusion.caveats, note]})
+        case.conclusion = conclusion
+        case.top_hypothesis = conclusion.top_hypothesis
+        case.llm_usage = case.llm_usage + u2
+        case.llm_calls = llm.calls
+        case.recheck = None
+        save_case(conn, case)
+        advance(conn, case.case_id, "concluded")
+
+        with tracer.span("stage", "publish"):
+            case = get_case(conn, case.case_id)
+            case.action = publish_case(conn, case, dry_run=dry_run) | {"dropped_claims": dropped}
+            save_case(conn, case)
+            advance(conn, case.case_id, "action_taken")
+            return get_case(conn, case.case_id)
+    finally:
+        active_tracer.reset(token)
+        try:  # a trace must never break, or hide the error of, the investigation it observes
+            tracer.save(conn, case.case_id)
+        except Exception:
+            log.exception("could not save the trace of case %s", case.case_id)
 
 
 def within_usual_range(o: dict[str, Any]) -> str | None:

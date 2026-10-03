@@ -50,6 +50,7 @@ from gridcase.server.tasks import TaskRegistry
 from gridcase.store.db import connect
 from gridcase.tools.base import run_tool
 from gridcase.tools.registry import TOOL_INPUTS, TOOL_NAMES
+from gridcase.trace import read_trace
 
 log = logging.getLogger("gridcase")
 WEB_DIST = config.ROOT / "web" / "dist"
@@ -373,6 +374,17 @@ def create_app(
         c = cur()
         try:
             return _case_full(get_case(c, case_id))
+        except KeyError as e:
+            raise HTTPException(404, f"unknown case {case_id}") from e
+        finally:
+            c.close()
+
+    @app.get("/api/cases/{case_id}/trace")
+    def api_case_trace(case_id: str) -> dict[str, Any]:
+        c = cur()
+        try:
+            get_case(c, case_id)
+            return read_trace(c, case_id)
         except KeyError as e:
             raise HTTPException(404, f"unknown case {case_id}") from e
         finally:

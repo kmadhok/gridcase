@@ -22,6 +22,7 @@ from gridcase.ledger.schema import Receipt
 from gridcase.ledger.store import write_receipt
 from gridcase.semantic.kpis import KpiQuery, compile_kpi
 from gridcase.tools.registry import ALL_INPUTS
+from gridcase.trace import active_tracer
 
 Rows = list[tuple[Any, ...]]
 ToolFn = Callable[["ToolCtx", Any], tuple[dict[str, Any], float | None]]
@@ -134,6 +135,23 @@ def run_tool(
     inputs: Mapping[str, Any] | BaseModel,
     as_of: datetime,
     case_id: str | None = None,
+) -> Receipt:
+    tracer = active_tracer.get()
+    if tracer is None:
+        return _run_tool(conn, name, inputs, as_of, case_id)
+    raw = inputs.model_dump(mode="json") if isinstance(inputs, BaseModel) else dict(inputs)
+    with tracer.span("tool", name, inputs=raw) as detail:
+        receipt = _run_tool(conn, name, inputs, as_of, case_id)
+        detail["receipt_id"] = receipt.receipt_id
+        return receipt
+
+
+def _run_tool(
+    conn: duckdb.DuckDBPyConnection,
+    name: str,
+    inputs: Mapping[str, Any] | BaseModel,
+    as_of: datetime,
+    case_id: str | None,
 ) -> Receipt:
     _ensure_loaded()
     if name not in TOOLS:

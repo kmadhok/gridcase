@@ -182,6 +182,45 @@ async function get<T>(url: string): Promise<T> {
   return (await r.json()) as T;
 }
 
+export interface TraceSpan {
+  seq: number;
+  parent_seq: number | null;
+  kind: "stage" | "tool" | "llm";
+  name: string;
+  started_at: string;
+  offset_ms: number;
+  ms: number;
+  status: "ok" | "error";
+  detail: {
+    inputs?: Record<string, unknown>;
+    step_id?: string;
+    receipt_id?: string;
+    error?: string;
+    attempts?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    cost_usd?: number;
+    model?: string | null;
+    kept?: number;
+    dropped?: number;
+    interpretation?: number;
+  };
+}
+
+export interface CaseTrace {
+  recorded: boolean;
+  spans: TraceSpan[];
+  totals: {
+    wall_ms: number;
+    model_calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+    checks_run: number;
+    checks_failed: number;
+  };
+}
+
 export const api = {
   now: () => get<NowResponse>(`${API}/now`),
   catalog: () => get<CatalogResponse>(`${API}/catalog`),
@@ -189,6 +228,7 @@ export const api = {
   digests: () => get<{ day: string }[]>(`${API}/digests`),
   cases: () => get<CaseSummary[]>(`${API}/cases`),
   case: (id: string) => get<CaseFull>(`${API}/cases/${encodeURIComponent(id)}`),
+  trace: (id: string) => get<CaseTrace>(`${API}/cases/${encodeURIComponent(id)}/trace`),
   ask,
 };
 
