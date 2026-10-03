@@ -156,6 +156,8 @@ def test_3_api_old_cases_unknown_cases_and_idempotent_schema(market_store: Path)
     )
     assert r.tool == "kpi.compare"
     case = investigate(conn, FakeLLM(), "volume_usd", AS_OF)
+    free = read_trace(conn, case.case_id)["totals"]  # the standard playbook calls no model
+    assert free["model_calls"] == 0 and free["cost_usd"] == 0
     create_schema(conn)
     create_schema(conn)
     expected = read_trace(conn, case.case_id)

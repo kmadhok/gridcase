@@ -107,7 +107,9 @@ def read_trace(conn: duckdb.DuckDBPyConnection, case_id: str) -> dict[str, Any]:
                 "detail": json.loads(detail),
             }
         )
-    models = [s for s in spans if s["kind"] == "llm"]
+    # The free standard playbook goes through the same plan/explain steps without a model;
+    # its spans carry no model name and are not model calls.
+    models = [s for s in spans if s["kind"] == "llm" and s["detail"].get("model")]
     execute = {s["seq"] for s in spans if s["kind"] == "stage" and s["name"] == "execute"}
     checks = [s for s in spans if s["kind"] == "tool" and s["parent_seq"] in execute]
     return {

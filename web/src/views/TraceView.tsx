@@ -12,9 +12,15 @@ const LABELS: Record<string, string> = {
   publish: "Saved the case",
 };
 
+// The free standard playbook runs the same steps without a model (no model name recorded).
+const usedModel = (span: TraceSpan) => span.kind === "llm" && Boolean(span.detail.model);
+
 function label(span: TraceSpan): string {
   if (span.kind === "tool") return stepQuestion(span.name, span.detail.inputs);
   const name = LABELS[span.name] ?? "Investigation step";
+  if (span.kind === "llm" && !usedModel(span)) {
+    return span.name === "plan" ? `${name} (standard playbook, no model)` : `${name} (from templates, no model)`;
+  }
   return span.name === "plan" && (span.detail.attempts ?? 1) > 1
     ? `${name} (${span.detail.attempts} tries)` : name;
 }
@@ -56,7 +62,7 @@ export function TraceView({ caseId }: { caseId: string }) {
             : !trace.recorded ? <p className="muted text-sm">Step-by-step timing is recorded for investigations from 3 October 2026 on.</p>
             : totals && <>
               <p className="mb-3 text-sm">
-                Took {(totals.wall_ms / 1000).toFixed(1)} s · {totals.model_calls} model call{totals.model_calls === 1 ? "" : "s"} · ${totals.cost_usd.toFixed(2)} · {totals.checks_run} check{totals.checks_run === 1 ? "" : "s"}{totals.checks_failed > 0 ? `, ${totals.checks_failed} couldn't run` : ""}
+                Took {(totals.wall_ms / 1000).toFixed(1)} s · {totals.model_calls ? `${totals.model_calls} model call${totals.model_calls === 1 ? "" : "s"} · $${totals.cost_usd.toFixed(2)}` : "standard playbook, no model calls"} · {totals.checks_run} check{totals.checks_run === 1 ? "" : "s"}{totals.checks_failed > 0 ? `, ${totals.checks_failed} couldn't run` : ""}
               </p>
               <ol className="min-w-0 space-y-2" data-testid="trace-timeline">
                 {rows.map((span) => {
@@ -70,11 +76,11 @@ export function TraceView({ caseId }: { caseId: string }) {
                         {span.name === "verify" && <span className="muted block">kept {span.detail.kept ?? 0}, removed {span.detail.dropped ?? 0}</span>}
                       </div>
                       <div className="relative h-3 min-w-0 overflow-hidden" aria-hidden="true">
-                        <div data-testid="trace-bar" className={`absolute h-3 rounded ${span.kind === "llm" ? "bg-[var(--gc-accent)]" : "bg-[var(--gc-mark)]"}`} style={{ left: `${left}%`, width: `${width}%`, minWidth: "2px" }} />
+                        <div data-testid="trace-bar" className={`absolute h-3 rounded ${usedModel(span) ? "bg-[var(--gc-accent)]" : "bg-[var(--gc-mark)]"}`} style={{ left: `${left}%`, width: `${width}%`, minWidth: "2px" }} />
                       </div>
                       <div className="muted min-w-0 break-words text-right">
                         {duration(span.ms)}
-                        {span.kind === "llm" && <span className="accent block">${(span.detail.cost_usd ?? 0).toFixed(2)}</span>}
+                        {usedModel(span) && <span className="accent block">${(span.detail.cost_usd ?? 0).toFixed(2)}</span>}
                       </div>
                     </li>
                   );
