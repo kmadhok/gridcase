@@ -124,3 +124,35 @@ models:
       - name: buy_share
         description: Share of dollars from buys.
         data_tests: [{between: {arguments: {min_value: 0, max_value: 1}}}]
+
+  - name: trader_retention
+    description: >
+      Trader retention by first-day cohort: of the wallets first seen in our record on
+      cohort_day, how many traded again day_number days later (day 1 = next-day return,
+      day 7 = one week). The record's first, partial day is not a cohort and the latest,
+      incomplete day is never counted. warmed_up is false for cohorts in the record's first
+      week, whose "new" wallets include some that traded before collection began.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "(cast(cohort_day as varchar) || '|' || cast(day_number as varchar))"
+    columns:
+      - name: cohort_day
+        description: The UTC day of the cohort's first trade in our record.
+        data_tests: [not_null]
+      - name: day_number
+        description: Days since the cohort day (0 = the cohort day itself).
+        data_tests: [not_null, {between: {arguments: {min_value: 0, max_value: 100000}}}]
+      - name: activity_day
+        description: cohort_day + day_number.
+      - name: cohort_size
+        description: Wallets in the cohort; equals metrics_daily.new_traders on the cohort day.
+        data_tests: [not_null]
+      - name: retained_traders
+        description: Cohort wallets with at least one trade on the activity day.
+      - name: retention_rate
+        description: retained_traders / cohort_size.
+        data_tests: [not_null, {between: {arguments: {min_value: 0, max_value: 1}}}]
+      - name: warmed_up
+        description: The cohort day is at least seven days after the record began.
+        data_tests: [not_null]
