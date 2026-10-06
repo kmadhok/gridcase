@@ -23,6 +23,9 @@ ONTOLOGY_DIR = ROOT / "ontology"
 PLANNER_MODEL = os.environ.get("GRIDCASE_PLANNER_MODEL", "claude-opus-5")
 CHEAP_MODEL = os.environ.get("GRIDCASE_CHEAP_MODEL", "claude-sonnet-5")
 ASK_MODEL = os.environ.get("GRIDCASE_ASK_MODEL", CHEAP_MODEL)
+# the Explore chat (OpenRouter): picked by experiments/model_pick (DECISIONS 2026-10-05)
+CHAT_MODEL = os.environ.get("GRIDCASE_CHAT_MODEL", "deepseek/deepseek-v4-flash")
+CHAT_FALLBACK_MODEL = os.environ.get("GRIDCASE_CHAT_FALLBACK_MODEL", "google/gemini-3.1-flash-lite")
 MODEL_PRICES: dict[str, tuple[float, float]] = {
     "claude-opus-5": (5.0, 25.0),
     "claude-sonnet-5": (2.0, 10.0),
@@ -50,3 +53,8 @@ def ask_daily_usd() -> float:
 def has_anthropic_api_key() -> bool:
     """Presence only; the SDK reads the value itself. Never surface the key."""
     return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+
+
+def has_openrouter_api_key() -> bool:
+    """Presence only; the client reads the value itself. Never surface the key."""
+    return bool(os.environ.get("OPENROUTER_API_KEY", "").strip())

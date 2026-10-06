@@ -354,3 +354,28 @@ Plan: `docs/plans/2026-10-05_explore_chat.md`.
   - With a group-by it keeps the `top_n` segments ranked by their total over the window, and reports how many segments there were. With a time grain and no group-by it also reports the peak and the low.
   - It flags `gap_overlap` when the window touches a collector gap, so an answer can say the number may be low.
 - **Test-first.** `tests/exit/test_m13.py` (phase B part, 36 tests) was written and run red. Its planted store has hand-countable trades, including a trade collected after `as_of` and one in the hour still running. Two deliberate code breaks were caught: dropping the complete-hour rule (13 failures) and dropping the `top_n` cut (1 failure). Full suite: 237 passed, 1 skipped. Ruff and mypy --strict are clean.
+
+## 2026-10-06 — MarketCase M13 phase C: the two-call chat, the OpenRouter client and `/api/explore/ask`
+
+Plan: `docs/plans/2026-10-05_explore_chat.md`. This changes hard rule 6 and the `CLAUDE.md` stack line to the wording in the plan.
+
+- **Two calls, no open loop (`gridcase/explore/chat.py`).**
+  1. Pick: up to 3 queries, `no_query`, `investigate` or `refuse`.
+  2. The server runs the queries through `kpi.series`.
+  3. Write: sentences citing this turn's evidence.
+  4. The verifier drops any number the evidence does not hold.
+
+  `refuse` and `investigate` stop after the first call, so they cost one cheap call. An investigation is never started by the chat. The reply carries the hour, and the page offers the capped "Investigate" button (phase D).
+- **The page's own chart is evidence too.** The server recomputes it from the page state as an hourly `kpi.series` receipt, so "what was the busiest hour on this chart?" needs no query. The visitor's floor and ceiling lines are passed as context, never as evidence.
+- **The history cannot plant evidence.** Earlier turns arrive from the browser as plain text: questions, queries, answer sentences. They help with follow-ups, but they are never in the evidence pool. Only receipts computed in this request get citable codes, so a sentence citing a code from a forged history is dropped. A test shows it.
+- **Failures are visible.**
+  - An unreadable or invalid pick, such as a KPI outside the semantic layer, gets one retry that shows the model its error.
+  - A second failure gives "Sorry, I couldn't answer that just now" with `fallback: true`, never a made-up answer.
+  - A provider error goes straight to the fallback model inside the client: `deepseek/deepseek-v4-flash` first, then `google/gemini-3.1-flash-lite`, set by `GRIDCASE_CHAT_MODEL` and `GRIDCASE_CHAT_FALLBACK_MODEL`.
+  - Without `OPENROUTER_API_KEY`, the chat always takes the visible fallback.
+- **Tidying, not rejecting.** A named window sent with stray dates has the dates removed, and more than 3 queries are cut to 3. `REVIEW:` the cut is silent to the visitor; the answer simply covers the first three.
+- **Cost is what OpenRouter reports for each call (usage accounting).** It is charged to the question box's existing per-visitor limit and $2/day budget, so the chat and the case question box share one budget.
+- **The writer sees at most 200 rows of one receipt.** The receipt keeps all of them, so the verifier still checks against the full output. An hourly chart over 7 days is 168 rows.
+- **The endpoint is `POST /api/explore/ask`.** It validates the question (1–500 characters), the page state (a public KPI and known segments), and at most 6 turns of history. Through the tunnel it is public, like `/api/ask`. MCP is unchanged.
+- **Test-first.** The phase C part of `tests/exit/test_m13.py` (17 tests, scripted model, no paid calls) was written and run red. Deliberately bypassing the verifier fails 2 of them (the invented number, the forged history). Full suite: 254 passed, 1 skipped. Ruff and mypy --strict are clean.
+- **Found while reading the question box (not fixed here):** `gridcase/ask/llm.py::ASK_SYSTEM`, the case question box's live system prompt, still describes the power-grid version: grid regions, demand vs forecast, "supply shortfall", PJM. It has been sent with every Polymarket question since the pivot. A separate small fix.

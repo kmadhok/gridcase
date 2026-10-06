@@ -35,8 +35,10 @@ from gridcase import config
 from gridcase.ask.context import case_context, now_context
 from gridcase.ask.engine import Asker, answer_question, case_checker, checker_at
 from gridcase.ask.llm import default_asker_factory
+from gridcase.ask.openrouter import ChatModel, default_chat_factory
 from gridcase.catalog import catalog
 from gridcase.digest import build_digest, due_day, get_digest, latest_digest, list_digests
+from gridcase.explore.chat import ExploreAsk, answer_explore
 from gridcase.ingest.export import export_markets
 from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
@@ -177,11 +179,13 @@ def create_app(
     ask_window_s: float = 600.0,
     ask_daily_usd: float | None = None,
     dbt_docs_dir: Path | None = None,
+    chat_factory: Callable[[], ChatModel] | None = None,
 ) -> FastAPI:
     db_path = db_path or config.DB_PATH
     token = token if token is not None else config.api_token()
     llm_factory = llm_factory or AnthropicLLM
     asker_factory = asker_factory or default_asker_factory()
+    chat_factory = chat_factory or default_chat_factory()
     limiter = AskLimiter(
         ask_per_window,
         ask_window_s,
@@ -506,6 +510,29 @@ def create_app(
             "refused": res.refused,
             "new_receipts": [r.model_dump(mode="json") for r in res.new_receipts],
             "dropped": res.dropped,
+            "cost_usd": round(res.usage.cost_usd, 4),
+        }
+
+    @app.post("/api/explore/ask")
+    def api_explore_ask(req: ExploreAsk, request: Request) -> dict[str, Any]:
+        """The Explore chat (hard rule 6): the model fills in semantic-layer queries, the
+        server runs them, and every sentence is verified against this request's evidence.
+        Shares the question box's per-visitor limit and daily budget."""
+        limiter.admit(visitor(request))
+        c = cur()
+        try:
+            res = answer_explore(chat_factory(), req, c, now())
+        finally:
+            c.close()
+        limiter.charge(res.usage.cost_usd)
+        return {
+            "sentences": [cl.model_dump() for cl in res.sentences],
+            "refused": res.refused,
+            "investigate_hour": res.investigate_hour.isoformat() if res.investigate_hour else None,
+            "queries": [q.model_dump(mode="json") for q in res.queries],
+            "new_receipts": [r.model_dump(mode="json") for r in res.new_receipts],
+            "dropped": res.dropped,
+            "fallback": res.fallback,
             "cost_usd": round(res.usage.cost_usd, 4),
         }
 

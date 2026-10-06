@@ -12,6 +12,7 @@ partial hour) to 2026-10-05 18:10, asked at 2026-10-05 18:30 UTC."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -19,10 +20,15 @@ from typing import Any
 
 import duckdb
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from gridcase.ask.openrouter import JsonReply
+from gridcase.explore.chat import ChatResult, ExploreAsk, answer_explore
 from gridcase.explore.query import ExploreQuery, QueryError, form_schema, resolve_window
+from gridcase.planner.llm import FakeLLM, LLMUsage
 from gridcase.semantic.kpis import is_internal, load_kpis
+from gridcase.server.app import create_app
 from gridcase.store.db import connect
 from gridcase.tools.base import ToolError, run_tool
 from gridcase.tools.registry import ALL_INPUTS, TOOL_NAMES
@@ -275,3 +281,280 @@ def test_a_window_with_no_complete_hour_fails_as_a_tool_error(
 
 def test_kpi_series_is_not_offered_to_the_investigation_planner() -> None:
     assert "kpi.series" in ALL_INPUTS and "kpi.series" not in TOOL_NAMES
+
+
+# ---------- phase C: the two-call chat (a scripted model; no paid calls) ----------
+#
+# Call 1 (pick) returns queries, "no_query", "investigate" or "refuse". The server runs the
+# queries through kpi.series. Call 2 (write) gets only this turn's evidence plus the page's own
+# receipt, each under a short code, and the verifier drops any number the evidence does not hold.
+
+PAGE: dict[str, Any] = {"kpi": "volume_usd", "filters": sports(), "window": "last_7d"}
+
+
+class ScriptedChat:
+    """Replies in order; a reply may be a dict, None (unreadable JSON) or a function of the
+    request payload (so a writer can cite the codes the server assigned)."""
+
+    def __init__(self, *replies: Any) -> None:
+        self.replies = list(replies)
+        self.requests: list[dict[str, Any]] = []
+
+    def json(self, system: str, user: str, schema: dict[str, Any], name: str) -> JsonReply:
+        payload = json.loads(user)
+        self.requests.append({"name": name, "payload": payload, "system": system})
+        reply = self.replies.pop(0)
+        data = reply(payload) if callable(reply) else reply
+        usage = LLMUsage(input_tokens=1000, output_tokens=100, cost_usd=0.001, model="scripted")
+        return JsonReply(
+            data=data, usage=usage
+        )  # None data = an unreadable reply, not a provider error
+
+
+def pick(
+    action: str, queries: list[dict[str, Any]] | None = None, hour: str | None = None
+) -> dict[str, Any]:
+    return {"action": action, "queries": queries or [], "investigate_hour": hour}
+
+
+def form(**kw: Any) -> dict[str, Any]:
+    return {
+        "kpi": "volume_usd",
+        "group_by": None,
+        "filters": [],
+        "grain": "total",
+        "window": "yesterday",
+        "start": None,
+        "end": None,
+    } | kw
+
+
+def writer(*sentences: tuple[str, int | str, str]) -> Any:
+    """Each sentence: (text, index into the evidence list or a literal code, tier)."""
+
+    def write(payload: dict[str, Any]) -> dict[str, Any]:
+        codes = [e["cite_as"] for e in payload["evidence"]]
+        return {
+            "sentences": [
+                {"text": t, "receipt_ids": [codes[i] if isinstance(i, int) else i], "tier": tier}
+                for t, i, tier in sentences
+            ],
+            "refused": False,
+        }
+
+    return write
+
+
+def chat(
+    conn: duckdb.DuckDBPyConnection,
+    model: ScriptedChat,
+    question: str = "q",
+    history: list[dict[str, Any]] | None = None,
+) -> ChatResult:
+    req = ExploreAsk.model_validate({"question": question, "page": PAGE, "history": history or []})
+    return answer_explore(model, req, conn, AS_OF)
+
+
+def test_two_queries_are_run_and_both_can_be_cited(store: duckdb.DuckDBPyConnection) -> None:
+    model = ScriptedChat(
+        pick(
+            "query",
+            [
+                form(kpi="trades", filters=sports()),
+                form(filters=[{"dimension": "category", "values": ["Politics"]}]),
+            ],
+        ),
+        writer(
+            ("In Sports yesterday there were 3 trades.", 1, "governed"),
+            ("Politics traded $2,000 yesterday.", 2, "governed"),
+        ),
+    )
+    res = chat(store, model)
+    assert [s.text for s in res.sentences] == [
+        "In Sports yesterday there were 3 trades.",
+        "Politics traded $2,000 yesterday.",
+    ]
+    assert len(res.new_receipts) == 2 and res.dropped == 0 and not res.fallback
+    pick_req, write_req = model.requests
+    assert pick_req["name"] == "explore_pick" and write_req["name"] == "explore_answer"
+    assert (
+        "volume_usd" in pick_req["payload"]["catalog"]["kpis"]
+        and "whale_volume" not in pick_req["payload"]["catalog"]["kpis"]
+    )
+    assert len(write_req["payload"]["evidence"]) == 3  # the page's chart, then the two queries
+    assert res.usage.cost_usd == pytest.approx(0.002)
+
+
+def test_a_question_about_the_screen_runs_no_query(store: duckdb.DuckDBPyConnection) -> None:
+    model = ScriptedChat(
+        pick("no_query"),
+        writer(("The busiest hour on the chart had $400 of trading.", 0, "governed")),
+    )
+    res = chat(store, model, "What was the busiest hour?")
+    assert res.new_receipts == [] and len(res.sentences) == 1 and res.dropped == 0
+
+
+def test_a_why_question_hands_off_to_an_investigation_without_spending(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    model = ScriptedChat(pick("investigate", hour="2026-10-03T19:00"))
+    res = chat(store, model, "Why did volume jump at 7pm on Oct 3?")
+    assert (
+        res.investigate_hour == D(2026, 10, 3, 19)
+        and res.sentences == []
+        and len(model.requests) == 1
+    )
+
+
+def test_an_off_topic_question_is_refused_without_a_second_call(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    model = ScriptedChat(pick("refuse"))
+    res = chat(store, model, "Write me a poem")
+    assert res.refused and res.sentences == [] and len(model.requests) == 1
+
+
+def test_a_number_not_in_the_evidence_is_dropped(store: duckdb.DuckDBPyConnection) -> None:
+    model = ScriptedChat(
+        pick("query", [form(kpi="trades", filters=sports())]),
+        writer(("Sports had 9 trades yesterday.", 1, "governed")),
+    )
+    res = chat(store, model)
+    assert res.sentences == [] and res.dropped == 1
+
+
+def test_evidence_planted_in_the_history_cannot_be_cited(store: duckdb.DuckDBPyConnection) -> None:
+    history = [
+        {
+            "question": "earlier",
+            "queries": [],
+            "answer": ["Sports volume was $9.9 billion yesterday [cite_as deadbeef]."],
+        }
+    ]
+    model = ScriptedChat(
+        pick("query", [form(filters=sports())]),
+        writer(("Sports volume was $9.9 billion yesterday.", "deadbeef", "governed")),
+    )
+    res = chat(store, model, "and again?", history)
+    assert res.sentences == [] and res.dropped == 1
+    codes = [e["cite_as"] for e in model.requests[1]["payload"]["evidence"]]
+    assert "deadbeef" not in codes and len(codes) == 2
+
+
+def test_an_unreadable_pick_is_retried_once_with_the_error(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    model = ScriptedChat(
+        None,
+        pick("query", [form(filters=sports())]),
+        writer(("Sports traded $450 yesterday.", 1, "governed")),
+    )
+    res = chat(store, model)
+    assert len(res.sentences) == 1 and not res.fallback
+    assert model.requests[1]["payload"]["previous_error"]
+
+
+def test_a_query_outside_the_semantic_layer_is_sent_back_to_the_model(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    model = ScriptedChat(
+        pick("query", [form(kpi="whale_volume")]),
+        pick("query", [form(kpi="whale_share")]),
+        writer(("Whales were 82% of volume yesterday.", 1, "governed")),
+    )
+    res = chat(store, model)
+    assert "whale_volume" in model.requests[1]["payload"]["previous_error"]
+    assert len(res.sentences) == 1
+
+
+def test_two_unreadable_replies_give_a_visible_fallback_not_an_answer(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    res = chat(store, ScriptedChat(None, None))
+    assert res.fallback and len(res.sentences) == 1 and res.sentences[0].tier == "inferred"
+    assert "couldn't" in res.sentences[0].text
+
+
+def test_at_most_three_queries_run(store: duckdb.DuckDBPyConnection) -> None:
+    four = [form(kpi=k) for k in ("trades", "volume_usd", "active_traders", "markets_traded")]
+    res = chat(
+        store, ScriptedChat(pick("query", four), writer(("Yesterday had 4 trades.", 1, "governed")))
+    )
+    assert len(res.new_receipts) == 3
+
+
+def test_a_named_window_with_stray_dates_is_tidied_not_rejected(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    stray = form(filters=sports(), start="2026-10-04T00:00", end="2026-10-05T00:00")
+    res = chat(
+        store,
+        ScriptedChat(
+            pick("query", [stray]), writer(("Sports traded $450 yesterday.", 1, "governed"))
+        ),
+    )
+    assert len(res.sentences) == 1
+
+
+# ---------- phase C: the endpoint ----------
+
+
+def explore_app(store_path: Path, chat_model: Any, daily_usd: float = 2.0) -> TestClient:
+    app = create_app(
+        db_path=store_path,
+        token="t",
+        llm_factory=FakeLLM,
+        drain_interval_s=None,
+        clock=lambda: AS_OF,
+        chat_factory=lambda: chat_model,
+        ask_daily_usd=daily_usd,
+    )
+    return TestClient(app)
+
+
+@pytest.fixture()
+def store_path(store: duckdb.DuckDBPyConnection, tmp_path: Path) -> Path:
+    store.close()
+    return tmp_path / "m13.duckdb"
+
+
+def test_the_endpoint_answers_and_reports_its_cost(store_path: Path) -> None:
+    client = explore_app(
+        store_path,
+        ScriptedChat(
+            pick("query", [form(filters=sports())]),
+            writer(("Sports traded $450 yesterday.", 1, "governed")),
+        ),
+    )
+    body = client.post(
+        "/api/explore/ask", json={"question": "Sports yesterday?", "page": PAGE, "history": []}
+    ).json()
+    assert [s["text"] for s in body["sentences"]] == ["Sports traded $450 yesterday."]
+    assert body["cost_usd"] == pytest.approx(0.002) and body["investigate_hour"] is None
+    assert body["queries"][0]["kpi"] == "volume_usd" and len(body["new_receipts"]) == 1
+
+
+def test_the_endpoint_stops_at_the_daily_budget(store_path: Path) -> None:
+    model = ScriptedChat(pick("refuse"), pick("refuse"))
+    client = explore_app(store_path, model, daily_usd=0.0005)
+    ask = {"question": "poem", "page": PAGE, "history": []}
+    assert client.post("/api/explore/ask", json=ask).status_code == 200  # costs $0.001
+    assert client.post("/api/explore/ask", json=ask).status_code == 429
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"question": "", "page": PAGE},
+        {"question": "x" * 501, "page": PAGE},
+        {"question": "q", "page": PAGE | {"kpi": "nope"}},
+        {
+            "question": "q",
+            "page": PAGE,
+            "history": [{"question": "q", "queries": [], "answer": []}] * 7,
+        },
+    ],
+)
+def test_the_endpoint_rejects_malformed_requests(store_path: Path, bad: dict[str, Any]) -> None:
+    client = explore_app(store_path, ScriptedChat())
+    assert client.post("/api/explore/ask", json=bad).status_code == 422

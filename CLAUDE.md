@@ -7,7 +7,7 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 - DuckDB store (single file, data/gridcase.duckdb): trades, markets, collector gaps, cases, case_trace (one step-by-step trace per investigation), ledger. Raw collector output (gzip JSONL) in data/raw/polymarket/
 - dbt warehouse (dbt/, dbt-duckdb) reads the raw files, not the store, and writes only data/warehouse.duckdb: 8 models (staging, dims, fct_trades, metrics_daily, metrics_hourly_by_category, trader_retention) and 48 dbt tests. Its KPI formulas restate ontology/kpis.yaml and are held equal by a parity test; trader_retention is not a governed KPI
 - Pydantic v2 for every plan, receipt, driver, KPI and ontology object
-- Anthropic SDK for the planner, explainer and question box only; model names in config, never hardcoded
+- Anthropic SDK for the planner, explainer and case question box; OpenRouter (cheap open-weight models) for the Explore chat; model names in config, never hardcoded
 - FastAPI + MCP (2026-07-28 spec, stateless) in one service; web UI in web/ (Vite + React), served by the same service
 - Secrets only via .env, loaded with python-dotenv; never print, log, or commit them
 
@@ -17,7 +17,7 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 3. The explainer emits only sentences that reference receipt ids. Enforce in gridcase/explain/verifier.py; unsupported numbers are dropped, uncited sentences are marked interpretation.
 4. Plans are gridcase/planner/schema.py::InvestigationPlan. The validator rejects plans that do not test the mandatory data check (D0_DATA_PROBLEM) first, or test < 2 drivers.
 5. No new data source, KPI, driver, or action type without a line in docs/DECISIONS.md and a stop for human review.
-6. No free-form chat UI. The case viewer is the UI. A question box may answer only from a case's evidence (plus read-only checks run at the case's as_of), and every answer passes through gridcase/explain/verifier.py (user decision 2026-09-29).
+6. No free-form chat over the model's own knowledge. The case viewer and the Explore page are the UI. A question box or the Explore chat may answer only from governed evidence: a case's receipts, the page's own data, or semantic-layer queries the model fills in and the server runs (`kpi.series`). Every answer passes through gridcase/explain/verifier.py (user decisions 2026-09-29 and 2026-10-05).
 
 ## Workflow
 - Work one phase at a time from the current plan. Each phase has an exit test in tests/exit/ (test_mN.py). Write it first, run it red, then implement; loop until it passes.
