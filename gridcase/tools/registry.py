@@ -8,6 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from gridcase.explore.query import ExploreQuery
 from gridcase.semantic.kpis import FilterValue, Limit
 
 
@@ -94,4 +95,7 @@ DIGEST_INPUTS: dict[str, type[BaseModel]] = {
     "digest.concentration": PeriodInputs,
 }
 
-ALL_INPUTS: dict[str, type[BaseModel]] = {**TOOL_INPUTS, **DIGEST_INPUTS}
+# the Explore chat's query: run by the chat only, not offered to the planner
+EXPLORE_INPUTS: dict[str, type[BaseModel]] = {"kpi.series": ExploreQuery}
+
+ALL_INPUTS: dict[str, type[BaseModel]] = {**TOOL_INPUTS, **DIGEST_INPUTS, **EXPLORE_INPUTS}
