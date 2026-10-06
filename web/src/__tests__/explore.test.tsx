@@ -123,6 +123,22 @@ describe("ExploreView", () => {
     expect(second.history).toEqual([{ question: "When was the peak?", queries: [], answer: ["In Sports over the last 3 days, volume peaked at $3.6M."] }]);
   });
 
+  it("answers a question it cannot handle with the KPIs it tracks", async () => {
+    mockApi({
+      ...BASE,
+      "/api/explore/ask": () => ({ body: { sentences: [], refused: true, investigate_hour: null, queries: [], new_receipts: [], dropped: 0, fallback: false, page_receipt: null, cost_usd: 0.001 } }),
+    });
+    render(<ExploreView query="kpi=volume_usd" />);
+    await screen.findByTestId("flagged");
+    await userEvent.type(screen.getByLabelText("Your question"), "What were the biggest whale trades in that game?{Enter}");
+    expect(await screen.findByText("I can't answer that. Here are the KPIs I currently track:")).toBeInTheDocument();
+    const tracked = within(screen.getByTestId("chat")).getByRole("list", { name: "KPIs I track" });
+    expect(within(tracked).getByText("Trading volume")).toBeInTheDocument();
+    expect(within(tracked).getByText("Whale wallets")).toBeInTheDocument();
+    expect(within(tracked).getAllByRole("listitem")).toHaveLength(18);
+    expect(screen.queryByText(/only answer questions/)).not.toBeInTheDocument();
+  });
+
   it("shows no engine ids", async () => {
     mockApi(BASE);
     render(<ExploreView query="kpi=volume_usd&seg=category%3DSports" />);

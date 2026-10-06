@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type ExploreAskBody, type ExploreAskResponse, type Receipt } from "../api";
 import { Panel } from "../components";
 import { filterList, windowOf, type ExploreState } from "../explore";
-import { fmtTime } from "../labels";
+import { KPIS, fmtTime } from "../labels";
 import { AnswerSentence } from "./AskPanel";
 
 type Item =
@@ -100,7 +100,7 @@ function TurnAnswer({ item, onInvestigate }: { item: Extract<Item, { kind: "turn
   const a = item.answer;
   if (item.error) return <p className="accent text-sm">{item.error}</p>;
   if (!a) return null;
-  if (a.refused) return <p className="muted text-sm">I can only answer questions about Polymarket trading on this page.</p>;
+  if (a.refused) return <CannotAnswer />;
   if (a.investigate_hour) {
     const hour = a.investigate_hour;
     return (
@@ -121,5 +121,19 @@ function TurnAnswer({ item, onInvestigate }: { item: Extract<Item, { kind: "turn
         <p className="muted mt-1 text-xs">{a.dropped} sentence{a.dropped === 1 ? " was" : "s were"} removed because the numbers didn't match the evidence.</p>
       )}
     </>
+  );
+}
+
+/** Off-topic, or on-topic but beyond the semantic layer: either way, say so and show what it covers. */
+function CannotAnswer() {
+  return (
+    <div className="text-sm">
+      <p className="muted">I can't answer that. Here are the KPIs I currently track:</p>
+      <ul aria-label="KPIs I track" className="mt-2 flex flex-wrap gap-1.5">
+        {Object.values(KPIS).map((k) => (
+          <li key={k.label} className="rounded-full border border-[var(--gc-line)] px-2 py-0.5 text-xs">{k.label}</li>
+        ))}
+      </ul>
+    </div>
   );
 }

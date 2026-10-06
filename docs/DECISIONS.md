@@ -485,3 +485,11 @@ User approval 2026-10-06 ("go for it"): deploy, copy the OpenRouter key, measure
   - Grey bars are labelled "no data (before our record began, or a collector gap)", not only "collector gap".
 - **Spend in this phase:** about $0.003 (Explore chat) and $0.031 (Now-page question box). M13's paid total is about $0.65.
 - The 1.1 GB copy of the live store on the laptop (`/tmp/mc_live`) was deleted.
+
+## 2026-10-06 — The Explore chat says "I can't answer that" and lists the tracked KPIs
+
+User decision: "It should be as simple as I can't answer that, here are the kpis that I currently track."
+
+- **Found by the user on the live site.** "What were the min/max trades in that game for whales and what were those trades on" was answered with "I can only answer questions about Polymarket trading on this page." The question was on topic, but the semantic layer cannot express it: there is no filter to one market, no largest- or smallest-trade KPI, and no outcome dimension in the form. Replayed locally, the model's pick was `refuse` both times.
+- **Change (web only):** any refusal, off-topic or beyond the semantic layer, now reads "I can't answer that. Here are the KPIs I currently track:" followed by the 18 public KPIs by name. No new model behaviour or KPI. Test: `explore.test.tsx` "answers a question it cannot handle with the KPIs it tracks", written and run red first.
+- `REVIEW:` **two definitions of "whale" in the semantic layer.** "Whale share" counts trades of $1k or more; "Whale wallets" counts wallets that traded $10k or more in the period. The same test showed the chat answering a "whales" question with the wallet definition. Worth a decision.
