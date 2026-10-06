@@ -461,3 +461,27 @@ Plan: `docs/plans/2026-10-05_explore_chat.md`; mockup `.lavish/explore-page-mock
   - There were no console errors, and no sideways overflow at 1280 px or at 390 px in dark mode.
   - Fixed while looking: the "learning" shading showed on a window whose first hours only lacked a band because of the Oct 2 gap, so it now shows only for 6 or more leading hours and says only what is true. The grey bars got a legend entry. Opening a different Explore link while on the page kept the old state, so the page now reloads from its link.
 - **Test-first.** `web/src/__tests__/explore.test.tsx` (7 tests) was written and run red. It covers the link round trip, flagged hours in both modes, the visitor's lines changing the list and the link, a flagged hour investigated through to its answer and case link, a refusal shown in plain words, the chat sending history with a divider and an Investigate button, and no engine ids in visible text. Web: 39 tests in 10 files, tsc, oxlint (no new warnings) and the build pass. Python: 272 passed, 1 skipped; ruff and mypy --strict are clean.
+
+## 2026-10-06 — MarketCase M13 phase F: deployed
+
+User approval 2026-10-06 ("go for it"): deploy, copy the OpenRouter key, measure memory, check the live page.
+
+- **Deploy.** On the VPS: `git pull` (M12 `f3abe86` → `709f3f0`), `uv sync`, then `npm run build` in `web/`. `package.json` was unchanged, so packages were not reinstalled. Then `systemctl --user restart gridcase-server`, healthy again in about 4 s, with no errors in the log. On the next start, the watch found an alarm (top market's share at 1.8× usual) and investigated it as usual.
+- **Key.** Only the `OPENROUTER_API_KEY` line of the laptop `.env` was appended to the VPS `.env`, piped straight over `ssh`, so the value never appeared in any output or log. The file stays mode 600.
+- `REVIEW:` **memory: no DuckDB cap for the server, by measurement.** Load: the Now page, the catalog, and 7-day charts of all 18 KPIs in two slices (36 charts, all 200, mean 1.3 s, slowest 3.8 s) from the public address.
+  - After the load, the server's cgroup held 639 MB of its own memory plus 241 MB of file cache.
+  - Its peak since the restart was 1.93 GB, including file cache and the startup alarm investigation.
+  - The VPS had 1.85 GB available before the load and 1.96 GB after.
+
+  The server already set `threads = 1`. If Explore traffic grows, the next step is `SET memory_limit` in `gridcase/store/db.py`, as `dbt/profiles.yml` does for dbt.
+- **Checked live** (marketcase.kanumadhok.com/marketcase):
+  - `POST /api/explore/investigate` for 5 Oct 05:00 Sports volume returned the watch's existing case (`category=sports-20261005T06`, "a few big trades") with no new spend. An hour still running was refused ("try again after 14:15 UTC").
+  - MCP still answers 404 through the tunnel.
+  - The Explore page rendered with no console errors and no overflow at 1280 px.
+  - The chat answered "How many active traders were in Sports yesterday?" with 17,939, kept by the verifier.
+  - The Now-page question box, with its new Polymarket prompt, answered a Sports question instead of refusing it ("Sports … accounting for about 76% of the total shortfall"; 1 sentence dropped by the verifier).
+- **Fixed after seeing the 7-day live chart (web only, rebuilt without a server restart):**
+  - The "not enough history" shading now covers the record's first days, from the first hour with data to the first usual range. It used to stop at the grey hours before the record began.
+  - Grey bars are labelled "no data (before our record began, or a collector gap)", not only "collector gap".
+- **Spend in this phase:** about $0.003 (Explore chat) and $0.031 (Now-page question box). M13's paid total is about $0.65.
+- The 1.1 GB copy of the live store on the laptop (`/tmp/mc_live`) was deleted.

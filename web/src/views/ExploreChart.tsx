@@ -80,9 +80,12 @@ export function ExploreChart({
     pts.length <= 24
       ? `${String(d.getUTCHours()).padStart(2, "0")}:00`
       : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-  // hours with a value but no usual range yet, at the start of the record (not a lone gap hour)
-  const leading = pts.findIndex((p) => p.usual !== null || p.value === null);
-  const learning = leading < 0 ? pts.length : leading;
+  // the record's first days: from the first hour with data until the first usual range
+  const firstData = pts.findIndex((p) => p.value !== null);
+  const firstBand = pts.findIndex((p) => p.usual !== null);
+  const learnFrom = Math.max(firstData, 0);
+  const learnTo = firstBand < 0 ? pts.length - 1 : firstBand;
+  const learning = firstData >= 0 && learnTo - learnFrom >= 6;
   const hovered = hover !== null ? pts[hover] : null;
 
   return (
@@ -117,10 +120,10 @@ export function ExploreChart({
             </g>
           );
         })}
-        {learning >= 6 && (
+        {learning && (
           <g>
-            <rect x={PL} y={PT} width={Math.max(0, x(Math.min(learning, pts.length - 1)) - PL)} height={H - PT - PB} fill="var(--gc-mark)" opacity="0.18" />
-            <text x={PL} y={PT - 8} fontSize="11" fill="var(--gc-muted)">Not enough history yet for a usual range</text>
+            <rect x={x(learnFrom)} y={PT} width={Math.max(0, x(learnTo) - x(learnFrom))} height={H - PT - PB} fill="var(--gc-mark)" opacity="0.18" />
+            <text x={x(learnFrom)} y={PT - 8} fontSize="11" fill="var(--gc-muted)">Not enough history yet for a usual range</text>
           </g>
         )}
         {bands.map((d, k) => <path key={k} d={d} className="fill-zinc-300/60 dark:fill-zinc-600/40" />)}

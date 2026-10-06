@@ -205,7 +205,7 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
               <span><span className="mr-1 inline-block w-4 border-t-2 border-dashed border-amber-600 align-middle" />your lines</span>
               <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-amber-600 align-middle" />flagged hour</span>
               {points.some((p) => p.value === null) && (
-                <span><span className="mr-1 inline-block h-2.5 w-2 bg-zinc-300 align-middle dark:bg-zinc-600" />hour not judged (collector gap)</span>
+                <span><span className="mr-1 inline-block h-2.5 w-2 bg-zinc-300 align-middle dark:bg-zinc-600" />no data (before our record began, or a collector gap)</span>
               )}
               <span>click any hour to look closer</span>
             </div>
