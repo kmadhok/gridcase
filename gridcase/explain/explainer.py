@@ -28,7 +28,7 @@ def rank_hypotheses(
 ) -> list[HypothesisVerdict]:
     """Confidence from prior, falsifier margin and coverage of the miss; then causal
     precedence: a supported mechanism that is a consequence of another supported mechanism
-    ranks below it (load shed follows from a supply shortfall, not the other way round)."""
+    ranks below it (a category moves because one of its markets did, not the other way round)."""
     templates = {t.id: t for t in load_templates()}
     mandatory = set(mandatory_ids())
     verdicts: list[HypothesisVerdict] = []

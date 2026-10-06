@@ -374,3 +374,16 @@ def test_strict_tools_stay_within_the_apis_grammar_limits() -> None:
     assert not any(t.get("strict") for t in check_tools())
     answer = answer_tool()
     assert answer["strict"] is True and _optional_params(answer["input_schema"]) == 0
+
+
+def test_every_model_prompt_is_about_polymarket_and_none_about_the_power_grid() -> None:
+    import re
+
+    from gridcase.ask.llm import ASK_SYSTEM
+    from gridcase.explore.chat import PICK_SYSTEM, WRITE_SYSTEM
+    from gridcase.planner.llm import EXPLAIN_SYSTEM, PLAN_SYSTEM
+
+    grid = re.compile(r"\bgrid\b|electric|demand|day-ahead|PJM|ERCOT|megawatt|shortfall|load shed", re.I)
+    for name, prompt in {"ask": ASK_SYSTEM, "plan": PLAN_SYSTEM, "explain": EXPLAIN_SYSTEM, "pick": PICK_SYSTEM, "write": WRITE_SYSTEM}.items():
+        assert "Polymarket" in prompt, name
+        assert not grid.search(prompt), f"{name}: {grid.search(prompt)}"
