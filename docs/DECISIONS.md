@@ -439,3 +439,25 @@ Plan: `docs/plans/2026-10-05_explore_chat.md`.
   - `create_app` gains `free_llm_factory` (default: the standard playbook). The automatic watch now uses it too, instead of a hard-coded `FakeLLM`; behaviour is unchanged.
 - **`GET /api/explore/investigations/{task_id}`** returns the status (queued, running, done or failed), the case id once the case exists, and whether it is paid. A failure shows a plain message; the traceback stays in the log.
 - **Test-first.** The phase D part of `tests/exit/test_m13.py` (14 tests) runs on the 9-day synthetic market with a planted Sports spike. It covers watched and unwatched slices, refusals, the exact clicked hour, returning an existing case, the paid-then-free switch, gap, early and unfinished hours, unknown tasks, and the chart ceiling. Making `investigate()` ignore the picked window fails the exact-hour test. Full suite: 272 passed, 1 skipped. Ruff and mypy --strict are clean.
+
+## 2026-10-06 — MarketCase M13 phase E: the Explore page
+
+Plan: `docs/plans/2026-10-05_explore_chat.md`; mockup `.lavish/explore-page-mockup.html`.
+
+- **Layout (`web/src/views/ExploreView.tsx`, `ExploreChart.tsx`, `ExploreChat.tsx`).**
+  - Explore is a new tab in the top bar; Now stays the home page.
+  - Controls choose the number (the 18 public KPIs), the slice (category, trade size, trader, with values from the governed catalog), and the visitor's ceiling and floor.
+  - The chart shows the KPI hour by hour over its usual band. The lines can be dragged, flagged hours are marked, unjudged gap hours are grey bars, and clicking an hour selects it.
+  - A flagged-hours list switches between "Cross my lines" and "Leave the usual range", with "Why did this happen?" on every judgeable hour.
+  - An investigation panel follows a case through its states and ends with its best explanation, its first sentences and a link to the full case and trace.
+  - The chat sits beside the chart.
+- **The page's state lives in its link** (`#/explore?kpi=…&seg=…&h=…&floor=…&ceiling=…&mode=…`), written with `history.replaceState`. A refresh or a shared link shows the same view, and nothing is stored on the server. Following a different Explore link reloads the page from that link.
+- **No default lines.** "Add" places a line just outside everything on the chart, ready to drag. The default mode is "Leave the usual range", which works without any lines. Changing the number or slice clears the lines, because a ceiling in dollars means nothing for a share. `REVIEW:` the mockup drew lines by default; here they start empty, so nothing on screen is an arbitrary threshold.
+- **The chat** sends the page state and up to 6 earlier turns as plain text. When the view changes, it adds a divider ("Now looking at…"). It shows answers exactly like the existing question box (tier badges, "show evidence"). The endpoint now also returns the page's chart receipt, so an answer citing the chart can show it. A "why" question gets an "Investigate <hour>" button rather than an automatic paid run.
+- **The chart is drawn at its real width** (ResizeObserver), so labels stay readable on a phone instead of shrinking with the drawing. The top bar's links wrap as whole words.
+- **Checked against the real backend on a copy of the live store.** The browser ran the real server with the clock at 2026-10-06 12:30 and the free playbook for investigations:
+  - "Why did this happen?" on 5 Oct 05:00 returned the automatic watch's existing case: "A few big trades", with its cited sentences, at no cost.
+  - The chat answered "Which Sports markets traded the most in this window?" with Lions vs. Panthers $6.3M, Colts vs. Commanders $5.9M and Falcons vs. Saints $5.1M, all kept by the verifier (about $0.003).
+  - There were no console errors, and no sideways overflow at 1280 px or at 390 px in dark mode.
+  - Fixed while looking: the "learning" shading showed on a window whose first hours only lacked a band because of the Oct 2 gap, so it now shows only for 6 or more leading hours and says only what is true. The grey bars got a legend entry. Opening a different Explore link while on the page kept the old state, so the page now reloads from its link.
+- **Test-first.** `web/src/__tests__/explore.test.tsx` (7 tests) was written and run red. It covers the link round trip, flagged hours in both modes, the visitor's lines changing the list and the link, a flagged hour investigated through to its answer and case link, a refusal shown in plain words, the chat sending history with a divider and an Investigate button, and no engine ids in visible text. Web: 39 tests in 10 files, tsc, oxlint (no new warnings) and the build pass. Python: 272 passed, 1 skipped; ruff and mypy --strict are clean.

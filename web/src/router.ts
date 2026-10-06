@@ -4,10 +4,13 @@ export type Route =
   | { view: "now" }
   | { view: "kpis" }
   | { view: "digest"; day?: string }
-  | { view: "case"; id: string };
+  | { view: "case"; id: string }
+  | { view: "explore"; query: string };
 
 export function parseHash(hash: string): Route {
-  const path = hash.replace(/^#/, "") || "/";
+  const full = hash.replace(/^#/, "") || "/";
+  const [path, query = ""] = full.split(/\?(.*)/s);
+  if (path === "/explore") return { view: "explore", query };
   const m = path.match(/^\/case\/(.+)$/);
   if (m) return { view: "case", id: decodeURIComponent(m[1]) };
   if (path === "/kpis") return { view: "kpis" };
@@ -19,6 +22,7 @@ export function parseHash(hash: string): Route {
 export function href(route: Route): string {
   if (route.view === "case") return `#/case/${encodeURIComponent(route.id)}`;
   if (route.view === "kpis") return "#/kpis";
+  if (route.view === "explore") return route.query ? `#/explore?${route.query}` : "#/explore";
   if (route.view === "digest") return route.day ? `#/digest/${route.day}` : "#/digest";
   return "#/";
 }

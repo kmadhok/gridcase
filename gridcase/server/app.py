@@ -606,6 +606,7 @@ def create_app(
             "new_receipts": [r.model_dump(mode="json") for r in res.new_receipts],
             "dropped": res.dropped,
             "fallback": res.fallback,
+            "page_receipt": res.page_receipt.model_dump(mode="json") if res.page_receipt else None,
             "cost_usd": round(res.usage.cost_usd, 4),
         }
 

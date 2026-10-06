@@ -18,7 +18,7 @@ const NOW_SUGGESTIONS = [
 
 interface Turn { question: string; answer?: AskResponse; error?: string }
 
-function AnswerSentence({ s, receipts }: { s: Claim; receipts: Record<string, Receipt> }) {
+export function AnswerSentence({ s, receipts }: { s: Claim; receipts: Record<string, Receipt> }) {
   const [open, setOpen] = useState(false);
   const cited = s.receipt_ids.map((id) => receipts[id]).filter(Boolean);
   return (

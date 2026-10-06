@@ -556,6 +556,7 @@ def test_the_endpoint_answers_and_reports_its_cost(store_path: Path) -> None:
     assert [s["text"] for s in body["sentences"]] == ["Sports traded $450 yesterday."]
     assert body["cost_usd"] == pytest.approx(0.002) and body["investigate_hour"] is None
     assert body["queries"][0]["kpi"] == "volume_usd" and len(body["new_receipts"]) == 1
+    assert body["page_receipt"]["tool"] == "kpi.series"  # so an answer citing the chart can show it
 
 
 def test_the_endpoint_stops_at_the_daily_budget(store_path: Path) -> None:

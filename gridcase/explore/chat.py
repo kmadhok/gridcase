@@ -143,6 +143,7 @@ class ChatResult:
     dropped: int = 0
     usage: LLMUsage = field(default_factory=LLMUsage)
     fallback: bool = False
+    page_receipt: Receipt | None = None
 
 
 # ---------- schemas and payloads ----------
@@ -260,6 +261,14 @@ def _ask_json(
 def answer_explore(
     model: ChatModel, req: ExploreAsk, conn: duckdb.DuckDBPyConnection, as_of: datetime
 ) -> ChatResult:
+    page_receipt, res = _answer(model, req, conn, as_of)
+    res.page_receipt = page_receipt
+    return res
+
+
+def _answer(
+    model: ChatModel, req: ExploreAsk, conn: duckdb.DuckDBPyConnection, as_of: datetime
+) -> tuple[Receipt | None, ChatResult]:
     page_receipt: Receipt | None
     try:
         page_receipt = run_tool(conn, "kpi.series", req.page_query(), as_of)
@@ -281,11 +290,13 @@ def answer_explore(
         parse_pick,
     )
     if pick is None:
-        return ChatResult([Claim(text=FALLBACK_TEXT, tier="inferred")], usage=usage, fallback=True)
+        return page_receipt, ChatResult(
+            [Claim(text=FALLBACK_TEXT, tier="inferred")], usage=usage, fallback=True
+        )
     if pick.action == "refuse":
-        return ChatResult([], refused=True, usage=usage)
+        return page_receipt, ChatResult([], refused=True, usage=usage)
     if pick.action == "investigate":
-        return ChatResult([], investigate_hour=pick.investigate_hour, usage=usage)
+        return page_receipt, ChatResult([], investigate_hour=pick.investigate_hour, usage=usage)
 
     new: list[Receipt] = []
     errors: list[str] = []
@@ -311,7 +322,7 @@ def answer_explore(
     )
     usage = usage + write_usage
     if answer is None:
-        return ChatResult(
+        return page_receipt, ChatResult(
             [Claim(text=FALLBACK_TEXT, tier="inferred")],
             queries=pick.queries,
             new_receipts=new,
@@ -329,4 +340,6 @@ def answer_explore(
         by_id,
         drop_uncited_numbers=True,
     )
-    return ChatResult(checked.claims, answer.refused, None, pick.queries, new, len(dropped), usage)
+    return page_receipt, ChatResult(
+        checked.claims, answer.refused, None, pick.queries, new, len(dropped), usage
+    )

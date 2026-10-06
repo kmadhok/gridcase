@@ -176,6 +176,45 @@ export interface Digest {
   receipts: Receipt[];
 }
 
+export interface ExploreFilterIn {
+  dimension: string;
+  values: string[];
+}
+
+export interface ExploreAskResponse {
+  sentences: Claim[];
+  refused: boolean;
+  investigate_hour: string | null;
+  queries: Record<string, unknown>[];
+  new_receipts: Receipt[];
+  dropped: number;
+  fallback: boolean;
+  page_receipt: Receipt | null;
+  cost_usd: number;
+}
+
+export interface ExploreAskBody {
+  question: string;
+  page: { kpi: string; filters: ExploreFilterIn[]; window: string; floor: number | null; ceiling: number | null; flagged_hours: string[] };
+  history: { question: string; queries: Record<string, unknown>[]; answer: string[] }[];
+}
+
+export type ExploreStart = { task_id: string; paid: boolean } | { case_id: string; existing: true };
+
+export interface ExploreTask {
+  status: "queued" | "running" | "done" | "failed";
+  case_id: string | null;
+  paid: boolean;
+  error: string | null;
+}
+
+async function post<T>(url: string, body: unknown, what: string): Promise<T> {
+  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(typeof data?.detail === "string" ? data.detail : `${what} failed (${r.status}).`);
+  return data as T;
+}
+
 async function get<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
@@ -230,5 +269,11 @@ export const api = {
   case: (id: string) => get<CaseFull>(`${API}/cases/${encodeURIComponent(id)}`),
   trace: (id: string) => get<CaseTrace>(`${API}/cases/${encodeURIComponent(id)}/trace`),
   ask,
+  exploreSeries: (kpi: string, segment: string, hours: number) =>
+    get<SeriesView>(`${API}/explore/series?${new URLSearchParams({ kpi, segment, hours: String(hours) })}`),
+  exploreAsk: (body: ExploreAskBody) => post<ExploreAskResponse>(`${API}/explore/ask`, body, "The question"),
+  exploreInvestigate: (body: { kpi: string; filters: ExploreFilterIn[]; hour: string }) =>
+    post<ExploreStart>(`${API}/explore/investigate`, body, "Starting the investigation"),
+  exploreTask: (id: string) => get<ExploreTask>(`${API}/explore/investigations/${encodeURIComponent(id)}`),
 };
 
