@@ -8,6 +8,7 @@ re-applied; no model call.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -49,17 +50,23 @@ def investigate(
     filters: Filters | None = None,
     trigger: Receipt | None = None,
     dry_run: bool = True,
+    window: tuple[datetime, datetime] | None = None,
+    on_open: Callable[[str], None] | None = None,
 ) -> CaseRecord:
     """Why did `kpi` (in the segment `filters`) move? The window is the alarm's run of hours,
-    or the last complete hours before as_of when a person asks."""
+    the hours a person picked (`window`, from the Explore page), or else the last complete
+    hours before as_of. `on_open` hears the case id as soon as the case exists, so a page can
+    follow its progress."""
     filters = dict(filters or {})
     case = new_case(conn, entity=segment_label(filters), metric=kpi, as_of=as_of)
+    if on_open is not None:
+        on_open(case.case_id)
     tracer = Tracer()
     token = active_tracer.set(tracer)
     try:
         if trigger is not None:  # the alarm that opened this case is its first piece of evidence
             write_receipt(conn, case.case_id, trigger)
-        window = case_window(as_of, trigger.output if trigger is not None else None)
+        window = window or case_window(as_of, trigger.output if trigger is not None else None)
         with tracer.span("stage", "compare"):
             compare = run_tool(
                 conn,

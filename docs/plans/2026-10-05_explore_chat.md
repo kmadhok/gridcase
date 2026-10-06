@@ -135,7 +135,7 @@ Page state lives in the URL hash. Tests: `web/src/__tests__/explore.test.tsx`, p
 
 **C. Chat engine, OpenRouter client and `/api/explore/ask`.** Tests use a scripted model. Cost is charged from usage, and fallbacks are visible. The phase ends with the paid write-step check from phase A.
 
-**D. `/api/explore/series` and `/api/explore/investigate`.** This includes the separate daily cap and returning an existing case.
+**D. `/api/explore/series` and `/api/explore/investigate`.** This includes the separate daily cap and returning an existing case. Done 2026-10-06; see DECISIONS. Changes from this plan: the page follows an investigation through `GET /api/explore/investigations/{task_id}`, then the case's own states, via a new `on_open` hook on `investigate()`. Chart requests have a per-visitor ceiling, and the server's DuckDB memory is measured in phase F.
 
 **E. The Explore page.**
 

@@ -13,10 +13,11 @@ partial hour) to 2026-10-05 18:10, asked at 2026-10-05 18:30 UTC."""
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import duckdb
 import pytest
@@ -32,6 +33,7 @@ from gridcase.server.app import create_app
 from gridcase.store.db import connect
 from gridcase.tools.base import ToolError, run_tool
 from gridcase.tools.registry import ALL_INPUTS, TOOL_NAMES
+from tests import polymarket_synth as synth
 from tests.polymarket_synth import add_market, add_trades
 
 AS_OF = datetime(2026, 10, 5, 18, 30)
@@ -580,3 +582,168 @@ def test_the_endpoint_stops_at_the_daily_budget(store_path: Path) -> None:
 def test_the_endpoint_rejects_malformed_requests(store_path: Path, bad: dict[str, Any]) -> None:
     client = explore_app(store_path, ScriptedChat())
     assert client.post("/api/explore/ask", json=bad).status_code == 422
+
+
+# ---------- phase D: the chart and "Why did this happen?" ----------
+#
+# The 9-day synthetic market (tests/polymarket_synth.py) with England vs Czechia tripling over
+# the six hours from 2026-10-10 08:00; the page asks at 2026-10-10 14:20.
+
+SYNTH_AS_OF = synth.AS_OF
+SPIKE_HOUR = "2026-10-10T10:00"
+
+
+class CountingLLM(FakeLLM):
+    """The standard playbook, remembering which factory made it."""
+
+    made: ClassVar[list[str]] = []
+
+    def __init__(self, kind: str = "paid") -> None:
+        super().__init__()
+        CountingLLM.made.append(kind)
+
+
+def synth_app(path: Path, paid_per_day: int = 10) -> TestClient:
+    CountingLLM.made = []
+    app = create_app(
+        db_path=path,
+        token="t",
+        llm_factory=lambda: CountingLLM("paid"),
+        free_llm_factory=lambda: CountingLLM("free"),
+        drain_interval_s=None,
+        clock=lambda: SYNTH_AS_OF,
+        chat_factory=ScriptedChat,
+        explore_paid_per_day=paid_per_day,
+    )
+    return TestClient(app)
+
+
+@pytest.fixture()
+def synth_store(market_store: Path) -> Path:
+    conn = connect(market_store)
+    add_trades(conn, synth.one_market_tripled())
+    conn.close()
+    return market_store
+
+
+def wait_for(client: TestClient, task_id: str) -> dict[str, Any]:
+    for _ in range(200):
+        t = client.get(f"/api/explore/investigations/{task_id}").json()
+        if t["status"] in ("done", "failed"):
+            return t
+        time.sleep(0.05)
+    raise AssertionError("investigation did not finish")
+
+
+def investigate_hour(client: TestClient, hour: str = SPIKE_HOUR, **kw: Any) -> Any:
+    body = {"kpi": "volume_usd", "filters": sports(), "hour": hour} | kw
+    return client.post("/api/explore/investigate", json=body)
+
+
+def test_the_chart_draws_any_slice_against_its_usual_band(synth_store: Path) -> None:
+    client = synth_app(synth_store)
+    watched = client.get(
+        "/api/explore/series",
+        params={"kpi": "volume_usd", "segment": "category=Sports", "hours": 72},
+    ).json()
+    assert len(watched["points"]) == 72 and watched["label"] == "Trading volume"
+    assert watched["points"][-1]["usual"] is not None  # nine days of history: judged
+    # a slice nobody watches still gets its band, from the same rule as the watch
+    slice_ = client.get(
+        "/api/explore/series",
+        params={"kpi": "trades", "segment": "category=Sports;size_band=$100-1k", "hours": 24},
+    ).json()
+    assert len(slice_["points"]) == 24 and slice_["points"][-1]["high"] is not None
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"kpi": "nope", "segment": "all", "hours": 24},
+        {"kpi": "whale_volume", "segment": "all", "hours": 24},
+        {"kpi": "volume_usd", "segment": "category=Football", "hours": 24},
+        {"kpi": "volume_usd", "segment": "market=England vs Czechia", "hours": 24},
+        {"kpi": "volume_usd", "segment": "all", "hours": 500},
+        {"kpi": "volume_usd", "segment": "all", "hours": 0},
+    ],
+)
+def test_the_chart_rejects_anything_outside_the_semantic_layer(
+    synth_store: Path, params: dict[str, Any]
+) -> None:
+    assert synth_app(synth_store).get("/api/explore/series", params=params).status_code == 422
+
+
+def test_why_investigates_exactly_the_clicked_hour(synth_store: Path) -> None:
+    client = synth_app(synth_store)
+    start = investigate_hour(client)
+    assert start.status_code == 202
+    done = wait_for(client, start.json()["task_id"])
+    assert done["status"] == "done" and done["paid"] is True
+    case = client.get(f"/api/cases/{done['case_id']}").json()
+    compare = next(r for r in case["receipts"] if r["tool"] == "kpi.compare")
+    assert compare["inputs"]["window"] == ["2026-10-10T10:00:00", "2026-10-10T11:00:00"]
+    assert case["as_of"].startswith(
+        "2026-10-10T11:15"
+    )  # the data as it was known when the hour settled
+    assert CountingLLM.made == ["paid"]
+
+
+def test_an_hour_already_investigated_returns_that_case(synth_store: Path) -> None:
+    client = synth_app(synth_store)
+    first = wait_for(client, investigate_hour(client).json()["task_id"])
+    again = investigate_hour(client)
+    assert again.status_code == 200 and again.json() == {
+        "case_id": first["case_id"],
+        "existing": True,
+    }
+    assert CountingLLM.made == ["paid"]  # nothing new was run
+
+
+def test_after_the_daily_cap_the_free_playbook_answers(synth_store: Path) -> None:
+    client = synth_app(synth_store, paid_per_day=1)
+    first = wait_for(client, investigate_hour(client).json()["task_id"])
+    second = wait_for(client, investigate_hour(client, hour="2026-10-10T11:00").json()["task_id"])
+    assert (first["paid"], second["paid"]) == (True, False)
+    assert CountingLLM.made == ["paid", "free"]
+
+
+def test_hours_that_cannot_be_judged_are_refused_with_the_reason(synth_store: Path) -> None:
+    conn = connect(synth_store)
+    conn.execute(
+        "INSERT INTO collector_gaps VALUES (?, ?, ?)",
+        [D(2026, 10, 10, 9, 10), D(2026, 10, 10, 9, 20), D(2026, 10, 10, 9, 30)],
+    )
+    conn.close()
+    client = synth_app(synth_store)
+    early = investigate_hour(client, hour="2026-10-02T10:00")  # one day of history
+    gap = investigate_hour(client, hour="2026-10-10T09:00")
+    running = investigate_hour(client, hour="2026-10-10T14:00")  # still running at 14:20
+    bad = investigate_hour(client, hour="2026-10-10T10:30")  # not the start of an hour
+    assert early.status_code == 409 and "too early" in early.json()["detail"]
+    assert gap.status_code == 409 and "collector" in gap.json()["detail"]
+    assert running.status_code == 409 and "not finished" in running.json()["detail"]
+    assert bad.status_code == 422
+    assert CountingLLM.made == []
+
+
+def test_an_unknown_investigation_task_is_a_404(synth_store: Path) -> None:
+    assert synth_app(synth_store).get("/api/explore/investigations/nope").status_code == 404
+
+
+def test_one_visitor_cannot_flood_the_chart(synth_store: Path) -> None:
+    app = create_app(
+        db_path=synth_store,
+        token="t",
+        llm_factory=FakeLLM,
+        drain_interval_s=None,
+        clock=lambda: SYNTH_AS_OF,
+        explore_series_per_window=3,
+    )
+    client = TestClient(app)
+    params = {"kpi": "volume_usd", "segment": "all", "hours": 6}
+    assert [client.get("/api/explore/series", params=params).status_code for _ in range(4)] == [
+        200,
+        200,
+        200,
+        429,
+    ]

@@ -58,3 +58,9 @@ def has_anthropic_api_key() -> bool:
 def has_openrouter_api_key() -> bool:
     """Presence only; the client reads the value itself. Never surface the key."""
     return bool(os.environ.get("OPENROUTER_API_KEY", "").strip())
+
+
+def explore_paid_per_day() -> int:
+    """Investigations per UTC day that visitors may start from the Explore page with the paid
+    model (a budget separate from the automatic ones); the rest use the free standard playbook."""
+    return int(os.environ.get("GRIDCASE_EXPLORE_PAID_PER_DAY", "10"))

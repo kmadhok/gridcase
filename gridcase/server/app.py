@@ -26,9 +26,10 @@ from typing import Any, Literal
 import duckdb
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server import MCPServer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from starlette.routing import Route
 
 from gridcase import config
@@ -39,10 +40,11 @@ from gridcase.ask.openrouter import ChatModel, default_chat_factory
 from gridcase.catalog import catalog
 from gridcase.digest import build_digest, due_day, get_digest, latest_digest, list_digests
 from gridcase.explore.chat import ExploreAsk, answer_explore
+from gridcase.explore.query import ExploreFilter, public_kpis
 from gridcase.ingest.export import export_markets
 from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
-from gridcase.market_alarm import load_watch, series_view
+from gridcase.market_alarm import WatchedSeries, hourly, load_watch, series_view
 from gridcase.market_watch import watch_markets
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
 from gridcase.planner.llm import LLM, AnthropicLLM, FakeLLM
@@ -140,8 +142,11 @@ class AskRequest(BaseModel):
 class AskLimiter:
     """Per-visitor sliding window plus a daily spending cap, in memory (reset on restart)."""
 
-    def __init__(self, per_window: int, window_s: float, daily_usd: float) -> None:
+    def __init__(
+        self, per_window: int, window_s: float, daily_usd: float, what: str = "questions"
+    ) -> None:
         self.per_window, self.window_s, self.daily_usd = per_window, window_s, daily_usd
+        self.what = what
         self.hits: dict[str, deque[float]] = defaultdict(deque)
         self.spent: dict[str, float] = defaultdict(float)
         self.lock = threading.Lock()
@@ -158,12 +163,71 @@ class AskLimiter:
             while q and now - q[0] > self.window_s:
                 q.popleft()
             if len(q) >= self.per_window:
-                raise HTTPException(429, "Too many questions; please wait a few minutes.")
+                raise HTTPException(429, f"Too many {self.what}; please wait a few minutes.")
             q.append(now)
 
     def charge(self, usd: float) -> None:
         with self.lock:
             self.spent[datetime.now(UTC).date().isoformat()] += usd
+
+
+class ExploreBudget:
+    """Paid investigations visitors may start from the Explore page per UTC day; in memory,
+    like the question box's budget (reset on restart)."""
+
+    def __init__(self, per_day: int) -> None:
+        self.per_day = per_day
+        self.used: dict[str, int] = defaultdict(int)
+        self.lock = threading.Lock()
+
+    def take(self, day: date) -> bool:
+        with self.lock:
+            if self.used[day.isoformat()] >= self.per_day:
+                return False
+            self.used[day.isoformat()] += 1
+            return True
+
+
+class ExploreInvestigate(BaseModel):
+    kpi: str
+    filters: list[ExploreFilter] = Field(default_factory=list)
+    hour: datetime
+
+    @field_validator("kpi")
+    @classmethod
+    def _public_kpi(cls, v: str) -> str:
+        if v not in public_kpis():
+            raise ValueError(f"unknown KPI {v!r}")
+        return v
+
+    @field_validator("hour")
+    @classmethod
+    def _whole_hour(cls, v: datetime) -> datetime:
+        v = v.astimezone(UTC).replace(tzinfo=None) if v.tzinfo else v
+        if (v.minute, v.second, v.microsecond) != (0, 0, 0):
+            raise ValueError("hour must be the start of an hour")
+        return v
+
+
+def _explore_filters(segment: str) -> dict[str, list[str]]:
+    """A segment label ('category=Sports;size_band=$1k+') checked against the semantic layer."""
+    try:
+        parsed = parse_segment(segment)
+        return {
+            f.dimension: f.values
+            for f in (
+                ExploreFilter(dimension=d, values=[v] if isinstance(v, str) else list(v))
+                for d, v in parsed.items()
+            )
+        }
+    except (ValueError, ValidationError) as e:
+        raise HTTPException(422, f"unknown segment {segment!r}") from e
+
+
+def _case_window(case: CaseRecord) -> tuple[datetime, datetime] | None:
+    compare = next((r for r in case.receipts if r.tool == "kpi.compare"), None)
+    w = compare.inputs.get("window") if compare else None
+    return (datetime.fromisoformat(w[0]), datetime.fromisoformat(w[1])) if w else None
 
 
 def create_app(
@@ -180,12 +244,21 @@ def create_app(
     ask_daily_usd: float | None = None,
     dbt_docs_dir: Path | None = None,
     chat_factory: Callable[[], ChatModel] | None = None,
+    free_llm_factory: Callable[[], LLM] | None = None,
+    explore_paid_per_day: int | None = None,
+    explore_series_per_window: int = 120,
 ) -> FastAPI:
     db_path = db_path or config.DB_PATH
     token = token if token is not None else config.api_token()
     llm_factory = llm_factory or AnthropicLLM
     asker_factory = asker_factory or default_asker_factory()
     chat_factory = chat_factory or default_chat_factory()
+    free_llm_factory = free_llm_factory or FakeLLM  # the standard playbook: no model, no cost
+    # charts are free but not costless on a shared host: a per-visitor ceiling no person reaches
+    series_limiter = AskLimiter(explore_series_per_window, 600.0, float("inf"), "chart requests")
+    explore_budget = ExploreBudget(
+        config.explore_paid_per_day() if explore_paid_per_day is None else explore_paid_per_day
+    )
     limiter = AskLimiter(
         ask_per_window,
         ask_window_s,
@@ -317,7 +390,7 @@ def create_app(
                     c = cur()
                     try:
                         watch_markets(
-                            c, wall, llm_factory, FakeLLM, config.auto_paid_cases_per_day()
+                            c, wall, llm_factory, free_llm_factory, config.auto_paid_cases_per_day()
                         )
                     except Exception as e:  # noqa: BLE001
                         log.warning("market watch failed: %s", e)
@@ -534,6 +607,109 @@ def create_app(
             "dropped": res.dropped,
             "fallback": res.fallback,
             "cost_usd": round(res.usage.cost_usd, 4),
+        }
+
+    explore_jobs: dict[str, dict[str, Any]] = {}  # task id -> case id (once open) and paid
+    in_flight: dict[tuple[str, str, datetime], str] = {}  # (kpi, segment, hour) -> task id
+
+    @app.get("/api/explore/series")
+    def api_explore_series(
+        request: Request, kpi: str, segment: str = "all", hours: int = 72
+    ) -> dict[str, Any]:
+        """Any public KPI in any fixed-segment slice, hour by hour against its usual band (the
+        watch's own rule). Free: the semantic layer only."""
+        series_limiter.admit(visitor(request))
+        if kpi not in public_kpis():
+            raise HTTPException(422, f"unknown KPI {kpi!r}")
+        if not 1 <= hours <= 168:
+            raise HTTPException(422, "hours must be between 1 and 168")
+        filters = _explore_filters(segment)
+        c = cur()
+        try:
+            return series_view(c, WatchedSeries(kpi=kpi, filters=dict(filters)), now(), hours)
+        finally:
+            c.close()
+
+    @app.post("/api/explore/investigate", status_code=202)
+    def api_explore_investigate(req: ExploreInvestigate, request: Request) -> Any:
+        """'Why did this happen?' for one hour of one series. Returns an existing case for that
+        hour, refuses hours the watch would not judge, else starts an investigation of exactly
+        that hour with the data as it was known when the hour settled. The first
+        `explore_paid_per_day` a day use the paid model; the rest, the free standard playbook."""
+        p = load_watch()[1]
+        filters = {f.dimension: f.values for f in req.filters}
+        series = WatchedSeries(kpi=req.kpi, filters=dict(filters))
+        hour, settled_at = req.hour, req.hour + timedelta(hours=1, minutes=p.settle_minutes)
+        if settled_at > now():
+            raise HTTPException(
+                409, f"That hour is not finished yet; try again after {settled_at:%H:%M} UTC."
+            )
+        c = cur()
+        try:
+            for case in list_cases(c):
+                w = _case_window(case) if case.metric == req.kpi else None
+                if case.entity == series.segment and w and w[0] <= hour < w[1]:
+                    return JSONResponse({"case_id": case.case_id, "existing": True}, 200)
+            row = hourly(c, series, settled_at, p, 1)
+        finally:
+            c.close()
+        if row.gap_hours_skipped:
+            raise HTTPException(
+                409, "Our collector missed trades in that hour, so it is never judged."
+            )
+        if row.rows[0]["expected"] is None:
+            raise HTTPException(
+                409, "It's too early to judge that hour: there isn't enough history for it yet."
+            )
+        key = (req.kpi, series.segment, hour)
+        running = in_flight.get(key)
+        if running and registry.get(running)["status"] in ("queued", "running"):
+            return {"task_id": running, "paid": explore_jobs[running]["paid"]}
+        limiter.admit(visitor(request))
+        paid = explore_budget.take(now().date())
+        factory = llm_factory if paid else free_llm_factory
+        holder: dict[str, Any] = {"case_id": None, "paid": paid}
+
+        def job() -> dict[str, Any]:
+            c2 = cur()
+            try:
+                case = investigate(
+                    c2,
+                    factory(),
+                    req.kpi,
+                    settled_at,
+                    filters=dict(filters),
+                    window=(hour, hour + timedelta(hours=1)),
+                    on_open=lambda case_id: holder.__setitem__("case_id", case_id),
+                )
+            finally:
+                c2.close()
+            return {"case_id": case.case_id}
+
+        task_id = registry.submit(job, kind="explore")
+        if len(explore_jobs) > 1000:  # the registry forgets old tasks too
+            explore_jobs.pop(next(iter(explore_jobs)))
+        explore_jobs[task_id] = holder
+        in_flight[key] = task_id
+        return {"task_id": task_id, "paid": paid}
+
+    @app.get("/api/explore/investigations/{task_id}")
+    def api_explore_investigation(task_id: str) -> dict[str, Any]:
+        """Poll an Explore investigation: queued, running, done or failed, with its case id as
+        soon as the case exists (the case page then shows its progress)."""
+        holder = explore_jobs.get(task_id)
+        try:
+            t = registry.get(task_id)
+        except KeyError:
+            t = None
+        if holder is None or t is None:
+            raise HTTPException(404, f"unknown investigation {task_id}")
+        failed = t["status"] == "failed"
+        return {
+            "status": t["status"],
+            "case_id": holder["case_id"],
+            "paid": holder["paid"],
+            "error": "The investigation failed; please try again." if failed else None,
         }
 
     app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"]))
