@@ -316,3 +316,26 @@ User decision 2026-10-04: build the suggested retention KPI (the Polymarket post
 - **What is left out**: the record's first day (collection began 2026-09-29 19:37 UTC, so every wallet looks new on it) is not a cohort, and the latest day is still being collected, so it is neither a cohort nor an activity day. `REVIEW:` cohorts in the record's first week carry `warmed_up = false`: their "new" wallets include some that traded before collection began, which inflates retention. Same seven-day wait as the new-trader alarm.
 - **Tests**: unique (cohort, day), rate between 0 and 1, and a singular test that each cohort equals the daily mart's `new_traders` with all of them active on day 0. `tests/exit/test_m12.py` plants wallets over ten synthetic days and checks every cohort, every day-N count, the excluded first and latest days and the warm-up flag (written first, run red).
 - `REVIEW:` **not a governed KPI yet.** Retention lives in the warehouse only; it is not in `ontology/kpis.yaml`, the catalog page, the watch or the question box. Days with a collector gap undercount activity (the warehouse has no gap table); worth adding before retention is watched.
+
+## 2026-10-05 — MarketCase M13 phase A: which cheap model fills in the Explore query form
+
+Plan: `docs/plans/2026-10-05_explore_chat.md`. User decisions 2026-10-05: Explore before the eval harness (now M14); cheap open-weight models through OpenRouter; sending visitors' questions to third-party hosts is accepted; the paid test was approved.
+
+- **The test.** 40 questions, each with its expected query, were written before any run in `experiments/model_pick/questions.yaml`. They cover the screen, grouping and filtering, vague wording, relative time, follow-ups, "why" questions and refusals. All are asked from one page: Sports volume, last 7 days. Each model received the catalog generated from `ontology/kpis.yaml` and had to reply as JSON matching the form, whose allowed values come from the YAML. Fixed rules scored the replies, with no model judge, and every question ran twice at temperature 0. Runner: `experiments/model_pick/run.py`. Results: `results.json` and `results_haiku.json`.
+- **Two scores.** *Strict* is the rules exactly as written before the run. *Equivalent* also accepts the same window written as dates, plus up to 3 queries where fewer were expected (extra queries are free, because only the compiler runs them). One answer was added after the first run, and it counts only in the equivalent score. `REVIEW:` this loosening happened after I saw the results, which is why both scores are reported.
+
+| Model | Strict | Equivalent | Both repeats right | p50 time | Cost of 80 calls |
+|---|---|---|---|---|---|
+| **deepseek-v4-flash** | 66 of 80 | **76 of 80** | 29 of 40 | 5.2 s | $0.005 |
+| deepseek-v4.1-flash | 65 | 72 | 30 | 1.2 s | $0.018 |
+| gemini-3.1-flash-lite | 68 | 70 | 34 | 1.1 s | $0.054 |
+| claude-haiku-4.5 (reference) | 70 | 70 | 35 | 1.6 s | $0.222 |
+| qwen3.8-flash | 61 | 61 | 26 | 9.8 s | $0.025 |
+| qwen3-235b-a22b-2507 | 55 | 57 | 23 | 3.5 s | $0.016 |
+| glm-5.3-flash | 48 | 48 | 17 | 1.3 s | $0.039 |
+
+- **Decision: the default is `deepseek/deepseek-v4-flash` and the fallback is `google/gemini-3.1-flash-lite`.** DeepSeek got 76 of 80 equivalent right, more than Haiku, at about $0.00006 a question, roughly 45× cheaper. Every model refused all 12 off-topic and injection questions. Gemini is the fallback because it is fast (p90 1.4 s), gets all 8 follow-ups right, and comes from a different provider family, so its failures are independent of DeepSeek's. `REVIEW:` DeepSeek is the slowest of the good ones (p50 5 s, p90 12 s); the write step adds more time. If chat feels slow, swap the two.
+- **Rejected.** deepseek-v4.1-flash is fast but got 1 of 8 follow-ups right: it drops the slice the previous question used. qwen3.8-flash returned invalid JSON 15 times. glm-5.3-flash scored 48 of 80.
+- **Total spend for phase A: about $0.38, under the $2 cap.** The breakdown: the full run $0.15, confirmed against the OpenRouter account; the Haiku re-run $0.22, from OpenRouter's reported costs; and the smoke test $0.001. The first full run crashed on a reply with malformed filters; the scorer now marks such replies as wrong and saves results after each model. Haiku first failed on every call because Anthropic rejects "enum + type list" in a JSON schema; the form now uses `anyOf`, which every provider accepts.
+- `REVIEW:` **the misses that remain are mostly one design rule, not model error.** The prompt says to keep the page's filter (Sports) unless the question names another slice. For "How many odds flips happened today?", "hour by hour, how many markets…" and "average trade size for new traders", 4 of the 5 strongest models dropped Sports instead. That suggests most readers take a question with no slice to mean all markets. Plan: keep the page's slice (the visitor is looking at Sports), and make every answer say which slice it used, with a one-click "all markets" follow-up. Re-measure once that wording is in the prompt.
+- **Not measured yet:** the write step (sentences the verifier keeps) moved to phase C, because it needs `kpi.series`.

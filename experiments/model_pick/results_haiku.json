@@ -1,0 +1,2475 @@
+{
+ "run_at": "2026-10-05T22:10:28",
+ "now": "2026-10-05T18:30",
+ "page": {
+  "kpi": "volume_usd",
+  "filters": {
+   "category": [
+    "Sports"
+   ]
+  },
+  "window": "last_7d",
+  "grain": "hour",
+  "flagged_hours": [
+   "2026-10-03T19:00 (above the user's ceiling)",
+   "2026-10-05T04:00 (below the user's floor)"
+  ],
+  "on_screen": "hourly Sports trading volume for the last 7 days with its usual range; peak 2026-10-03T19:00"
+ },
+ "models": {
+  "anthropic/claude-haiku-4.5": {
+   "correct": "70 of 80",
+   "both_repeats": "35 of 40",
+   "by_kind": {
+    "screen": "6 of 6",
+    "group_filter": "20 of 26",
+    "vague": "12 of 14",
+    "time": "8 of 8",
+    "follow_up": "8 of 8",
+    "why": "4 of 6",
+    "refuse": "12 of 12"
+   },
+   "missed": [
+    "avg_trade_new",
+    "five_minute_markets",
+    "flips_today",
+    "top_markets",
+    "why_flagged"
+   ],
+   "invalid_json": 0,
+   "bad_shape": 0,
+   "errors": 0,
+   "p50_seconds": 1.55,
+   "cost_usd": 0.2217,
+   "rows": [
+    {
+     "id": "screen_peak",
+     "kind": "screen",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 3.53,
+     "cost": 0.002542,
+     "tokens_in": 2432,
+     "tokens_out": 22,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "no_query",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "screen_total",
+     "kind": "screen",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 3.62,
+     "cost": 0.002839,
+     "tokens_in": 2434,
+     "tokens_out": 81,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "define_whale",
+     "kind": "screen",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 3.24,
+     "cost": 0.002538,
+     "tokens_in": 2428,
+     "tokens_out": 22,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "no_query",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "top_markets",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 3.7,
+     "cost": 0.002836,
+     "tokens_in": 2431,
+     "tokens_out": 81,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_share",
+        "group_by": "market",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "by_size",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 3.52,
+     "cost": 0.002857,
+     "tokens_in": 2437,
+     "tokens_out": 84,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "size_band",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_3d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "politics_traders_yday",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 3.6,
+     "cost": 0.002816,
+     "tokens_in": 2431,
+     "tokens_out": 77,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "active_traders",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "crypto_share",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.52,
+     "cost": 0.002844,
+     "tokens_in": 2439,
+     "tokens_out": 81,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Crypto"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_24h",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "sports_vs_politics",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.65,
+     "cost": 0.002857,
+     "tokens_in": 2432,
+     "tokens_out": 85,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "category",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports",
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "day",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "weather_daily",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.61,
+     "cost": 0.002833,
+     "tokens_in": 2433,
+     "tokens_out": 80,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Weather"
+          ]
+         }
+        ],
+        "grain": "day",
+        "window": "since_start",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "flips_today",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.48,
+     "cost": 0.00275,
+     "tokens_in": 2430,
+     "tokens_out": 64,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "odds_flips",
+        "group_by": null,
+        "filters": [],
+        "grain": "total",
+        "window": "today",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "avg_trade_new",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.6,
+     "cost": 0.002864,
+     "tokens_in": 2439,
+     "tokens_out": 85,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "avg_trade_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "trader_type",
+          "values": [
+           "new"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_24h",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "all_trades_yday",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.58,
+     "cost": 0.002742,
+     "tokens_in": 2437,
+     "tokens_out": 61,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "trades",
+        "group_by": null,
+        "filters": [],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "weekly_by_category",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.52,
+     "cost": 0.002766,
+     "tokens_in": 2431,
+     "tokens_out": 67,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "category",
+        "filters": [],
+        "grain": "week",
+        "window": "since_start",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "whale_wallets_crypto",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.58,
+     "cost": 0.002841,
+     "tokens_in": 2436,
+     "tokens_out": 81,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "whale_count",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Crypto"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "buy_vs_sell",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.55,
+     "cost": 0.002849,
+     "tokens_in": 2439,
+     "tokens_out": 82,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "side",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_3d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "markets_hourly",
+     "kind": "group_filter",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.53,
+     "cost": 0.002839,
+     "tokens_in": 2439,
+     "tokens_out": 80,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "markets_traded",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "hour",
+        "window": "last_24h",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "big_bettors",
+     "kind": "vague",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.52,
+     "cost": 0.002838,
+     "tokens_in": 2438,
+     "tokens_out": 80,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "whale_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "longshots_politics",
+     "kind": "vague",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.66,
+     "cost": 0.002823,
+     "tokens_in": 2433,
+     "tokens_out": 78,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "longshot_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "today",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "five_minute_markets",
+     "kind": "vague",
+     "repeat": 0,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.63,
+     "cost": 0.002871,
+     "tokens_in": 2446,
+     "tokens_out": 85,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_share",
+        "group_by": "market_kind",
+        "filters": [
+         {
+          "dimension": "market_kind",
+          "values": [
+           "recurring"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_24h",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "fresh_wallets",
+     "kind": "vague",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.62,
+     "cost": 0.002833,
+     "tokens_in": 2433,
+     "tokens_out": 80,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "new_traders",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "day",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "one_event_dominating",
+     "kind": "vague",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.5,
+     "cost": 0.002826,
+     "tokens_in": 2431,
+     "tokens_out": 79,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "top_market_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "today",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "near_certain",
+     "kind": "vague",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.65,
+     "cost": 0.002847,
+     "tokens_in": 2437,
+     "tokens_out": 82,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "sure_thing_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "regulars_vs_newbies",
+     "kind": "vague",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.57,
+     "cost": 0.002861,
+     "tokens_in": 2441,
+     "tokens_out": 84,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "trader_type",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_3d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "yesterday_volume",
+     "kind": "time",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.57,
+     "cost": 0.002818,
+     "tokens_in": 2428,
+     "tokens_out": 78,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "today_vs_yesterday",
+     "kind": "time",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.78,
+     "cost": 0.003077,
+     "tokens_in": 2432,
+     "tokens_out": 129,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "trades",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "today",
+        "start": null,
+        "end": null
+       },
+       {
+        "kpi": "trades",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "explicit_days",
+     "kind": "time",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.59,
+     "cost": 0.002926,
+     "tokens_in": 2436,
+     "tokens_out": 98,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "hour",
+        "window": "explicit",
+        "start": "2026-10-02T00:00",
+        "end": "2026-10-05T00:00"
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "explicit_hours",
+     "kind": "time",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.57,
+     "cost": 0.002937,
+     "tokens_in": 2447,
+     "tokens_out": 98,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "hour",
+        "window": "explicit",
+        "start": "2026-10-03T06:00",
+        "end": "2026-10-03T12:00"
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "follow_politics",
+     "kind": "follow_up",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.55,
+     "cost": 0.002899,
+     "tokens_in": 2489,
+     "tokens_out": 82,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "market",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "follow_day_before",
+     "kind": "follow_up",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.51,
+     "cost": 0.002971,
+     "tokens_in": 2486,
+     "tokens_out": 97,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "active_traders",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "explicit",
+        "start": "2026-10-03T00:00",
+        "end": "2026-10-04T00:00"
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "follow_by_trader",
+     "kind": "follow_up",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.5,
+     "cost": 0.002918,
+     "tokens_in": 2498,
+     "tokens_out": 84,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "trader_type",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_3d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "follow_trades",
+     "kind": "follow_up",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.51,
+     "cost": 0.002859,
+     "tokens_in": 2484,
+     "tokens_out": 75,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "trades",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "why_spike",
+     "kind": "why",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.17,
+     "cost": 0.002586,
+     "tokens_in": 2436,
+     "tokens_out": 30,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "investigate",
+      "queries": [],
+      "investigate_hour": "2026-10-03T19:00"
+     },
+     "equivalent": true
+    },
+    {
+     "id": "why_dip",
+     "kind": "why",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.29,
+     "cost": 0.002584,
+     "tokens_in": 2434,
+     "tokens_out": 30,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "investigate",
+      "queries": [],
+      "investigate_hour": "2026-10-05T04:00"
+     },
+     "equivalent": true
+    },
+    {
+     "id": "why_flagged",
+     "kind": "why",
+     "repeat": 0,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.21,
+     "cost": 0.002549,
+     "tokens_in": 2439,
+     "tokens_out": 22,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "no_query",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "refuse_poem",
+     "kind": "refuse",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.34,
+     "cost": 0.002529,
+     "tokens_in": 2429,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_prompt",
+     "kind": "refuse",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.11,
+     "cost": 0.002532,
+     "tokens_in": 2432,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_prediction",
+     "kind": "refuse",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.31,
+     "cost": 0.00253,
+     "tokens_in": 2430,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_sql",
+     "kind": "refuse",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.18,
+     "cost": 0.002532,
+     "tokens_in": 2432,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_injection",
+     "kind": "refuse",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.31,
+     "cost": 0.002543,
+     "tokens_in": 2443,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_real_weather",
+     "kind": "refuse",
+     "repeat": 0,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.2,
+     "cost": 0.002531,
+     "tokens_in": 2431,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "screen_peak",
+     "kind": "screen",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.32,
+     "cost": 0.002542,
+     "tokens_in": 2432,
+     "tokens_out": 22,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "no_query",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "screen_total",
+     "kind": "screen",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.65,
+     "cost": 0.002839,
+     "tokens_in": 2434,
+     "tokens_out": 81,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "define_whale",
+     "kind": "screen",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.33,
+     "cost": 0.002538,
+     "tokens_in": 2428,
+     "tokens_out": 22,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "no_query",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "top_markets",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.5,
+     "cost": 0.002836,
+     "tokens_in": 2431,
+     "tokens_out": 81,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_share",
+        "group_by": "market",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "by_size",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.49,
+     "cost": 0.002857,
+     "tokens_in": 2437,
+     "tokens_out": 84,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "size_band",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_3d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "politics_traders_yday",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.71,
+     "cost": 0.002816,
+     "tokens_in": 2431,
+     "tokens_out": 77,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "active_traders",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "crypto_share",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.57,
+     "cost": 0.002844,
+     "tokens_in": 2439,
+     "tokens_out": 81,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Crypto"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_24h",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "sports_vs_politics",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.67,
+     "cost": 0.002857,
+     "tokens_in": 2432,
+     "tokens_out": 85,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "category",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports",
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "day",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "weather_daily",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.53,
+     "cost": 0.002833,
+     "tokens_in": 2433,
+     "tokens_out": 80,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Weather"
+          ]
+         }
+        ],
+        "grain": "day",
+        "window": "since_start",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "flips_today",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.54,
+     "cost": 0.00275,
+     "tokens_in": 2430,
+     "tokens_out": 64,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "odds_flips",
+        "group_by": null,
+        "filters": [],
+        "grain": "total",
+        "window": "today",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "avg_trade_new",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.66,
+     "cost": 0.002864,
+     "tokens_in": 2439,
+     "tokens_out": 85,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "avg_trade_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "trader_type",
+          "values": [
+           "new"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_24h",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "all_trades_yday",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.64,
+     "cost": 0.002742,
+     "tokens_in": 2437,
+     "tokens_out": 61,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "trades",
+        "group_by": null,
+        "filters": [],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "weekly_by_category",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.54,
+     "cost": 0.002766,
+     "tokens_in": 2431,
+     "tokens_out": 67,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "category",
+        "filters": [],
+        "grain": "week",
+        "window": "since_start",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "whale_wallets_crypto",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 2.26,
+     "cost": 0.002841,
+     "tokens_in": 2436,
+     "tokens_out": 81,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "whale_count",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Crypto"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "buy_vs_sell",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.81,
+     "cost": 0.002849,
+     "tokens_in": 2439,
+     "tokens_out": 82,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "side",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_3d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "markets_hourly",
+     "kind": "group_filter",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.55,
+     "cost": 0.002839,
+     "tokens_in": 2439,
+     "tokens_out": 80,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "markets_traded",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "hour",
+        "window": "last_24h",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "big_bettors",
+     "kind": "vague",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.46,
+     "cost": 0.002838,
+     "tokens_in": 2438,
+     "tokens_out": 80,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "whale_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "longshots_politics",
+     "kind": "vague",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.76,
+     "cost": 0.002823,
+     "tokens_in": 2433,
+     "tokens_out": 78,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "longshot_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "today",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "five_minute_markets",
+     "kind": "vague",
+     "repeat": 1,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.9,
+     "cost": 0.002871,
+     "tokens_in": 2446,
+     "tokens_out": 85,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_share",
+        "group_by": "market_kind",
+        "filters": [
+         {
+          "dimension": "market_kind",
+          "values": [
+           "recurring"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_24h",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "fresh_wallets",
+     "kind": "vague",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.66,
+     "cost": 0.002833,
+     "tokens_in": 2433,
+     "tokens_out": 80,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "new_traders",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "day",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "one_event_dominating",
+     "kind": "vague",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.45,
+     "cost": 0.002826,
+     "tokens_in": 2431,
+     "tokens_out": 79,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "top_market_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "today",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "near_certain",
+     "kind": "vague",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.66,
+     "cost": 0.002847,
+     "tokens_in": 2437,
+     "tokens_out": 82,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "sure_thing_share",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "regulars_vs_newbies",
+     "kind": "vague",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.58,
+     "cost": 0.002861,
+     "tokens_in": 2441,
+     "tokens_out": 84,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "trader_type",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_3d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "yesterday_volume",
+     "kind": "time",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.55,
+     "cost": 0.002818,
+     "tokens_in": 2428,
+     "tokens_out": 78,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "today_vs_yesterday",
+     "kind": "time",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.73,
+     "cost": 0.003077,
+     "tokens_in": 2432,
+     "tokens_out": 129,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "trades",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "today",
+        "start": null,
+        "end": null
+       },
+       {
+        "kpi": "trades",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "explicit_days",
+     "kind": "time",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.57,
+     "cost": 0.002926,
+     "tokens_in": 2436,
+     "tokens_out": 98,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "hour",
+        "window": "explicit",
+        "start": "2026-10-02T00:00",
+        "end": "2026-10-05T00:00"
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "explicit_hours",
+     "kind": "time",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.56,
+     "cost": 0.002937,
+     "tokens_in": 2447,
+     "tokens_out": 98,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "hour",
+        "window": "explicit",
+        "start": "2026-10-03T06:00",
+        "end": "2026-10-03T12:00"
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "follow_politics",
+     "kind": "follow_up",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.55,
+     "cost": 0.002899,
+     "tokens_in": 2489,
+     "tokens_out": 82,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "market",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_7d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "follow_day_before",
+     "kind": "follow_up",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.52,
+     "cost": 0.002971,
+     "tokens_in": 2486,
+     "tokens_out": 97,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "active_traders",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Politics"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "explicit",
+        "start": "2026-10-03T00:00",
+        "end": "2026-10-04T00:00"
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "follow_by_trader",
+     "kind": "follow_up",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.41,
+     "cost": 0.002918,
+     "tokens_in": 2498,
+     "tokens_out": 84,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "volume_usd",
+        "group_by": "trader_type",
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "last_3d",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "follow_trades",
+     "kind": "follow_up",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.53,
+     "cost": 0.002859,
+     "tokens_in": 2484,
+     "tokens_out": 75,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "query",
+      "queries": [
+       {
+        "kpi": "trades",
+        "group_by": null,
+        "filters": [
+         {
+          "dimension": "category",
+          "values": [
+           "Sports"
+          ]
+         }
+        ],
+        "grain": "total",
+        "window": "yesterday",
+        "start": null,
+        "end": null
+       }
+      ],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "why_spike",
+     "kind": "why",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.31,
+     "cost": 0.002586,
+     "tokens_in": 2436,
+     "tokens_out": 30,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "investigate",
+      "queries": [],
+      "investigate_hour": "2026-10-03T19:00"
+     },
+     "equivalent": true
+    },
+    {
+     "id": "why_dip",
+     "kind": "why",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.28,
+     "cost": 0.002584,
+     "tokens_in": 2434,
+     "tokens_out": 30,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "investigate",
+      "queries": [],
+      "investigate_hour": "2026-10-05T04:00"
+     },
+     "equivalent": true
+    },
+    {
+     "id": "why_flagged",
+     "kind": "why",
+     "repeat": 1,
+     "correct": false,
+     "bad_shape": false,
+     "seconds": 1.34,
+     "cost": 0.002549,
+     "tokens_in": 2439,
+     "tokens_out": 22,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "no_query",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": false
+    },
+    {
+     "id": "refuse_poem",
+     "kind": "refuse",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.16,
+     "cost": 0.002529,
+     "tokens_in": 2429,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_prompt",
+     "kind": "refuse",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.23,
+     "cost": 0.002532,
+     "tokens_in": 2432,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_prediction",
+     "kind": "refuse",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.18,
+     "cost": 0.00253,
+     "tokens_in": 2430,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_sql",
+     "kind": "refuse",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.92,
+     "cost": 0.002532,
+     "tokens_in": 2432,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_injection",
+     "kind": "refuse",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 2.27,
+     "cost": 0.002543,
+     "tokens_in": 2443,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    },
+    {
+     "id": "refuse_real_weather",
+     "kind": "refuse",
+     "repeat": 1,
+     "correct": true,
+     "bad_shape": false,
+     "seconds": 1.27,
+     "cost": 0.002531,
+     "tokens_in": 2431,
+     "tokens_out": 20,
+     "provider": "Amazon Bedrock",
+     "reply": {
+      "action": "refuse",
+      "queries": [],
+      "investigate_hour": null
+     },
+     "equivalent": true
+    }
+   ],
+   "equivalent": "70 of 80",
+   "missed_equivalent": [
+    "avg_trade_new",
+    "five_minute_markets",
+    "flips_today",
+    "top_markets",
+    "why_flagged"
+   ]
+  }
+ },
+ "total_cost_usd": 0.2217
+}
