@@ -4,7 +4,7 @@ resolved at as_of. Run by the chat only; not offered to the investigation planne
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from gridcase.explore.query import ExploreQuery, QueryError, resolve_window
@@ -21,10 +21,54 @@ def span(lo: datetime, hi: datetime) -> list[str]:
     return [*out, f"{hours} hour{'s' if hours != 1 else ''}"]
 
 
+MATERIAL_GAP = 0.01  # a gap is worth a caveat once it is 1% of the window
+
+
+def collector_gap_minutes(ctx: ToolCtx, lo: datetime, hi: datetime) -> float:
+    """Minutes of the window our collector missed, from gaps known at as_of."""
+    row = ctx.raw(
+        "SELECT coalesce(sum(date_diff('second', greatest(gap_from, ?), least(gap_to, ?))), 0) "
+        "FROM collector_gaps WHERE gap_to > ? AND gap_from < ? "
+        "AND coalesce(detected_at, gap_to) <= ?",
+        [lo, hi, lo, hi, ctx.as_of],
+    )
+    return round(float(row[0][0]) / 60, 1)
+
+
+def warmup_fields(kpi: str, lo: datetime, start: datetime | None) -> dict[str, Any]:
+    """For a KPI the watch warms up (new traders), when the window starts inside the record's
+    first days: the numbers an answer needs to explain why, as evidence."""
+    from gridcase.market_alarm import load_watch  # the watch's own warm-up, kept in one place
+
+    warmup = load_watch()[1].warmup_days.get(kpi, 0)
+    if not warmup or start is None or lo >= start + timedelta(days=warmup):
+        return {}
+    return {"warmup_days": warmup, "record_start": start.isoformat()}
+
+
+def caveats(lo: datetime, hi: datetime, gap_minutes: float, warm: dict[str, Any]) -> list[str]:
+    """What an answer must say alongside the number, decided by rule, not by the model."""
+    out = []
+    if gap_minutes >= MATERIAL_GAP * (hi - lo).total_seconds() / 60:
+        out.append(
+            f"Our collector missed {gap_minutes:g} minutes of trades in this period, "
+            "so the number may be a little low."
+        )
+    if warm:
+        warmup, start = warm["warmup_days"], datetime.fromisoformat(warm["record_start"])
+        out.append(
+            f"'New' means new to our record, which began on {start:%Y-%m-%d}; in its first "
+            f"{warmup} days, wallets that traded before then still count as new, so these "
+            "numbers run high."
+        )
+    return out
+
+
 @tool("kpi.series")
 def kpi_series(ctx: ToolCtx, inputs: ExploreQuery) -> tuple[dict[str, Any], float | None]:
     try:
-        lo, hi = resolve_window(inputs, ctx.as_of, ctx.record_start())
+        start = ctx.record_start()
+        lo, hi = resolve_window(inputs, ctx.as_of, start)
     except QueryError as e:
         raise ToolError(str(e)) from e
     kpi = load_kpis()[0][inputs.kpi]
@@ -50,6 +94,8 @@ def kpi_series(ctx: ToolCtx, inputs: ExploreQuery) -> tuple[dict[str, Any], floa
             }
         )
 
+    gap_minutes = collector_gap_minutes(ctx, lo, hi)  # after the KPI query: its SQL comes first
+    warm = warmup_fields(inputs.kpi, lo, start)
     out: dict[str, Any] = {
         "kpi": inputs.kpi,
         "label": kpi.label,
@@ -63,7 +109,9 @@ def kpi_series(ctx: ToolCtx, inputs: ExploreQuery) -> tuple[dict[str, Any], floa
             "end": hi.isoformat(),
             "span": span(lo, hi),
         },
-        "gap_overlap": ctx.gap_overlaps(lo, hi),
+        "collector_gap_minutes": gap_minutes,
+        "caveats": caveats(lo, hi, gap_minutes, warm),
+        **warm,
     }
     if grouped:
         totals: dict[str, float] = {}

@@ -407,3 +407,18 @@ User request: "Make it more polymarket themed and no power grid prompt."
 - `REVIEW:` the old prompt could have refused live questions about Sports markets. The fix reaches the live site at the next deploy.
 - A grid example in a code comment (`explain/explainer.py`) is now a Polymarket one.
 - **Guard test:** `tests/unit/test_ask.py::test_every_model_prompt_is_about_polymarket_and_none_about_the_power_grid` checks all five system prompts (ask, plan, explain, Explore pick, Explore write). It was written and run red first.
+
+## 2026-10-06 — MarketCase M13 phase C on live data
+
+User request: "check against live data". No deploy; the VPS was only read.
+
+- **The data.** A copy of the live store (`data/gridcase.duckdb` and its WAL) was taken on the VPS at the lowest CPU and disk priority, pulled over Tailscale (1.1 GB, 46 s), and deleted from the VPS. The server was not touched. It holds 8,868,673 trades from 2026-09-29 19:36 to 2026-10-06 12:17 UTC. The same 10 questions were asked at 2026-10-06 12:30. Results: `experiments/model_pick/results_write_live.json`.
+- **The first live run was clean but noisy.** 22 sentences were kept and 0 dropped. The answers agreed with each other: Sports' four trade-size bands on Oct 4 add up to the $89.1M Sports total. But almost every answer warned that "our collector missed some trades". The two live gaps are 36 seconds (Oct 2) and 2 minutes (Oct 5), which is nothing over a week. The new-traders answer also reported a "downward trend" that is only the record's first week counting every wallet as new.
+- **Fixes, test-first:**
+  - **`kpi.series` replaces the yes/no gap flag with `collector_gap_minutes`, plus `caveats` decided by rule.** A gap becomes a caveat only at 1% of the window or more. `REVIEW:` the 1% threshold. KPIs the watch warms up (`ontology/watch.yaml` `warmup_days`: new traders, returning share) get a caveat when the window starts inside the record's first 7 days. `warmup_days` and `record_start` are also included as evidence, so a paraphrase ("this first 7-day period") still passes the verifier. The writer must state each caveat once and add no other warnings about the data.
+  - **The verifier also treats clock times with seconds ("20:00:00") as times.** Before, the leftover ":00" was read as the number 0.
+  - **The record's first hour is now looked up once per query instead of three times.** It scans every trade (8.8M rows live). Timed on the laptop against the live copy: 0.49 s for 7 days of hourly Sports volume, 0.04 s for one day.
+  - The writer is told to write times as "Oct 4 at 20:00 UTC". This was added after the last live run and is covered by the verifier.
+- **Final live run (Gemini 3.1 Flash Lite):** 16 sentences kept, 0 dropped, 10 of 10 refusal decisions right, median 3.7 s, $0.022 for 10 questions. The new-traders answer now states the first-week caveat itself.
+- **Spend for the live checks:** $0.030 + $0.030 + $0.022, plus about $0.003 of diagnostics. M13's paid total so far is about $0.61.
+- **Checks:** 259 passed, 1 skipped. Ruff and mypy --strict are clean.

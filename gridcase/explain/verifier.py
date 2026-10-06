@@ -17,7 +17,7 @@ _MONTH = (
 _DAY = r"\d{1,2}(?:st|nd|rd|th)?"
 DATE_LIKE = re.compile(
     r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?"  # 2026-10-03, 2026-10-03T19:00
-    r"|\b\d{1,2}:\d{2}\b"  # 19:00
+    r"|\b\d{1,2}:\d{2}(?::\d{2})?\b"  # 19:00, 19:00:00
     rf"|\b{_MONTH}\.?\s+{_DAY}\b(?:,?\s+\d{{4}})?"  # Oct 3, October 3rd, Sep. 29, 2026
     rf"|\b{_DAY}\s+{_MONTH}\b\.?(?:,?\s+\d{{4}})?"  # 3 October
     r"|\b\d{1,2}\s?(?i:am|pm|a\.m\.|p\.m\.)"  # 7pm, 11 am

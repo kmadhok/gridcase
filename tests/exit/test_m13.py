@@ -263,9 +263,27 @@ def test_an_explicit_window_counts_exactly_those_hours(store: duckdb.DuckDBPyCon
     assert out["rows"][0]["value"] == 400.0
 
 
-def test_a_window_overlapping_a_collector_gap_says_so(store: duckdb.DuckDBPyConnection) -> None:
-    assert series(store)["gap_overlap"] is True  # 2026-10-04 11:00-11:30
-    assert series(store, window="today")["gap_overlap"] is False
+def test_collector_gaps_are_measured_and_only_a_material_one_is_a_caveat(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    # the planted gap 2026-10-04 11:00-11:30 is 30 of yesterday's 1,440 minutes (2%)
+    out = series(store)
+    assert out["collector_gap_minutes"] == 30.0
+    assert any("30 minutes" in c for c in out["caveats"])
+    # over the last 7 days the same 30 minutes are 0.3% of the window: measured, not a caveat
+    week = series(store, window="last_7d")
+    assert week["collector_gap_minutes"] == 30.0 and week["caveats"] == []
+    assert series(store, window="today")["collector_gap_minutes"] == 0.0
+
+
+def test_new_trader_counts_in_the_records_first_week_carry_a_caveat(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    # the record began 2026-10-01 10:00, so on 2026-10-05 its first 7 days are not over
+    out = series(store, kpi="new_traders", window="today")
+    assert any("new to our record" in c for c in out["caveats"])
+    assert out["warmup_days"] == 7  # as a number, so an answer may say "the first 7 days"
+    assert series(store, window="today")["caveats"] == []  # volume needs no warm-up
 
 
 def test_the_receipt_carries_its_sql_and_inputs(store: duckdb.DuckDBPyConnection) -> None:

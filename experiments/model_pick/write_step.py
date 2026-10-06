@@ -15,7 +15,7 @@ import argparse
 import json
 import tempfile
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -71,26 +71,34 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="*", default=MODELS)
     ap.add_argument("--budget-usd", type=float, default=0.5)
+    ap.add_argument("--db", help="a copy of a real store (read as is) instead of the synthetic one")
+    ap.add_argument("--as-of", help="UTC, e.g. 2026-10-06T12:30 (required with --db)")
+    ap.add_argument("--out", default="results_write.json")
     args = ap.parse_args()
-    tmp = Path(tempfile.mkdtemp()) / "synth.duckdb"
-    conn = connect(tmp)
-    build_market_store(conn)
-    # some shape on top of the even base market: one Sports match triples in the last hours, and
-    # a few big trades from new wallets land in Politics yesterday
-    add_trades(conn, one_market_tripled())
-    yday = START + timedelta(days=8, hours=10)
-    add_trades(
-        conn,
-        [
-            {
-                "ts": yday + timedelta(minutes=7 * k),
-                "wallet": f"new{k}",
-                "usd": 2500.0,
-                "condition_id": "m5",
-            }
-            for k in range(5)
-        ],
-    )
+    as_of = AS_OF
+    if args.db:
+        conn = connect(Path(args.db))
+        as_of = datetime.fromisoformat(args.as_of)
+    else:
+        tmp = Path(tempfile.mkdtemp()) / "synth.duckdb"
+        conn = connect(tmp)
+        build_market_store(conn)
+        # some shape on top of the even base market: one Sports match triples in the last hours, and
+        # a few big trades from new wallets land in Politics yesterday
+        add_trades(conn, one_market_tripled())
+        yday = START + timedelta(days=8, hours=10)
+        add_trades(
+            conn,
+            [
+                {
+                    "ts": yday + timedelta(minutes=7 * k),
+                    "wallet": f"new{k}",
+                    "usd": 2500.0,
+                    "condition_id": "m5",
+                }
+                for k in range(5)
+            ],
+        )
     spent, results = 0.0, {}
     for model in args.models:
         chat = OpenRouterChat(model=model, fallback=model)  # no fallback: measure the model alone
@@ -103,7 +111,7 @@ def main() -> None:
                 {"question": item["q"], "page": PAGE, "history": item.get("history", [])}
             )
             t0 = time.monotonic()
-            res = answer_explore(chat, req, conn.cursor(), AS_OF)
+            res = answer_explore(chat, req, conn.cursor(), as_of)
             spent += res.usage.cost_usd
             rows.append(
                 {
@@ -130,10 +138,11 @@ def main() -> None:
         }
         results[model] = {"summary": summary, "rows": rows}
         print(model, summary, flush=True)
-    (HERE / "results_write.json").write_text(
+    (HERE / args.out).write_text(
         json.dumps(
             {
-                "as_of": AS_OF.isoformat(),
+                "as_of": as_of.isoformat(),
+                "store": args.db or "synthetic",
                 "page": PAGE,
                 "models": results,
                 "total_cost_usd": round(spent, 4),

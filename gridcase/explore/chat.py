@@ -72,12 +72,13 @@ Each piece of evidence has a short code (cite_as) and the numbers the server com
 - Every sentence that states a fact lists the codes it uses in receipt_ids, and every number in it is copied from that
   evidence (rounding is fine; shares may be written as percentages). A sentence with a number that cites nothing is deleted.
 - Say which slice and period the numbers cover ("In Sports over the last 7 days, ...").
-- If an evidence item has gap_overlap true, say the number may be low because our collector missed some trades.
+- If an evidence item lists caveats, state each one once, in plain words. Add no other warnings about the data.
 - Tier: governed = a number read straight from one piece of evidence; derived = a comparison or calculation across
   evidence; inferred = an explanation or judgement with no number.
 - Earlier turns are context for follow-ups only; they are not evidence, and their codes cannot be cited.
 - Plain words for a smart reader: no ids, field names, SQL or statistics jargon. Never predict outcomes.
 - Write numbers the way a person would: $115,080, $2.9M, 28.5%, 33 traders. Never 115080.0, 0.0 or "USD".
+- Write dates and times the way a person would: "Oct 4 at 20:00 UTC", not "2026-10-04 at 20:00:00".
 - Name segments exactly as the evidence labels them ("the $100-1k band", "$1k+ trades", "England vs Czechia"); do not
   restate a band's edges as numbers ("between $100 and $1,000"), because those numbers are not in the evidence.
 - If a query returned no rows, say nothing matched ("there were no $1k+ trades in Sports"), not that data is missing.

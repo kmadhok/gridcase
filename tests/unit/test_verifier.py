@@ -207,3 +207,7 @@ def test_a_period_is_not_a_claim_only_when_the_evidence_covers_it() -> None:
         {week.receipt_id: week},
     )
     assert [c.text for c in out.claims] == [ok.text] and len(dropped) == 2
+
+
+def test_clock_times_with_seconds_are_not_claims() -> None:
+    assert numbers_in("The busiest hour was 2026-10-04 at 20:00:00, with $8.45M") == [8.45e6]
