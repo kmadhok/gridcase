@@ -200,6 +200,7 @@ def test_a_total_matches_a_hand_count(store: duckdb.DuckDBPyConnection) -> None:
         "name": "yesterday",
         "start": "2026-10-04T00:00:00",
         "end": "2026-10-05T00:00:00",
+        "span": ["1 day", "24 hours"],  # how the period may be written in an answer
     }
     assert out["label"] == "Trading volume" and out["unit"] == "usd"
 
@@ -218,6 +219,9 @@ def test_since_start_begins_at_the_first_complete_hour(store: duckdb.DuckDBPyCon
         out["rows"][0]["value"] == 2750.0
     )  # everything but the 09:30 trade, the 18:10 one and the late one
     assert out["window"]["start"] == "2026-10-01T10:00:00"
+    assert out["window"]["span"] == [
+        "104 hours"
+    ]  # 2026-10-01 10:00 to 2026-10-05 18:00: not whole days
 
 
 def test_a_daily_grain_gives_one_row_per_day(store: duckdb.DuckDBPyConnection) -> None:

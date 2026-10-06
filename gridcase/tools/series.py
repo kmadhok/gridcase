@@ -4,11 +4,21 @@ resolved at as_of. Run by the chat only; not offered to the investigation planne
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from gridcase.explore.query import ExploreQuery, QueryError, resolve_window
 from gridcase.semantic.kpis import KpiQuery, load_kpis
 from gridcase.tools.base import ToolCtx, ToolError, tool
+
+
+def span(lo: datetime, hi: datetime) -> list[str]:
+    """How long the window is, as an answer may say it ("7 days", "168 hours"). The verifier
+    treats these phrases as labels when this receipt is cited, so naming the period is not
+    mistaken for stating a number, and only the period this evidence really covers passes."""
+    hours = int((hi - lo).total_seconds() // 3600)
+    out = [f"{hours // 24} day{'s' if hours != 24 else ''}"] if hours % 24 == 0 else []
+    return [*out, f"{hours} hour{'s' if hours != 1 else ''}"]
 
 
 @tool("kpi.series")
@@ -47,7 +57,12 @@ def kpi_series(ctx: ToolCtx, inputs: ExploreQuery) -> tuple[dict[str, Any], floa
         "filters": inputs.filter_map(),
         "group_by": inputs.group_by,
         "grain": inputs.grain,
-        "window": {"name": inputs.window, "start": lo.isoformat(), "end": hi.isoformat()},
+        "window": {
+            "name": inputs.window,
+            "start": lo.isoformat(),
+            "end": hi.isoformat(),
+            "span": span(lo, hi),
+        },
         "gap_overlap": ctx.gap_overlaps(lo, hi),
     }
     if grouped:

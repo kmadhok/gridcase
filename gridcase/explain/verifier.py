@@ -10,7 +10,18 @@ from typing import Any
 from gridcase.explain.schema import Claim, Conclusion
 from gridcase.ledger.schema import Receipt
 
-DATE_LIKE = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b")
+_MONTH = (
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?"
+    r"|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+)
+_DAY = r"\d{1,2}(?:st|nd|rd|th)?"
+DATE_LIKE = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?"  # 2026-10-03, 2026-10-03T19:00
+    r"|\b\d{1,2}:\d{2}\b"  # 19:00
+    rf"|\b{_MONTH}\.?\s+{_DAY}\b(?:,?\s+\d{{4}})?"  # Oct 3, October 3rd, Sep. 29, 2026
+    rf"|\b{_DAY}\s+{_MONTH}\b\.?(?:,?\s+\d{{4}})?"  # 3 October
+    r"|\b\d{1,2}\s?(?i:am|pm|a\.m\.|p\.m\.)"  # 7pm, 11 am
+)
 NUMBER = re.compile(
     r"(?P<n>-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?)"
     r"(?:\s?(?P<s>k|K|M|B|bn|thousand|million|billion)\b)?"

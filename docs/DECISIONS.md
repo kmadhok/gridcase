@@ -379,3 +379,22 @@ Plan: `docs/plans/2026-10-05_explore_chat.md`. This changes hard rule 6 and the 
 - **The endpoint is `POST /api/explore/ask`.** It validates the question (1–500 characters), the page state (a public KPI and known segments), and at most 6 turns of history. Through the tunnel it is public, like `/api/ask`. MCP is unchanged.
 - **Test-first.** The phase C part of `tests/exit/test_m13.py` (17 tests, scripted model, no paid calls) was written and run red. Deliberately bypassing the verifier fails 2 of them (the invented number, the forged history). Full suite: 254 passed, 1 skipped. Ruff and mypy --strict are clean.
 - **Found while reading the question box (not fixed here):** `gridcase/ask/llm.py::ASK_SYSTEM`, the case question box's live system prompt, still describes the power-grid version: grid regions, demand vs forecast, "supply shortfall", PJM. It has been sent with every Polymarket question since the pivot. A separate small fix.
+
+## 2026-10-06 — MarketCase M13 phase C, end to end: Gemini becomes the default, and the verifier learns dates and periods
+
+- **The test.** `experiments/model_pick/write_step.py` runs 10 questions through the whole chat (pick → `kpi.series` → write → verifier) on a 9-day synthetic store. The store is the even base market, plus one Sports match tripling and five $2,500 trades from new wallets in Politics. The 3 best pickers from phase A were run, each with no fallback, so each model is measured alone. Every answer is saved in `results_write.json` so a person can read it.
+- **The first run kept almost nothing, and the cause was mine, not the models'.** "In Sports over the last 7 days, England vs Czechia traded $100,680" was dropped because "7" is not in the evidence. Two fixes followed, both test-first:
+  - **The verifier now also treats month-name dates ("Oct 3", "October 3rd", "Sep. 29, 2026", "3 October") and am/pm times ("7pm") as dates, not numbers.** This matches its stated rule. Before, it recognised only ISO dates and 24-hour times. `REVIEW:` this changes the governed verifier for investigations too. A count next to a date ("Oct 3 saw 412 trades") is still checked.
+  - **Each `kpi.series` window records its length (`span`: "7 days", "168 hours").** The verifier already ignores digit-bearing labels found in the cited evidence, so "over the last 7 days" passes only when the cited evidence really covers 7 days. "Over the last 3 days" or "7 trades" against the same evidence are still dropped, and a test shows it.
+- **Writing instructions added after reading the answers:**
+  - write numbers as a person would ("$115,080", not "115080.0 USD");
+  - name segments exactly as the evidence labels them ("the $100-1k band", not "between $100 and $1,000", whose edges are not in the evidence);
+  - when nothing matched, say so ("no $1k+ trades") rather than "no data";
+  - lead with the answer.
+- **Results on the final run:** gemini-3.1-flash-lite kept 16 sentences and dropped 0. All 10 refusal decisions were right, the median was 2.9 s, and it cost $0.027 for 10 questions. That is about $0.0027 a question, or roughly 740 questions within the $2/day budget. On the run before the writing instructions (same verifier fix):
+  - deepseek-v4-flash: 6 kept, 7 dropped, median 28 s (up to 100 s), and it refused the "big bettors" question;
+  - deepseek-v4.1-flash: 15 kept, 12 dropped, median 7.7 s.
+- **Decision: `google/gemini-3.1-flash-lite` is the default and `deepseek/deepseek-v4-flash` the fallback.** This reverses phase A's order, as that entry's `REVIEW:` anticipated. DeepSeek picks queries slightly better (76 vs 70 of 80), but it is far too slow for a chat and loses more sentences to the verifier when writing. The fallback is only used after a provider error.
+- `REVIEW:` the synthetic store is still unrealistically even (many hours tie at the same value, and no $1k+ trades in Sports). Answer quality on live data gets checked again at deploy, before the page goes public.
+- **Spend for this step:** $0.041 (first run, 3 models), $0.043 (after the verifier fix), $0.027 (Gemini, new instructions) and $0.027 (Gemini, final), plus about $0.004 of single-question diagnostics. About $0.14 in total. M13's paid total so far is about $0.52.
+- **Checks:** 256 passed, 1 skipped. Ruff and mypy --strict are clean.

@@ -172,3 +172,38 @@ def test_abbreviated_amounts_like_2_9m_match_their_evidence() -> None:
         1_200_000.0,
     ]
     assert numbers_in("7,451 traders, 12 bn") == [7451.0, 12_000_000_000.0]
+
+
+def test_dates_written_with_month_names_and_am_pm_times_are_not_claims() -> None:
+    assert numbers_in("On Oct 3 at 7pm, and on October 4th at 11 am, volume rose") == []
+    assert numbers_in("From 3 October to Sep. 29, 2026") == []
+    assert numbers_in("Oct 3 saw 412 trades") == [412.0]  # the count is still a claim
+
+
+def test_a_period_is_not_a_claim_only_when_the_evidence_covers_it() -> None:
+    week = Receipt.build(
+        tool="kpi.series",
+        inputs={},
+        as_of=datetime(2026, 10, 5, 18),
+        output={"window": {"span": ["7 days", "168 hours"]}, "rows": [{"value": 450.0}]},
+        data_version=None,
+        effect_size=None,
+        runtime_ms=0,
+        sql=[],
+    )
+    ok = Claim(
+        text="Over the last 7 days, Sports traded $450.",
+        receipt_ids=[week.receipt_id],
+        tier="governed",
+    )
+    wrong = Claim(
+        text="Over the last 3 days, Sports traded $450.",
+        receipt_ids=[week.receipt_id],
+        tier="governed",
+    )
+    invented = Claim(text="Sports had 7 trades.", receipt_ids=[week.receipt_id], tier="governed")
+    out, dropped = verify(
+        Conclusion(case_id="x", top_hypothesis=None, ranked=[], claims=[ok, wrong, invented]),
+        {week.receipt_id: week},
+    )
+    assert [c.text for c in out.claims] == [ok.text] and len(dropped) == 2
