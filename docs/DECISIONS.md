@@ -522,3 +522,14 @@ User request: for every value or KPI on the Explore page and the Morning read, a
   - An off-topic chat question gets "I can't answer that. Here are the KPIs I currently track:" with the list.
   - The Morning read has 9 panels, all with their SQL: 3 backed by KPIs (whale share, market kind, totals) and 6 checks that read trades directly.
   - No console errors and no overflow at 1280 px.
+
+## 2026-10-07 — Case page: every driver card opens
+
+User report: on a case, only "A broad shift" could be explored; "New traders", "One market" and the other cards could not be clicked.
+
+- **Cause.** The driver cards were plain list items with no click behaviour. The amber border on the top driver (it marks the best-supported cause) made it look like a selected tab.
+- **Change (`397d61c`).** Each card is a button ("show how it was tested (N)") that opens to the "What happened" sentences citing its checks, each check's evidence with its queries, or "couldn't run" for a failed check. Receipts carry no step id, so a step is matched to the receipt with the same tool and the same inputs, ignoring key order. This works on cases already stored, so the API is unchanged. The evidence grid now sizes to its container: 2 columns in the driver column, 3 in the middle one.
+- **Tests:** 3 new web tests (any card opens and closes, not only the top one; a failed check says so; an untested driver says so). Web 48 tests, tsc, oxlint and the build pass.
+- **Deployed 2026-10-07** (user approval: "make it live"). GitHub was unreachable from the laptop, so the commits went to the VPS as a git bundle (fast-forward `5ebaf26` → `397d61c`), then `npm run build` in `web/`. No restart: the server serves `web/dist` from disk. Python and `package.json` unchanged.
+- **Checked live:** on the Weather case of 7 Oct 15:16, "One market" opens to both market checks and the sentence that ruled it out.
+- `REVIEW:` origin (GitHub) is behind the VPS until the laptop can push `397d61c` and this entry.
