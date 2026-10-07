@@ -19,6 +19,9 @@ DBT_DIR = ROOT / "dbt"
 ONTOLOGY_DIR = ROOT / "ontology"
 
 
+# How often the server loads newly collected trades into the store (seconds).
+POLYMARKET_LOAD_EVERY_S = 300.0
+
 # Models: names live in config, never in code. Prices are USD per million tokens (input, output).
 PLANNER_MODEL = os.environ.get("GRIDCASE_PLANNER_MODEL", "claude-opus-5")
 CHEAP_MODEL = os.environ.get("GRIDCASE_CHEAP_MODEL", "claude-sonnet-5")

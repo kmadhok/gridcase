@@ -1,10 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Digest } from "../api";
 import { href, parseHash } from "../router";
 import { DigestView } from "../views/DigestView";
 import fixture from "./digest.fixture.json";
+import { DEFINITIONS } from "./fixtures";
 
 // the real output of the backend's M6 exit-test store (gridcase digest for 2026-10-15)
 const DIGEST = fixture as unknown as Digest;
@@ -13,6 +14,8 @@ const RAW = [
   "digest.", "volume_share", "volume_usd", "whale_share", "recurring_share", "share_shift",
   "odds_swings", "receipt", "governed", "inferred", "insufficient",
 ];
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("morning read", () => {
   it("has its own address, for the latest day and for any day", () => {
@@ -41,6 +44,36 @@ describe("morning read", () => {
     }
     expect(within(screen.getByTestId("card-movers")).getByRole("img")).toHaveTextContent("Chiefs vs Bills");
     expect(within(screen.getByTestId("card-odds_swings")).getByRole("img")).toHaveTextContent("30¢ → 80¢");
+  });
+
+  it("explains how a card's numbers were calculated, from the KPI's definition to the exact query", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => DEFINITIONS })));
+    render(<DigestView initial={DIGEST} />);
+    const card = screen.getByTestId("card-whales");
+    await userEvent.click(within(card).getByRole("button", { name: "How is this calculated?" }));
+    const panel = await within(card).findByTestId("how-calculated");
+    expect(within(panel).getByText(/Share of dollars traded that came from trades of \$1,000 or more/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Whale volume ÷ Trading volume/)).toBeInTheDocument();
+    const ids = DIGEST.cards.find((c) => c.id === "whales")?.sentence.receipt_ids ?? [];
+    const sql = DIGEST.receipts.find((r) => ids.includes(r.receipt_id))?.sql[0].sql ?? "missing";
+    expect(within(panel).getByTestId("how-sql")).toHaveTextContent(sql.replace(/\s+/g, " ").trim());
+    expect(within(panel).getByRole("link", { name: /data-api.polymarket.com/ })).toBeInTheDocument();
+  });
+
+  it("says when a card reads trades directly rather than one KPI", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => DEFINITIONS })));
+    render(<DigestView initial={DIGEST} />);
+    const card = screen.getByTestId("card-movers");
+    await userEvent.click(within(card).getByRole("button", { name: "How is this calculated?" }));
+    expect(await within(card).findByText(/reads trades directly/)).toBeInTheDocument();
+  });
+
+  it("explains the period's four totals too", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => DEFINITIONS })));
+    render(<DigestView initial={DIGEST} />);
+    const totals = screen.getByTestId("totals-section");
+    await userEvent.click(within(totals).getByRole("button", { name: "How is this calculated?" }));
+    expect(await within(totals).findByText(/Distinct wallets that traded/)).toBeInTheDocument();
   });
 
   it("shows the evidence behind a sentence on request", async () => {

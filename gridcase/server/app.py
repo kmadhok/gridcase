@@ -38,6 +38,7 @@ from gridcase.ask.engine import Asker, answer_question, case_checker, checker_at
 from gridcase.ask.llm import default_asker_factory
 from gridcase.ask.openrouter import ChatModel, default_chat_factory
 from gridcase.catalog import catalog
+from gridcase.definitions import definitions
 from gridcase.digest import build_digest, due_day, get_digest, latest_digest, list_digests
 from gridcase.explore.chat import ExploreAsk, answer_explore
 from gridcase.explore.query import ExploreFilter, public_kpis
@@ -612,6 +613,21 @@ def create_app(
 
     explore_jobs: dict[str, dict[str, Any]] = {}  # task id -> case id (once open) and paid
     in_flight: dict[tuple[str, str, datetime], str] = {}  # (kpi, segment, hour) -> task id
+
+    record_start: list[str | None] = [None]  # the first trade never changes once collected
+
+    @app.get("/api/definitions")
+    def api_definitions() -> dict[str, Any]:
+        """How every number on the site is calculated: KPI definitions, slice SQL, the usual
+        range rule and the data sources. Static apart from when our record begins."""
+        if record_start[0] is None:
+            c = cur()
+            try:
+                row = c.execute("SELECT min(ts) FROM trades").fetchone()
+            finally:
+                c.close()
+            record_start[0] = row[0].isoformat() if row and row[0] else None
+        return {**definitions(), "record_start": record_start[0]}
 
     @app.get("/api/explore/series")
     def api_explore_series(

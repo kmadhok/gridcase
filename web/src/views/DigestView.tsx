@@ -1,12 +1,37 @@
 import { useEffect, useState } from "react";
-import { api, type Digest, type DigestCard } from "../api";
+import { api, type Digest, type DigestCard, type Receipt } from "../api";
 import { fmtValue, kpiLabel, segmentName } from "../labels";
 import { href, navigate } from "../router";
 import {
   Concentration, DayBars, Heatmap, KindBars, MoverBars, Retention, ShareSlope, Swings, WatchStrip,
   type Cohort, type DayValue, type Mover, type ShareSegment, type Swing,
 } from "./DigestCharts";
+import { HowCalculatedButton, HowCalculatedPanel, type Calculation, type Period } from "./HowCalculated";
 import { ReceiptCard } from "./ReceiptCard";
+
+const PERIOD_WORDS: Record<string, string> = { window: "Period", current: "This period", previous: "Compared with" };
+
+/** What a card's checks computed, read from their receipts: the KPIs they name, their periods
+ * and their exact queries. */
+function calculation(receipts: Receipt[], question: string): Calculation {
+  const kpis = new Set<string>();
+  const periods: Period[] = [];
+  for (const r of receipts) {
+    if (typeof r.inputs.kpi === "string") kpis.add(r.inputs.kpi);
+    if (Array.isArray(r.inputs.kpis)) for (const k of r.inputs.kpis) kpis.add(String(k));
+    for (const [key, label] of Object.entries(PERIOD_WORDS)) {
+      const w = r.inputs[key];
+      if (Array.isArray(w) && w.length === 2 && !periods.some((p) => p.label === label)) periods.push({ label, start: String(w[0]), end: String(w[1]) });
+    }
+  }
+  return {
+    kpis: [...kpis],
+    periods,
+    asOf: receipts[0]?.as_of ?? null,
+    queries: receipts.flatMap((r) => r.sql.map((q) => q.sql)),
+    direct: `This check reads trades directly to answer "${question}", with the query below, rather than one KPI.`,
+  };
+}
 
 const WIDE = new Set(["odds_swings", "rhythm", "alarms"]);
 
@@ -44,6 +69,7 @@ function Chart({ card, digest }: { card: DigestCard; digest: Digest }) {
 
 function Card({ card, digest }: { card: DigestCard; digest: Digest }) {
   const [open, setOpen] = useState(false);
+  const [how, setHow] = useState(false);
   const receipts = digest.receipts.filter((r) => card.sentence.receipt_ids.includes(r.receipt_id));
   const cases = card.id === "alarms" ? (card.data.cases as AlarmCase[]) : [];
   return (
@@ -67,20 +93,39 @@ function Card({ card, digest }: { card: DigestCard; digest: Digest }) {
       <div className="muted mt-auto flex items-center justify-between gap-2 border-t border-[var(--gc-line)] pt-2 text-xs">
         <span>{card.note}</span>
         {receipts.length > 0 && (
-          <button type="button" className="shrink-0 underline underline-offset-2" style={{ color: "var(--gc-ink)" }} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-            {open ? "Hide the evidence" : "Show the evidence"}
-          </button>
+          <span className="flex shrink-0 gap-3">
+            <HowCalculatedButton open={how} onToggle={() => setHow((o) => !o)} />
+            <button type="button" className="shrink-0 underline underline-offset-2" style={{ color: "var(--gc-ink)" }} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+              {open ? "Hide the evidence" : "Show the evidence"}
+            </button>
+          </span>
         )}
       </div>
+      {how && <HowCalculatedPanel {...calculation(receipts, card.question)} />}
       {open && receipts.map((r) => <ReceiptCard key={r.receipt_id} r={r} />)}
     </article>
   );
 }
 
 function Totals({ digest }: { digest: Digest }) {
+  const [how, setHow] = useState(false);
+  const ids = digest.totals.sentence?.receipt_ids ?? [];
+  const receipts = digest.receipts.filter((r) => ids.includes(r.receipt_id));
+  return (
+    <section data-testid="totals-section" aria-label="The period in four numbers">
+      <TotalsGrid digest={digest} />
+      {receipts.length > 0 && (
+        <div className="muted mt-2 flex justify-end text-xs"><HowCalculatedButton open={how} onToggle={() => setHow((o) => !o)} /></div>
+      )}
+      {how && <HowCalculatedPanel {...calculation(receipts, "the period in four numbers")} />}
+    </section>
+  );
+}
+
+function TotalsGrid({ digest }: { digest: Digest }) {
   const prev = digest.period_words.previous;
   return (
-    <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="The period in four numbers" data-testid="totals">
+    <section className="grid grid-cols-2 gap-3 md:grid-cols-4" data-testid="totals">
       {digest.totals.items.map((t) => {
         const value = fmtValue(t.kpi === "volume_usd" ? "usd" : "count", t.now);
         const change = t.pct_change === null

@@ -4,12 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { flaggedHours, parseState, stateToQuery } from "../explore";
 import { href, parseHash } from "../router";
 import { ExploreView } from "../views/ExploreView";
-import { CASE, CATALOG, series } from "./fixtures";
+import { CASE, CATALOG, DEFINITIONS, series } from "./fixtures";
 
 // The 48-hour Sports volume fixture: usual 1.15M every hour, the last two hours at 3.1x.
 const SERIES = series({ segment: "category=Sports", filters: { category: "Sports" } });
 const SPIKE = SERIES.points.map((p, i) => (i >= 46 ? { ...p, value: 3_565_000 } : p));
-const CHART = { ...SERIES, points: SPIKE };
+const CHART = { ...SERIES, points: SPIKE, as_of: "2026-10-05T14:20:00", sql: "SELECT date_trunc('hour', ts) AS t, sum(usd) AS v FROM trades_as_of('2026-10-05 14:20') WHERE d_category = 'Sports'" };
 
 type Handler = (body: unknown) => { status?: number; body: unknown };
 
@@ -137,6 +137,20 @@ describe("ExploreView", () => {
     expect(within(tracked).getByText("Whale wallets")).toBeInTheDocument();
     expect(within(tracked).getAllByRole("listitem")).toHaveLength(18);
     expect(screen.queryByText(/only answer questions/)).not.toBeInTheDocument();
+  });
+
+  it("explains how the chart is calculated: the KPI, the slice, the usual range, the sources and the query", async () => {
+    mockApi({ ...BASE, "/api/definitions": () => ({ body: DEFINITIONS }) });
+    render(<ExploreView query="kpi=volume_usd&seg=category%3DSports" />);
+    await screen.findByTestId("flagged");
+    await userEvent.click(screen.getByRole("button", { name: "How is this calculated?" }));
+    const panel = await screen.findByTestId("how-calculated");
+    expect(within(panel).getByText(/Dollars traded \(shares x price\), summed over trades/)).toBeInTheDocument();
+    expect(within(panel).getByText("Category: Sports")).toBeInTheDocument();
+    expect(within(panel).getByText(/same hour on up to 28 earlier days/)).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: /data-api.polymarket.com\/trades/ })).toHaveAttribute("href", "https://data-api.polymarket.com/trades");
+    expect(within(panel).getByTestId("how-sql")).toHaveTextContent(CHART.sql);
+    expect(within(panel).getByRole("link", { name: /What each number means/ })).toHaveAttribute("href", "#/kpis");
   });
 
   it("shows no engine ids", async () => {

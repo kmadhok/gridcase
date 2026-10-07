@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from gridcase import config
+from gridcase.ingest.polymarket import COLLECT_EVERY_S
 from gridcase.planner.llm import LLM
 from gridcase.store.db import connect, one
 
@@ -185,7 +186,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         llm_factory=factory,
         drain_interval_s=opts.drain_interval_s,
         watch=opts.watch,
-        polymarket_interval_s=300.0,
+        polymarket_interval_s=config.POLYMARKET_LOAD_EVERY_S,
     )
     uvicorn.run(app, host=opts.host, port=opts.port, log_level="info")
     return 0
@@ -204,7 +205,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init", help="create the store and show what it holds").set_defaults(fn=cmd_init)
     col = sub.add_parser("collect", help="save live Polymarket trades as they happen")
-    col.add_argument("--interval", type=float, default=240.0, help="seconds between polls")
+    col.add_argument(
+        "--interval", type=float, default=COLLECT_EVERY_S, help="seconds between polls"
+    )
     col.set_defaults(fn=cmd_collect)
     ref = sub.add_parser("refresh", help="load collected trades and categorise markets once")
     ref.set_defaults(fn=cmd_refresh)

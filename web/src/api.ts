@@ -97,7 +97,28 @@ export interface SeriesView {
   history_days: number;
   latest: { t: string; value: number | null; usual: number | null } | null;
   points: SeriesPoint[];
+  as_of?: string;
+  sql?: string; // the query that reproduces every hour shown (Explore)
 }
+
+export interface Definitions {
+  kpis: { id: string; label: string; description: string; unit: string; formula: string; definition: string }[];
+  dimensions: { id: string; label: string; values: string[] | null; sql: string }[];
+  usual_range: {
+    lookback_days: number;
+    min_history_days: number;
+    k_sigma: number;
+    min_run: number;
+    single_hour_sigma: number;
+    settle_minutes: number;
+    log_scale: string[];
+    warmup_days: Record<string, number>;
+  };
+  sources: { name: string; url?: string; how: string }[];
+  record_start: string | null;
+}
+
+let definitionsOnce: Promise<Definitions> | null = null;
 
 export interface NowResponse {
   as_of: string;
@@ -275,5 +296,13 @@ export const api = {
   exploreInvestigate: (body: { kpi: string; filters: ExploreFilterIn[]; hour: string }) =>
     post<ExploreStart>(`${API}/explore/investigate`, body, "Starting the investigation"),
   exploreTask: (id: string) => get<ExploreTask>(`${API}/explore/investigations/${encodeURIComponent(id)}`),
+  /** Static for the life of the page, so fetched once (and again only after a failure). */
+  definitions: (): Promise<Definitions> => {
+    definitionsOnce ??= get<Definitions>(`${API}/definitions`).catch((e) => {
+      definitionsOnce = null;
+      throw e;
+    });
+    return definitionsOnce;
+  },
 };
 

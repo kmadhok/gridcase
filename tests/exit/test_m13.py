@@ -748,3 +748,42 @@ def test_one_visitor_cannot_flood_the_chart(synth_store: Path) -> None:
         200,
         429,
     ]
+
+
+# ---------- "How is this calculated?": definitions, sources and the chart's own query ----------
+
+
+def test_definitions_explain_every_public_kpi_slice_rule_and_source(synth_store: Path) -> None:
+    d = synth_app(synth_store).get("/api/definitions").json()
+    kpis, dims = load_kpis()
+    by_id = {k["id"]: k for k in d["kpis"]}
+    assert set(by_id) == {k for k, v in kpis.items() if not is_internal(v)}
+    assert by_id["whale_share"]["formula"] == "Whale volume ÷ Trading volume"
+    assert by_id["whale_share"]["definition"] == "whale_volume / volume_usd"
+    assert by_id["volume_usd"]["description"] and by_id["volume_usd"]["unit"] == "usd"
+    size = next(x for x in d["dimensions"] if x["id"] == "size_band")
+    assert "usd < 10" in size["sql"] and size["values"] == dims["size_band"].values
+    watch = d["usual_range"]
+    assert (watch["lookback_days"], watch["min_history_days"], watch["k_sigma"]) == (28, 3, 3.0)
+    urls = {s.get("url") for s in d["sources"]}
+    assert {"https://data-api.polymarket.com/trades", "https://gamma-api.polymarket.com"} <= urls
+    assert any("4 minutes" in s["how"] and "10,000" in s["how"] for s in d["sources"])
+    assert d["record_start"] == "2026-10-01T00:00:00"  # the synthetic record's first trade hour
+
+
+def test_the_chart_carries_the_query_that_reproduces_it(synth_store: Path) -> None:
+    client = synth_app(synth_store)
+    view = client.get(
+        "/api/explore/series",
+        params={"kpi": "volume_usd", "segment": "category=Sports", "hours": 24},
+    ).json()
+    assert "trades_as_of" in view["sql"] and "'Sports'" in view["sql"]
+    assert view["as_of"] == SYNTH_AS_OF.isoformat()
+    conn = connect(synth_store)
+    hours = {t.isoformat(): v for t, v in conn.execute(view["sql"]).fetchall()}
+    conn.close()
+    for p in view["points"]:
+        if p["value"] is not None:
+            assert hours[p["t"]] == pytest.approx(
+                p["value"]
+            )  # re-running the query gives the chart

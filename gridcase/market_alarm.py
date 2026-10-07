@@ -327,6 +327,8 @@ def series_view(
         "latest": None
         if latest is None
         else {"t": latest["t"].isoformat(), "value": latest["v"], "usual": latest["expected"]},
+        "as_of": as_of.isoformat(),
+        "sql": hv.sql,  # the audit query: re-running it reproduces every hour below
         "points": [
             {
                 "t": r["t"].isoformat(),

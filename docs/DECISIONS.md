@@ -493,3 +493,26 @@ User decision: "It should be as simple as I can't answer that, here are the kpis
 - **Found by the user on the live site.** "What were the min/max trades in that game for whales and what were those trades on" was answered with "I can only answer questions about Polymarket trading on this page." The question was on topic, but the semantic layer cannot express it: there is no filter to one market, no largest- or smallest-trade KPI, and no outcome dimension in the form. Replayed locally, the model's pick was `refuse` both times.
 - **Change (web only):** any refusal, off-topic or beyond the semantic layer, now reads "I can't answer that. Here are the KPIs I currently track:" followed by the 18 public KPIs by name. No new model behaviour or KPI. Test: `explore.test.tsx` "answers a question it cannot handle with the KPIs it tracks", written and run red first.
 - `REVIEW:` **two definitions of "whale" in the semantic layer.** "Whale share" counts trades of $1k or more; "Whale wallets" counts wallets that traded $10k or more in the period. The same test showed the chat answering a "whales" question with the wallet definition. Worth a decision.
+
+## 2026-10-07 — "How is this calculated?" on every Explore and Morning read visual
+
+User request: for every value or KPI on the Explore page and the Morning read, a button that shows the KPI behind the visual, how it was calculated, the data sources and the SQL.
+
+- **Before this change:** Morning read cards had "Show the evidence" (the check's outputs and SQL), but no definition, no sources, and nothing for the charts or the four totals. The Explore chart showed nothing about how it was calculated. Chat evidence had SQL but no definition. Definitions lived only on the "What each number means" page.
+- **One panel, four sections** (`web/src/views/HowCalculated.tsx`):
+  1. **What it measures:** each KPI's plain definition, its formula in words, and its definition in `ontology/kpis.yaml`. Checks that read trades directly say so, rather than pretending a KPI is behind them.
+  2. **For this view:** each slice with the SQL that decides it, the exact UTC periods, the grain and the "as of" time. For the Explore chart it also gives the usual-range rule in words, with the watch's own numbers.
+  3. **Where the data comes from:** the trades feed, the 5-minute load with its de-duplication, market data and categories, and the "as of" rule, plus when our record begins.
+  4. **The exact query,** with a Copy button.
+
+  The panel is on the Explore chart, on every Morning read card that has evidence, and on the Morning read's totals. Opening a chat answer's "exact query" now also shows its KPI's definition.
+- **The explanation comes from the code, so it cannot drift from the calculation.**
+  - `GET /api/definitions` (`gridcase/definitions.py`) is built from `ontology/kpis.yaml`, `ontology/watch.yaml` and the collector's and loader's constants. It runs no queries apart from one lookup of the first trade, cached for the server's life: 5 ms.
+  - The collector's poll and the server's load interval are now named constants (`COLLECT_EVERY_S`, `config.POLYMARKET_LOAD_EVERY_S`). A deploy test checks that the collector's systemd unit polls at the interval the site describes (4 minutes).
+- **The Explore chart now carries its own query** (the watch's audit query, added to `series_view`). A test re-runs that query on the store and gets every hourly value on the chart.
+- **Tests:**
+  - Python, written and run red first: definitions cover exactly the public KPIs, slice SQL, the watch rule, both data addresses and the record's start; the chart's query reproduces the chart; the unit's interval matches the constant.
+  - Web, written and run red first: Explore's panel; a Morning read card with a KPI; a card that reads trades directly; the totals.
+  - The evidence-card definition test was written with its code and then checked by removing the line, which makes it fail.
+  - Results: Python 275 passed, 1 skipped (ruff and mypy --strict clean); web 45 tests, tsc, oxlint and the build pass.
+- **Checked in a browser on a synthetic store:** the Explore panel and a Morning read card panel render fully. 9 buttons on the Morning read (8 cards with evidence plus the totals). No overflow at 1280 px.

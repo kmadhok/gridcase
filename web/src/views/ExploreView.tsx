@@ -9,6 +9,7 @@ import { CASE_STATES, KPIS, fmtTime, fmtValue, kpiLabel } from "../labels";
 import { href } from "../router";
 import { ExploreChart } from "./ExploreChart";
 import { ExploreChat } from "./ExploreChat";
+import { HowCalculatedButton, HowCalculatedPanel } from "./HowCalculated";
 
 const DIM_LABELS: Record<string, string> = { category: "Category", size_band: "Trade size", trader_type: "Trader" };
 const ANY: Record<string, string> = { category: "All markets", size_band: "Any size", trader_type: "Anyone" };
@@ -35,6 +36,7 @@ function sliceName(filters: Record<string, string>): string {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const hourAfter = (t: string) => new Date(new Date(`${t}Z`).getTime() + 3_600_000).toISOString().slice(0, 19);
 
 export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pollMs?: number }) {
   const [state, setState] = useState<ExploreState>(() => parseState(query));
@@ -43,6 +45,7 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [inv, setInv] = useState<Investigation | null>(null);
+  const [how, setHow] = useState(false);
   const invToken = useRef(0);
   const invPanel = useRef<HTMLElement>(null);
   const segment = segmentOf(state.filters);
@@ -208,7 +211,20 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
                 <span><span className="mr-1 inline-block h-2.5 w-2 bg-zinc-300 align-middle dark:bg-zinc-600" />no data (before our record began, or a collector gap)</span>
               )}
               <span>click any hour to look closer</span>
+              <span className="ml-auto"><HowCalculatedButton open={how} onToggle={() => setHow((o) => !o)} /></span>
             </div>
+            {how && chart && points.length > 0 && (
+              <HowCalculatedPanel
+                kpis={[state.kpi]}
+                slice={state.filters}
+                periods={[{ label: "Shown", start: points[0].t, end: hourAfter(points[points.length - 1].t) }]}
+                grain="hour"
+                usualRange
+                asOf={chart.as_of}
+                queries={chart.sql ? [chart.sql] : []}
+                queryNote="It covers the hours shown and the earlier days their usual range is compared with; re-running it on our store reproduces every hour on the chart."
+              />
+            )}
             {selectedPoint && chart && (
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded border border-[var(--gc-line)] p-3 text-sm">
                 <div className="min-w-0"><span className="font-medium">{fmtTime(selectedPoint.t)}</span> <span className="muted">· {describeHour(selectedPoint, unit)}</span></div>

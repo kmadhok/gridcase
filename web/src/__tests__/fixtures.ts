@@ -105,3 +105,24 @@ export const TRACE: CaseTrace = {
     { seq: 8, parent_seq: null, kind: "stage", name: "publish", offset_ms: 14120, ms: 80, status: "ok", detail: {} },
   ].map((s) => ({ ...s, started_at: "2026-10-03T12:00:00" })) as CaseTrace["spans"],
 };
+
+// GET /api/definitions, trimmed to what the tests read
+export const DEFINITIONS = {
+  kpis: [
+    { id: "volume_usd", label: "Trading volume", description: "Dollars traded (shares x price), summed over trades.", unit: "usd", formula: "Added up over trades", definition: "sum(usd)" },
+    { id: "active_traders", label: "Active traders", description: "Distinct wallets that traded.", unit: "count", formula: "Counted once per distinct item", definition: "count(DISTINCT wallet)" },
+    { id: "whale_share", label: "Whale share of volume", description: "Share of dollars traded that came from trades of $1,000 or more.", unit: "share", formula: "Whale volume ÷ Trading volume", definition: "whale_volume / volume_usd" },
+    { id: "recurring_share", label: "Recurring-market share", description: "Share of dollars traded in recurring short markets.", unit: "share", formula: "Recurring-market volume ÷ Trading volume", definition: "recurring_volume / volume_usd" },
+  ],
+  dimensions: [
+    { id: "category", label: "Category", values: ["Sports", "Politics", "Crypto"], sql: "coalesce(m_category, 'Other')" },
+    { id: "size_band", label: "Trade size", values: ["under $10", "$10-100", "$100-1k", "$1k+"], sql: "CASE WHEN usd < 10 THEN 'under $10' ELSE '$1k+' END" },
+  ],
+  usual_range: { lookback_days: 28, min_history_days: 3, k_sigma: 3, min_run: 2, single_hour_sigma: 5, settle_minutes: 15, log_scale: ["volume_usd"], warmup_days: { new_traders: 7 } },
+  sources: [
+    { name: "Trades", url: "https://data-api.polymarket.com/trades", how: "Polymarket's public trades feed. Our collector saves the newest 10,000 trades every 4 minutes." },
+    { name: "Markets and categories", url: "https://gamma-api.polymarket.com", how: "Polymarket's public market data gives each market's tags; the tags decide its category." },
+    { name: "As of", how: "Every number reads only the trades our collector had saved by its time." },
+  ],
+  record_start: "2026-09-29T19:36:41",
+};

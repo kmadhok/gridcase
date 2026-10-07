@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { Receipt } from "../api";
+import { useEffect, useState } from "react";
+import { api, type Definitions, type Receipt } from "../api";
 import { fmt } from "../components";
 import { fmtTime, stepQuestion } from "../labels";
 
@@ -22,9 +22,26 @@ export function ReceiptCard({ r }: { r: Receipt }) {
       <button className="mt-2 text-xs underline" onClick={() => setShowSql((s) => !s)} data-testid="toggle-sql">
         {showSql ? "Hide" : "Show"} the exact quer{r.sql.length === 1 ? "y" : "ies"} ({r.sql.length})
       </button>
+      {showSql && typeof r.inputs.kpi === "string" && <KpiDefinition id={r.inputs.kpi} />}
       {showSql && r.sql.map((q, i) => (
         <pre key={i} data-testid="receipt-sql" className="mono mt-2 max-h-64 overflow-auto rounded bg-zinc-100 p-2 text-[11px] leading-snug dark:bg-zinc-900">{q.sql}</pre>
       ))}
     </div>
+  );
+}
+
+/** The KPI behind this evidence, as ontology/kpis.yaml defines it. */
+function KpiDefinition({ id }: { id: string }) {
+  const [kpi, setKpi] = useState<Definitions["kpis"][number] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.definitions().then((d) => live && setKpi(d.kpis.find((k) => k.id === id) ?? null)).catch(() => undefined);
+    return () => { live = false; };
+  }, [id]);
+  if (!kpi) return null;
+  return (
+    <p className="mt-2 text-xs" data-testid="receipt-kpi">
+      <span className="font-medium">{kpi.label}</span>: {kpi.description} <span className="muted">Formula: {kpi.formula}.</span>
+    </p>
   );
 }

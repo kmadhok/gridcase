@@ -111,3 +111,12 @@ def test_install_script_replaces_the_dbt_timer_with_airflow() -> None:
     assert "enable --now gridcase-dbt.timer" not in text
     assert not (DEPLOY / "gridcase-dbt.service").exists()
     assert not (DEPLOY / "gridcase-dbt.timer").exists()
+
+
+def test_the_collectors_interval_is_the_one_the_site_explains() -> None:
+    from gridcase.ingest.polymarket import COLLECT_EVERY_S
+
+    exec_start = _unit("gridcase-collector.service")["ExecStart"][0]
+    assert (
+        f"--interval {COLLECT_EVERY_S:g}" in exec_start
+    )  # "How is this calculated?" says 4 minutes
