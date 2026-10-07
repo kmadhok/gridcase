@@ -516,3 +516,9 @@ User request: for every value or KPI on the Explore page and the Morning read, a
   - The evidence-card definition test was written with its code and then checked by removing the line, which makes it fail.
   - Results: Python 275 passed, 1 skipped (ruff and mypy --strict clean); web 45 tests, tsc, oxlint and the build pass.
 - **Checked in a browser on a synthetic store:** the Explore panel and a Morning read card panel render fully. 9 buttons on the Morning read (8 cards with evidence plus the totals). No overflow at 1280 px.
+- **Deployed 2026-10-07** (user approval: "go for it"), together with the chat's "I can't answer that" change. The VPS was updated to `5ebaf26` (pull, `uv sync`, web build) and the server restarted; healthy in about 6 s, with no errors in the log. The first public request to `/api/definitions` landed while the tunnel was reconnecting and got an empty reply; every request after that returned 200 (0.3 s public, 3 ms private).
+- **Checked live:**
+  - The Explore panel for Sports whale share shows the definition, the formula and an 896-character query.
+  - An off-topic chat question gets "I can't answer that. Here are the KPIs I currently track:" with the list.
+  - The Morning read has 9 panels, all with their SQL: 3 backed by KPIs (whale share, market kind, totals) and 6 checks that read trades directly.
+  - No console errors and no overflow at 1280 px.
