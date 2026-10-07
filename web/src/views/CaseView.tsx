@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type CaseFull, type Claim, type Receipt } from "../api";
+import { api, type CaseFull, type Claim, type Receipt, type Step, type Verdict } from "../api";
 import { HypothesisName, Panel, StatusBadge, TierBadge, pct } from "../components";
 import { CASE_STATES, HYPOTHESES, KPIS, TIERS, fmtTime, fmtValue, kpiLabel, segmentName, stepQuestion } from "../labels";
 import { AskPanel } from "./AskPanel";
@@ -17,6 +17,50 @@ function ClaimRow({ claim, i, receipts }: { claim: Claim; i: number; receipts: R
         <span className="muted text-xs">{cited.length ? `${open ? "hide" : "show"} evidence (${cited.length})` : "no evidence link"}</span>
       </button>
       {open && (cited.length ? cited.map((r) => <ReceiptCard key={r.receipt_id} r={r} />) : <p className="muted mt-1 text-xs">An interpretation: nothing in the data backs this sentence directly.</p>)}
+    </li>
+  );
+}
+
+/** Same JSON value regardless of key order: receipts carry no step id, so a step is matched to
+ * the receipt that ran the same tool with the same inputs. */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (v && typeof v === "object") {
+    return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+
+function DriverCard({ v, isTop, c }: { v: Verdict; isTop: boolean; c: CaseFull }) {
+  const [open, setOpen] = useState(false);
+  const steps = (c.plan?.steps ?? []).filter((s) => s.hypothesis_ids.includes(v.id));
+  const ranFor = (s: Step) => c.receipts.find((r) => r.tool === s.tool && canonical(r.inputs) === canonical(s.inputs));
+  const cited = new Set(steps.map((s) => ranFor(s)?.receipt_id));
+  const claims = (c.conclusion?.claims ?? []).filter((cl) => cl.receipt_ids.some((id) => cited.has(id)));
+  return (
+    <li className={`rounded border p-2 ${isTop ? "border-amber-600" : "border-[var(--gc-line)]"}`}>
+      <button data-testid={`driver-${v.id}`} onClick={() => setOpen((o) => !o)} className="w-full text-left" aria-expanded={open}>
+        <div className="flex items-center justify-between gap-2"><HypothesisName id={v.id} /><StatusBadge status={v.status} /></div>
+        <div className="muted mt-1 text-xs">{HYPOTHESES[v.id]?.blurb}</div>
+        <div className="mt-1 text-xs">
+          {pct(v.confidence)} likely{v.coverage !== null && v.status !== "refuted" ? ` · explains ${pct(v.coverage)} of the gap` : ""}
+        </div>
+        <div className="muted mt-1 text-xs underline">{open ? "hide" : "show"} how it was tested ({steps.length})</div>
+      </button>
+      {open && (
+        <div data-testid={`driver-evidence-${v.id}`}>
+          {claims.map((cl, i) => (
+            <p key={i} className="mt-2 flex items-start gap-2 text-xs"><TierBadge tier={cl.tier} /><span>{cl.text}</span></p>
+          ))}
+          {steps.map((s) => {
+            const r = ranFor(s);
+            if (r) return <ReceiptCard key={s.step_id} r={r} />;
+            const why = c.step_errors?.[s.step_id];
+            return <p key={s.step_id} className="muted mt-2 text-xs">{stepQuestion(s.tool, s.inputs)}: {why ? `couldn't run (${why})` : "no evidence recorded"}.</p>;
+          })}
+          {!steps.length && <p className="muted mt-2 text-xs">No check in this investigation tested this driver.</p>}
+        </div>
+      )}
     </li>
   );
 }
@@ -69,15 +113,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
       <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
         <Panel title="Possible drivers" hint="Each one was tested against the numbers." className="min-w-0">
           <ol className="space-y-2" data-testid="hypothesis-tree">
-            {ranked.map((v) => (
-              <li key={v.id} className={`rounded border p-2 ${v.id === top ? "border-amber-600" : "border-[var(--gc-line)]"}`}>
-                <div className="flex items-center justify-between gap-2"><HypothesisName id={v.id} /><StatusBadge status={v.status} /></div>
-                <div className="muted mt-1 text-xs">{HYPOTHESES[v.id]?.blurb}</div>
-                <div className="mt-1 text-xs">
-                  {pct(v.confidence)} likely{v.coverage !== null && v.status !== "refuted" ? ` · explains ${pct(v.coverage)} of the gap` : ""}
-                </div>
-              </li>
-            ))}
+            {ranked.map((v) => <DriverCard key={v.id} v={v} isTop={v.id === top} c={c} />)}
           </ol>
         </Panel>
         <Panel

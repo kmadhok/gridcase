@@ -36,4 +36,43 @@ describe("CaseView", () => {
     await userEvent.click(within(note).getByRole("button", { name: /show evidence/i }));
     expect(within(note).getByTestId("receipt")).toHaveTextContent("Why was this investigation opened?");
   });
+
+  describe("driver cards", () => {
+    // s2's inputs match receipt r1 in a different key order, as the API may return them.
+    const steps = [
+      { step_id: "s1", tool: "data.coverage", inputs: {}, hypothesis_ids: ["D0_DATA_PROBLEM"], depends_on: [] },
+      { step_id: "s2", tool: "by.market", inputs: { filters: {}, kpi: "volume_usd" }, hypothesis_ids: ["D1_ONE_MARKET", "D6_BROAD_BASED"], depends_on: [] },
+    ];
+    const ranked = [...CASE.conclusion!.ranked, { id: "D5_LONGSHOTS", status: "refuted" as const, confidence: 0.02, margin: -1, coverage: null }];
+    const tested = { ...CASE, plan: { ...CASE.plan!, steps }, conclusion: { ...CASE.conclusion!, ranked }, step_errors: { s1: "data not published yet" } };
+
+    it("opens any driver, not just the top one, to the sentences and evidence that tested it", async () => {
+      render(<CaseView id={CASE.case_id} initial={tested} />);
+      const card = screen.getByTestId("driver-D6_BROAD_BASED");
+      expect(card).toHaveAttribute("aria-expanded", "false");
+      await userEvent.click(card);
+      expect(card).toHaveAttribute("aria-expanded", "true");
+      const evidence = screen.getByTestId("driver-evidence-D6_BROAD_BASED");
+      expect(evidence).toHaveTextContent("England vs Czechia accounts for 72%");
+      expect(within(evidence).getByTestId("receipt")).toHaveTextContent("Which market drove it?");
+      expect(screen.queryByTestId("driver-evidence-D1_ONE_MARKET")).not.toBeInTheDocument();
+      await userEvent.click(card);
+      expect(screen.queryByTestId("driver-evidence-D6_BROAD_BASED")).not.toBeInTheDocument();
+    });
+
+    it("says when the check for a driver couldn't run", async () => {
+      render(<CaseView id={CASE.case_id} initial={tested} />);
+      await userEvent.click(screen.getByTestId("driver-D0_DATA_PROBLEM"));
+      const evidence = screen.getByTestId("driver-evidence-D0_DATA_PROBLEM");
+      expect(evidence).toHaveTextContent("couldn't run (data not published yet)");
+      expect(within(evidence).queryByTestId("receipt")).not.toBeInTheDocument();
+    });
+
+    it("says when no check tested a driver", async () => {
+      render(<CaseView id={CASE.case_id} initial={tested} />);
+      expect(screen.getByTestId("driver-D5_LONGSHOTS")).toHaveTextContent("show how it was tested (0)");
+      await userEvent.click(screen.getByTestId("driver-D5_LONGSHOTS"));
+      expect(screen.getByTestId("driver-evidence-D5_LONGSHOTS")).toHaveTextContent("No check in this investigation tested this driver.");
+    });
+  });
 });

@@ -9,12 +9,12 @@ export function ReceiptCard({ r }: { r: Receipt }) {
     .filter(([, v]) => typeof v === "number" || typeof v === "string" || typeof v === "boolean")
     .slice(0, 8);
   return (
-    <div className="mt-2 rounded border border-[var(--gc-line)] p-3 text-sm" data-testid="receipt">
+    <div className="@container mt-2 rounded border border-[var(--gc-line)] p-3 text-sm" data-testid="receipt">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-medium" title={r.tool}>{stepQuestion(r.tool, r.inputs)}</span>
         <span className="mono muted text-xs" title="evidence id · data known as of · run time">{r.receipt_id.slice(0, 12)} · as of {fmtTime(r.as_of)} · {r.runtime_ms} ms</span>
       </div>
-      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3">
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 @md:grid-cols-3">
         {summary.map(([k, v]) => (
           <div key={k} className="min-w-0"><dt className="muted text-xs">{k.replace(/_/g, " ")}</dt><dd className="mono break-all text-xs">{typeof v === "number" ? fmt(v, Math.abs(v) < 10 ? 3 : 0) : String(v)}</dd></div>
         ))}
