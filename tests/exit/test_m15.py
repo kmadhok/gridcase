@@ -25,7 +25,13 @@ from gridcase.backfill.build import build
 from gridcase.backfill.census import market_row
 from gridcase.backfill.client import Client
 from gridcase.backfill.fetch import clob_prices, life, parse_ts, settled_token0
-from gridcase.backfill.jobs import MARKET_COLUMNS, PRICE_COLUMNS, TRADE_COLUMNS, write_parquet
+from gridcase.backfill.jobs import (
+    MARKET_COLUMNS,
+    PRICE_COLUMNS,
+    STATUS_COLUMNS,
+    TRADE_COLUMNS,
+    write_parquet,
+)
 from gridcase.ingest.polymarket_load import categorize
 from gridcase.rl.spend import ALLOWANCES, GLOBAL_CAP_USD, OverBudget, Spend
 from gridcase.rl.tasks import (
@@ -273,7 +279,9 @@ def test_build_writes_tables_and_keeps_outcomes_out_of_hist_markets(tmp_path: Pa
 # outcome, the lifetime volume or a future close time.
 
 T0 = 1_780_000_000 // 3600 * 3600  # an hour boundary
-HIST_TOOLS = ["hist.market", "hist.series", "hist.move", "hist.siblings", "hist.related"]
+HIST_TOOLS = [
+    "hist.market", "hist.series", "hist.move", "hist.siblings", "hist.related", "hist.flow"
+]  # fmt: skip
 
 
 def _hist_markets(extra_late: bool = False, close_late: int = 9) -> list[dict[str, Any]]:
@@ -315,12 +323,39 @@ def _hist_prices(seed: int, scramble_after: int | None = None) -> list[dict[str,
     return rows
 
 
+def _hist_trades(seed: int, scramble_after: int | None = None) -> list[dict[str, Any]]:
+    import random
+
+    rng, scr = random.Random(seed), random.Random(seed + 1)
+    rows = []
+    for k in range(10 * 24 * 4):  # every 15 minutes for 10 days, market 0 only
+        ts = T0 + k * 900
+        size = rng.choice([5.0, 50.0, 500.0, 5000.0])
+        if scramble_after and ts > scramble_after:
+            size = scr.choice([1.0, 9999.0])
+        rows.append({
+            "condition_id": "0xm0", "token_id": "t0", "proxy_wallet": f"0xw{k % 37}",
+            "side": "BUY" if k % 3 else "SELL", "size": size, "price": 0.5, "timestamp": ts,
+            "outcome": "Yes" if k % 2 else "No", "outcome_index": k % 2,
+            "transaction_hash": f"0xh{k}", "title": "Q0?", "slug": "m0", "event_slug": "e1",
+        })  # fmt: skip
+    return rows
+
+
 def _hist_db(path: Path, seed: int, scramble_after: int | None = None, late: bool = False) -> Path:
     src = path / "src"
     close_late = 9 if not late else 8  # a different (future) close time in the mutated copy
     write_parquet(_hist_markets(late, close_late), MARKET_COLUMNS, src / "markets.parquet")
     write_parquet(
         _hist_prices(seed, scramble_after), PRICE_COLUMNS, src / "prices" / "part-00000.parquet"
+    )
+    write_parquet(
+        _hist_trades(seed, scramble_after), TRADE_COLUMNS, src / "trades" / "part-00000.parquet"
+    )
+    write_parquet(
+        [{"condition_id": "0xm0", "needed_from": T0, "complete": True}],
+        STATUS_COLUMNS,
+        src / "trades_status.parquet",
     )
     db = path / "backfill.duckdb"
     build(src, db)
@@ -335,6 +370,8 @@ def _hist_inputs(name: str) -> dict[str, Any]:
         return {**base, "hours": 6}
     if name == "hist.related":
         return {**base, "hours": 6, "min_move_pts": 1}
+    if name == "hist.flow":
+        return {**base, "hours": 24}
     return base
 
 
@@ -365,8 +402,10 @@ def test_outputs_carry_no_outcome_volume_or_future_close(tmp_path: Path) -> None
     as_of = datetime.fromtimestamp(T0 + 5 * 86400, UTC).replace(tzinfo=None)
     outs = _outputs(db, as_of)
     text = json.dumps(outs)
-    for banned in ("winner", "uma_status", "settled", "volume", '"y"'):
+    for banned in ("winner", "uma_status", "settled", '"volume":', '"y"'):
         assert banned not in text, banned
+    for m in _hist_markets():  # lifetime volume includes trading after as_of
+        assert str(m["volume"]) not in text
     assert outs["hist.market"]["closed_at"] is None  # closes on day 9, after as_of
     assert outs["hist.market"]["question"] == "Q0?"
     assert {s["condition_id"] for s in outs["hist.siblings"]["siblings"]} == {"0xm1"}
@@ -392,6 +431,15 @@ def test_hist_receipts_are_stable_and_series_is_capped(tmp_path: Path) -> None:
         run_tool(con, "hist.series", {"condition_id": "0xm0", "hours": 720, "grain": "10m"}, as_of)
     missing = run_tool(con, "hist.market", {"condition_id": "0xnope"}, as_of)
     assert missing.output == {"found": False}
+    flow = run_tool(con, "hist.flow", {"condition_id": "0xm0", "hours": 24}, as_of)
+    assert flow.output["trade_data"] is True
+    assert flow.output["window"]["trades"] == 96  # one every 15 minutes
+    assert any("trades_as_of" in q["sql"] for q in flow.sql)  # governed: the semantic layer
+    assert sum(flow.output["volume_by_trade_size"].values()) == pytest.approx(
+        flow.output["window"]["volume_usd"]
+    )
+    none = run_tool(con, "hist.flow", {"condition_id": "0xm1", "hours": 24}, as_of)
+    assert none.output["trade_data"] is False
     con.close()
 
 

@@ -129,12 +129,18 @@ class HistRelated(BaseModel):
     top_n: int = Field(default=10, ge=1, le=25)
 
 
+class HistFlow(BaseModel):
+    condition_id: str
+    hours: int = Field(default=24, ge=1, le=168)
+
+
 HIST_INPUTS: dict[str, type[BaseModel]] = {
     "hist.market": HistMarket,
     "hist.series": HistSeries,
     "hist.move": HistMove,
     "hist.siblings": HistSiblings,
     "hist.related": HistRelated,
+    "hist.flow": HistFlow,
 }
 
 ALL_INPUTS: dict[str, type[BaseModel]] = {

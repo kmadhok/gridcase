@@ -10,11 +10,19 @@ fixed; inputs are bound parameters.
 from __future__ import annotations
 
 import statistics
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from gridcase.semantic.kpis import KpiQuery
 from gridcase.tools.base import Rows, ToolCtx, ToolError, tool
-from gridcase.tools.registry import HistMarket, HistMove, HistRelated, HistSeries, HistSiblings
+from gridcase.tools.registry import (
+    HistFlow,
+    HistMarket,
+    HistMove,
+    HistRelated,
+    HistSeries,
+    HistSiblings,
+)
 
 GRAINS = {"10m": (timedelta(minutes=10), "10 minutes"), "1h": (timedelta(hours=1), "1 hour"),
           "1d": (timedelta(days=1), "1 day")}  # fmt: skip
@@ -212,4 +220,52 @@ def hist_related(ctx: ToolCtx, inp: HistRelated) -> tuple[dict[str, Any], float 
         "window_hours": inp.hours,
         "n_related": len(out),
         "related": out[: inp.top_n],
+    }, None
+
+
+FLOW_KPIS = ("volume_usd", "trades", "active_traders", "buy_share", "whale_share", "avg_trade_usd")
+
+
+@tool("hist.flow")
+def hist_flow(ctx: ToolCtx, inp: HistFlow) -> tuple[dict[str, Any], float | None]:
+    """Trading in this market over the last `hours` against the `hours` before, through the
+    semantic layer (the `outcome` dimension selects exactly this market's trades)."""
+    own = _market(ctx, inp.condition_id)
+    if not own:
+        return {"found": False}, None
+    q, o0, o1 = own[0][0], own[0][5], own[0][6]
+    status = ctx.raw(
+        "SELECT complete, needed_from FROM trades_status WHERE condition_id = ?", [inp.condition_id]
+    )
+    if not status:
+        return {"trade_data": False, "reason": "no trades were backfilled for this market"}, None
+    complete, needed_from = bool(status[0][0]), int(status[0][1])
+    lo = ctx.as_of - timedelta(hours=inp.hours)
+    prev = (lo - timedelta(hours=inp.hours), lo)
+    filters: dict[str, Any] = {"outcome": [f"{q} · {o0}", f"{q} · {o1}"]}
+
+    def total(kpi: str, window: tuple[datetime, datetime]) -> float | None:
+        rows = ctx.kpi(
+            KpiQuery(kpi=kpi, grain="total", window=window, as_of=ctx.as_of, filters=filters)
+        )
+        v = rows[0][-1] if rows else None
+        return None if v is None else float(v)
+
+    now = {k: total(k, (lo, ctx.as_of)) for k in FLOW_KPIS}
+    before = {k: total(k, prev) for k in FLOW_KPIS}
+    by_size = ctx.kpi(
+        KpiQuery(kpi="volume_usd", grain="total", window=(lo, ctx.as_of), as_of=ctx.as_of,
+                 filters=filters, group_by="size_band")
+    )  # fmt: skip
+    covered_from = (
+        datetime.fromtimestamp(needed_from, UTC).replace(tzinfo=None) if complete else None
+    )
+    return {
+        "trade_data": True,
+        "window_hours": inp.hours,
+        "taker_trades_only": True,
+        "complete_from": covered_from,
+        "window": now,
+        "previous_window": before,
+        "volume_by_trade_size": {str(r[0]): float(r[-1] or 0.0) for r in by_size},
     }, None
