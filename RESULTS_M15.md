@@ -16,8 +16,8 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 - `data/` rebuilt from Polymarket. `gridcase rl tasks` reproduced the committed eval set exactly (answers sha256 `106a786b…`, same pools); the built store matches the cloud one (173,188,008 prices, 17.6M trades).
 - **Untuned Qwen3-8B: done** ($3.10).
 - **Sonnet 5.5: done** ($13.87). The Anthropic credit ran out after 456 tasks; after a top-up the other 144 were rerun with `rl eval --retry-errors`.
-- **Training: started** on the user's go.
-- Spend: $13.39 of $150 (`data/rl/spend.jsonl`).
+- **Training: done** ($41.97 of the $85 allowance). 39 steps (the pilot set the count), validation-selected checkpoint `tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-39` (kept 30 days), evaluated once on the eval split ($1.28).
+- Spend: **$64.41 of $150** (`data/rl/spend.jsonl`): training $41.97, small-model evals $8.24, Sonnet $14.21.
 
 ## What was built
 
@@ -34,7 +34,7 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 | Harness | `gridcase/rl/{agent,models,reward,harness}.py`, `gridcase rl eval/report` | The same prompt, six tools plus `submit_answer`, 8-call budget and verifier for every model; a paired cluster bootstrap for comparisons. |
 | Trainer | `gridcase/rl/train.py`, `gridcase rl train` | GRPO-style importance sampling, LoRA rank 32 on Qwen3-8B (Tinker), a 3-step pilot, then as many steps as the budget affords; validation-selected checkpoint; early stop; reward-hacking guard. |
 
-## Results so far (eval split, 600 tasks)
+## Results (eval split, 600 tasks)
 
 | Row | Brier | Skill vs market | Log loss | ECE | Notes |
 |---|---|---|---|---|---|
@@ -43,7 +43,13 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 | Scripted agent (harness check) | 0.2171 | 0 | – | – | Calls `hist.move` and `hist.flow`, cites a number from each, submits the market baseline. All 600 answered, 0 malformed, all 1,200 cited claims kept by the verifier. This proves the loop, the tools, the trade data and the verifier work end to end on real data. |
 | Qwen3-8B, untuned | 0.2932 | −0.350 | 0.831 | 0.204 | 588 of 600 answered (12 malformed). resolve 0.195 (= market), spike_hold 0.342 (market 0.228). Worse than the market by +0.076 (95% CI +0.054 to +0.097). $3.10. |
 | claude-sonnet-5-5 | **0.2068** | +0.048 | 0.609 | 0.043 | 600 of 600 answered (144 rerun with `--retry-errors` after a credit top-up). resolve 0.1948 (market 0.1946); **spike_hold 0.2128 vs market 0.2284** (skill +0.068). Better than the market by 0.010, 95% CI −0.023 to +0.002: not significant. Better than untuned Qwen by 0.086 (CI 0.065 to 0.108). $13.87. |
-| Qwen3-8B, RL-tuned | – | – | – | – | not started: waits for the user's go |
+| Qwen3-8B, RL-tuned | 0.2297 | −0.058 | 0.651 | 0.064 | 600 of 600 answered. resolve 0.197 (market 0.195); spike_hold 0.246 (market 0.228). Better than untuned Qwen by 0.064 (95% CI 0.045 to 0.082) and than the base rate by 0.013 (CI 0.004 to 0.023); worse than the market by 0.013 (CI 0.004 to 0.021) and than Sonnet by 0.023 (CI 0.010 to 0.036). $1.28. |
+
+**What the paid rows say:**
+- **RL training worked, but learned a shortcut.** It cut untuned Qwen's Brier by 0.064, and the tuned model beats the base-rate baseline. But on `spike_hold` 387 of its 400 answers are exactly 0.65: it learned "spikes usually hold" and stopped using the evidence, not even the spike's direction (large down-spikes held 93% in train, up-spikes ~45–50%). Tool calls fell from 5.8 to 3.1 per episode.
+- **Sonnet 5.5 is the only model at or above the market**, by 0.010 (not significant). Its edge is all on `spike_hold` (0.213 vs 0.228); on `resolve` every model ties the market.
+- **Validation over training** (250 tasks; untuned 0.2994, market 0.2218, base rate 0.2468): step 10 0.2841, step 20 0.2425, step 30 0.2426, step 39 0.2392.
+- Next levers, if this continues (not run): give the reward a per-task market-relative term so a constant answer earns nothing; put the move's direction and size in the prompt facts; more steps (the run stopped at the pilot's step count with $43 of the training allowance left).
 
 **What the baselines say about the task:**
 - The **market price is the bar to beat**: Brier 0.217 overall, 0.195 on `resolve`.

@@ -734,6 +734,25 @@ def test_errored_episodes_are_left_out_of_training() -> None:
     assert trainable([failed]) == []
 
 
+def test_report_skips_the_trainers_own_files(tmp_path: Path, monkeypatch: Any) -> None:
+    import gridcase.rl.cli as rl_cli
+    from gridcase.rl.harness import summarize
+
+    res = tmp_path / "results"
+    res.mkdir()
+    row = {
+        "task_id": "t", "kind": "resolve", "category": "Sports", "cluster_id": "c", "y": 1.0,
+        "p": 0.7, "market_p": 0.6, "brier": 0.09, "log_loss": 0.36, "market_brier": 0.16,
+        "reward": 0.9,
+    }  # fmt: skip
+    (res / "market_eval.json").write_text(json.dumps({"summary": summarize([row])}))
+    (res / "train_history.json").write_text(json.dumps([{"step": 10, "val_brier": 0.28}]))
+    (res / "train_state.json").write_text(json.dumps({"steps": 39, "best": None}))
+    monkeypatch.setattr(rl_cli, "M15", tmp_path)
+    text = rl_cli.report()
+    assert "| market_eval | 1 | 1 |" in text and "train_" not in text
+
+
 def test_a_retry_replaces_only_the_errored_rows() -> None:
     from gridcase.rl.harness import errored_task_ids, merge_retry, summarize
 

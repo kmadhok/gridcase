@@ -1,0 +1,22 @@
+[
+ {
+  "step": 10,
+  "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-10",
+  "val_brier": 0.28405143099999997
+ },
+ {
+  "step": 20,
+  "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-20",
+  "val_brier": 0.24253226800000002
+ },
+ {
+  "step": 30,
+  "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-30",
+  "val_brier": 0.242637974
+ },
+ {
+  "step": 39,
+  "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-39",
+  "val_brier": 0.23918149
+ }
+]

@@ -685,3 +685,13 @@ User decision 2026-10-12: approve a plan that backfills history, freezes an eval
 - **Stopped** for the user: top up Anthropic credit for the Sonnet retry, and decide on training.
 - **Tests:** M15 exit 41; full suite 316 passed, 1 skipped (the cloud's skips were the Qwen tokenizer tests, which run here). ruff and mypy --strict are clean.
 - **Update, same day: Sonnet complete.** After the credit top-up, `--retry-errors` reran the 144 failed tasks ($3.68; 0 errors). Final: Brier 0.2068 vs market 0.2171 (−0.010, 95% CI −0.023 to +0.002, not significant); spike_hold 0.2128 vs 0.2284; resolve equal to the market. The provisional 0.2038 on 256 spike tasks did not hold over all 400. Training started on the user's go.
+
+## 2026-10-12 — M15 training: RL-tuned Qwen3-8B beats its base and the base rate, not the market
+
+- **Run.** `gridcase rl train` with defaults (16 tasks × 8 samples per step, LoRA rank 32, lr 4e-5, temperature 1.0). Pilot: ~$2.04 per step, so 39 steps planned. Later steps cost ~$1 (shorter episodes), but the count is fixed after the pilot, so $41.97 of the $85 allowance was used. Stop reason: max steps. No reward-hacking signal (tool calls 5.8 → 3.1, verifier drops ~2 per episode throughout).
+- **Validation** (250 tasks): untuned 0.2994 (run as a reference, $1.32) → step 10 0.2841 → 20 0.2425 → 30 0.2426 → 39 0.2392. Market 0.2218, base rate 0.2468. Best checkpoint: step 39.
+- **Eval** (600 tasks, run once): tuned Qwen 0.2297. Better than untuned (−0.064, CI −0.082 to −0.045) and the base rate (−0.013, CI −0.023 to −0.004); worse than the market (+0.013, CI +0.004 to +0.021) and Sonnet (+0.023, CI +0.010 to +0.036).
+- `REVIEW:` **the tuned model collapsed to a constant on spikes**: 387 of 400 `spike_hold` answers are 0.65, ignoring even the spike's direction. The Brier reward pays a well-placed constant; nothing rewards using the evidence beyond it. If M15 continues: score the reward relative to the task's market (or base-rate) Brier so a constant earns zero, add direction and size to the prompt facts, and let cheaper steps raise the step count.
+- **`rl report` skipped the trainer's files.** `train_history.json` and `train_state.json` live in `evals/m15/results/` and crashed the report; it now reads only files with a `summary`.
+- **Spend: $64.41 of $150** (train $41.97, small_eval $8.24, frontier_eval $14.21).
+- **Tests:** full suite 317 passed, 1 skipped. ruff and mypy --strict are clean.

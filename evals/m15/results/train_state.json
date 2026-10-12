@@ -1,0 +1,47 @@
+{
+ "config": {
+  "group_size": 8,
+  "tasks_per_step": 16,
+  "spike_share": 0.6666666666666666,
+  "learning_rate": 4e-05,
+  "rank": 32,
+  "temperature": 1.0,
+  "max_steps": 150,
+  "pilot_steps": 3,
+  "eval_every": 10,
+  "patience": 3,
+  "reserve_usd": 5.0,
+  "workers": 16,
+  "seed": 15,
+  "ttl_days": 30
+ },
+ "steps": 39,
+ "stop_reason": "max steps",
+ "best": {
+  "step": 39,
+  "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-39",
+  "val_brier": 0.23918149
+ },
+ "history": [
+  {
+   "step": 10,
+   "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-10",
+   "val_brier": 0.28405143099999997
+  },
+  {
+   "step": 20,
+   "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-20",
+   "val_brier": 0.24253226800000002
+  },
+  {
+   "step": 30,
+   "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-30",
+   "val_brier": 0.242637974
+  },
+  {
+   "step": 39,
+   "path": "tinker://176a00f3-4ce7-5310-aee8-ec3ada524ce8:train:0/sampler_weights/ckpt-39",
+   "val_brier": 0.23918149
+  }
+ ]
+}

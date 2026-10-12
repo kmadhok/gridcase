@@ -202,11 +202,9 @@ def _merge_retry_files(
 
 
 def report() -> str:
-    results = {
-        p.stem: json.loads(p.read_text())
-        for p in sorted((M15 / "results").glob("*.json"))
-        if not p.stem.endswith("_episodes")
-    }
+    loaded = {p.stem: json.loads(p.read_text()) for p in sorted((M15 / "results").glob("*.json"))}
+    # eval results only: the trainer writes train_history.json and train_state.json here too
+    results = {k: v for k, v in loaded.items() if isinstance(v, dict) and "summary" in v}
     lines = [
         "| run | n | answered | Brier | market Brier | skill vs market | log loss | ECE "
         "| reward | $ |",
