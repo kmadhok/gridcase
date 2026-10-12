@@ -20,7 +20,7 @@ from typing import Any
 
 import duckdb
 from api import ROOT, Api
-from backfill import clob_prices, v2_prices_max, v2_resolutions, v2_trades
+from backfill import bulk_insert, clob_prices, v2_prices_max, v2_resolutions, v2_trades
 from census import DB
 
 OUT = ROOT / "data" / "feasibility" / "probe.json"
@@ -36,9 +36,24 @@ def ts(s: str | None) -> int | None:
 
 
 def life(start: str | None, end: str | None, closed: str | None) -> tuple[int, int]:
+    """[start, end) of trading we use: up to the earlier of the scheduled end and the actual close
+    (later trading is mostly convergence while resolution is pending). Gamma sometimes has an
+    end date before the start date (a market created after its nominal end); then the close."""
     lo = ts(start) or 0
-    hi = min(x for x in (ts(closed), ts(end)) if x) if (closed or end) else lo
-    return lo, max(hi, lo)
+    ends = [x for x in (ts(closed), ts(end)) if x and x > lo]
+    hi = min(ends) if ends else lo
+    return lo, hi
+
+
+def settled_token0(r: dict[str, Any]) -> float | None:
+    """Token 0's settled price from /v2/resolutions: UMA rows carry `price` (1e18 = outcome 0),
+    native v2 rows carry `payouts` per outcome."""
+    if r.get("price") not in (None, ""):
+        return int(r["price"]) / 1e18
+    pay = r.get("payouts")
+    if pay and sum(pay):
+        return float(pay[0]) / float(sum(pay))
+    return None
 
 
 def run(n: int, max_trade_pages: int) -> None:
@@ -72,7 +87,7 @@ def run(n: int, max_trade_pages: int) -> None:
         trades, complete = v2_trades(api, cid, max_trade_pages)
         rt = api.requests - before
         r = res.get(cid) or {}
-        v2_price = int(r["price"]) / 1e18 if r.get("price") not in (None, "") else None
+        v2_price = settled_token0(r)
         # token0 is outcome index 0: it settles at 1 when outcome 0 won
         agree = None if v2_price is None else (v2_price == (1.0 if winner == 0 else 0.0))
         minutes = max((hi - lo) // 60, 1)
@@ -113,12 +128,15 @@ def run(n: int, max_trade_pages: int) -> None:
         )
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({"markets": results, "api": api.stats()}, indent=1))
-    con.execute("CREATE OR REPLACE TABLE probe AS SELECT * FROM read_json(?)", [str(OUT)])
+    con.execute(
+        "CREATE OR REPLACE TABLE probe AS SELECT unnest(markets, recursive := true) FROM read_json(?)",
+        [str(OUT)],
+    )
     con.execute(
         "CREATE OR REPLACE TABLE prices_probe (token_id VARCHAR, condition_id VARCHAR, "
         "ts BIGINT, p DOUBLE, fidelity_min INTEGER)"
     )
-    con.executemany("INSERT INTO prices_probe VALUES (?, ?, ?, ?, ?)", price_rows)
+    bulk_insert(con, "prices_probe", price_rows)
     print("api", api.stats())
 
 

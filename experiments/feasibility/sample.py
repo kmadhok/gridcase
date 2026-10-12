@@ -18,7 +18,7 @@ from typing import Any
 
 import duckdb
 from api import Api
-from backfill import clob_prices
+from backfill import bulk_insert, clob_prices
 from census import DB
 from probe import life
 
@@ -79,7 +79,7 @@ def run(per_stratum: int, seed: int, max_markets: int, fidelity: int) -> None:
     con.execute(
         "CREATE OR REPLACE TABLE prices (token_id VARCHAR, condition_id VARCHAR, ts BIGINT, p DOUBLE)"
     )
-    con.executemany("INSERT INTO prices VALUES (?, ?, ?, ?)", rows)
+    bulk_insert(con, "prices", rows)
     print(
         con.execute(
             "SELECT stratum, count(DISTINCT ev) events, count(*) markets, "

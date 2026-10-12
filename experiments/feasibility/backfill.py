@@ -15,8 +15,12 @@ Findings these encode (docs.polymarket.com checked 2026-10-11, then tested live)
 
 from __future__ import annotations
 
+import csv
+import tempfile
+from pathlib import Path
 from typing import Any
 
+import duckdb
 from api import CLOB, DATA, Api
 
 CHUNK_S = 14 * 86400
@@ -67,3 +71,13 @@ def v2_resolutions(api: Api, conditions: list[str]) -> dict[str, dict[str, Any]]
         for r in body.get("data") or []:
             out[r["condition_id"]] = r
     return out
+
+
+def bulk_insert(con: duckdb.DuckDBPyConnection, table: str, rows: list[tuple[Any, ...]]) -> None:
+    """Millions of rows: through a temporary CSV and COPY (executemany is far too slow)."""
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, newline="") as f:
+        csv.writer(f).writerows(rows)
+    try:
+        con.execute(f"COPY {table} FROM '{f.name}' (FORMAT csv, HEADER false)")
+    finally:
+        Path(f.name).unlink()
