@@ -231,6 +231,43 @@ New tools registered in `gridcase/tools/registry.py` under a new `HIST_INPUTS` g
   - `ingest/polymarket_load.py::categorize`
   - `tests/polymarket_synth.py` patterns
 
+## API keys for the paid rows (user question, 2026-10-12)
+
+**Needed (2):**
+- `ANTHROPIC_API_KEY` (Claude Console → API keys, with billing): `gridcase rl eval --model frontier` (claude-sonnet-5-5), about $20–35.
+- `TINKER_API_KEY` (Tinker Console → API keys, with billing): `gridcase rl eval --model base`, `gridcase rl train`, and the tuned eval.
+
+**Not needed:** OpenRouter (the Explore chat only) and MotherDuck.
+
+**Where to put them:**
+- **Laptop (recommended):** repo-root `.env` (gitignored, loaded by `gridcase/config.py` via python-dotenv), with one line each: `ANTHROPIC_API_KEY=` and `TINKER_API_KEY=`.
+- **A Claude cloud session:** the cloud environment menu in the session title bar → Edit → Network secrets (or environment variables), same two names. Only a new session picks them up.
+- **Either way:** the machine first rebuilds `data/` (keyless, about 3 hours; steps in `RESULTS_M15.md`), because the backfill isn't in git.
+- **Never:** in chat, in commits, or on the VPS (not needed there).
+
+## Moving to a local session (user question, 2026-10-12)
+
+**State on GitHub:** all work is pushed to `kmadhok/gridcase`, branch `claude/polymarket-data-feasibility-anj2kc` (head `c7fde43`, working tree clean). The branch holds:
+- the code (`gridcase/backfill/`, `gridcase/tools/hist.py`, `gridcase/rl/`), with tests in `tests/exit/test_m15.py`;
+- the plan, `docs/plans/2026-10-12_rl_backfill_eval_train.md`;
+- `RESULTS_M15.md`, with status and step-by-step finishing instructions;
+- `FEASIBILITY.md`;
+- the frozen benchmark in `evals/m15/`;
+- the decisions in `docs/DECISIONS.md`.
+
+**Not on GitHub (gitignored, by design):** `data/` (backfill Parquet files, `backfill.duckdb`, `data/rl/answers.jsonl`) and `.env`. The local machine rebuilds `data/` from the keyless APIs in about 3 hours. `gridcase rl tasks` then checks that the rebuilt eval set matches the committed hash.
+
+**Prompt to paste into the local Claude Code session** (from the repo root, after `git fetch && git checkout claude/polymarket-data-feasibility-anj2kc`):
+
+> Continue M15 on branch `claude/polymarket-data-feasibility-anj2kc`. Read `RESULTS_M15.md` (status + "How to finish"), `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved, full send), and the M15 entries at the end of `docs/DECISIONS.md`. The free work is done: backfill code, history tools, frozen eval set in `evals/m15/`, harness, free baselines (market Brier 0.2171 on eval) and an offline-tested trainer. What's left is the paid rows; I've put `ANTHROPIC_API_KEY` and `TINKER_API_KEY` in `.env`.
+> 1. `uv sync --group rl`, then rebuild data: `uv run gridcase backfill markets`, `uv run gridcase backfill resolutions`, `uv run gridcase backfill --rate 25 prices --workers 96 --batch 2000`, `uv run gridcase backfill build`.
+> 2. `uv run gridcase rl tasks`. It must reproduce the committed manifest and `answers.sha256`. If it refuses, stop and show me the difference; don't use `--force` without asking me.
+> 3. Trades: run `gridcase backfill trades` for the eval/validation markets first, then train (split `data/rl/trades_needed.json` the way the DECISIONS entry describes), then `uv run gridcase backfill build` again.
+> 4. Run `uv run gridcase rl eval --model base --split eval` and `--model frontier --split eval`, then `uv run gridcase rl report`. Show me the table before training.
+> 5. If I say go: `uv run gridcase rl train`, then `uv run gridcase rl report`.
+>
+> Keep spend under the $150 ledger (`data/rl/spend.jsonl`). After each step, update `RESULTS_M15.md` and `docs/DECISIONS.md`, commit, and push to the branch. Don't touch the VPS, the collector or the live store.
+
 ## Verification
 
 - At every phase: `uv run pytest tests/exit/test_m15.py -x`, the full `uv run pytest`, `ruff check`, and `mypy --strict gridcase`. All must be green before each commit.
