@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import httpx
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from gridcase.backfill.build import build
 from gridcase.backfill.census import market_row
@@ -25,6 +28,9 @@ from gridcase.backfill.fetch import clob_prices, life, parse_ts, settled_token0
 from gridcase.backfill.jobs import MARKET_COLUMNS, PRICE_COLUMNS, TRADE_COLUMNS, write_parquet
 from gridcase.ingest.polymarket_load import categorize
 from gridcase.rl.spend import ALLOWANCES, GLOBAL_CAP_USD, OverBudget, Spend
+from gridcase.store.db import connect as gc_connect
+from gridcase.tools.base import ToolError, run_tool
+from gridcase.tools.registry import ALL_INPUTS, HIST_INPUTS, TOOL_NAMES
 
 # ---------- phase A: spend ledger ----------
 
@@ -240,3 +246,134 @@ def test_build_writes_tables_and_keeps_outcomes_out_of_hist_markets(tmp_path: Pa
     # the live store's macro works on backfilled trades (collected_at = ts)
     n = con.execute("SELECT count(*) FROM trades_as_of(TIMESTAMP '2026-05-28 20:30:00')")
     assert (n.fetchone() or [0])[0] > 0
+
+
+# ---------- phase C: point-in-time history tools ----------
+#
+# hist.market / hist.series / hist.move / hist.siblings / hist.related read backfill.duckdb
+# through prices_as_of(t) and hist_markets_as_of(t). Contract: a pure function of
+# (inputs, as_of). Changing anything after as_of (later prices, markets that start later, a
+# close that happens later) leaves every output byte-identical; no output ever carries the
+# outcome, the lifetime volume or a future close time.
+
+T0 = 1_780_000_000 // 3600 * 3600  # an hour boundary
+HIST_TOOLS = ["hist.market", "hist.series", "hist.move", "hist.siblings", "hist.related"]
+
+
+def _hist_markets(extra_late: bool = False, close_late: int = 9) -> list[dict[str, Any]]:
+    def m(i: int, event: str, tags: str, start: int, closed: int) -> dict[str, Any]:
+        return {
+            "condition_id": f"0xm{i}", "market_id": str(i), "question": f"Q{i}?",
+            "slug": f"m{i}", "event_id": event, "event_slug": event,
+            "event_title": f"Event {event}", "tags": tags, "category": "Politics",
+            "volume": 1e6 * (i + 1), "start_ts": start, "end_ts": T0 + 20 * 86400,
+            "closed_ts": closed, "neg_risk": False, "token0": f"t{i}", "token1": f"u{i}",
+            "outcome0": "Yes", "outcome1": "No", "winner_index": i % 2,
+            "uma_status": "resolved",
+        }  # fmt: skip
+
+    out = [
+        m(0, "e1", "Politics|Iran", T0, T0 + close_late * 86400),
+        m(1, "e1", "Politics|Iran", T0, T0 + close_late * 86400),
+        m(2, "e2", "Politics|Iran", T0, T0 + 12 * 86400),
+        m(3, "e3", "Politics|Sports", T0, T0 + 12 * 86400),
+    ]
+    if extra_late:  # starts after every as_of we test
+        out.append(m(4, "e1", "Politics|Iran", T0 + 9 * 86400, T0 + 12 * 86400))
+    return out
+
+
+def _hist_prices(seed: int, scramble_after: int | None = None) -> list[dict[str, Any]]:
+    import random
+
+    rows = []
+    for i in range(5):
+        rng = random.Random(seed * 10 + i)
+        scr = random.Random(seed * 99 + i)
+        p = 0.5
+        for k in range(0, 10 * 144):  # 10 days of 10-minute points
+            ts = T0 + k * 600
+            p = min(0.98, max(0.02, p + rng.uniform(-0.03, 0.03)))
+            val = scr.uniform(0.02, 0.98) if scramble_after and ts > scramble_after else p
+            rows.append({"condition_id": f"0xm{i}", "ts": ts, "p": round(val, 4)})
+    return rows
+
+
+def _hist_db(path: Path, seed: int, scramble_after: int | None = None, late: bool = False) -> Path:
+    src = path / "src"
+    close_late = 9 if not late else 8  # a different (future) close time in the mutated copy
+    write_parquet(_hist_markets(late, close_late), MARKET_COLUMNS, src / "markets.parquet")
+    write_parquet(
+        _hist_prices(seed, scramble_after), PRICE_COLUMNS, src / "prices" / "part-00000.parquet"
+    )
+    db = path / "backfill.duckdb"
+    build(src, db)
+    return db
+
+
+def _hist_inputs(name: str) -> dict[str, Any]:
+    base: dict[str, Any] = {"condition_id": "0xm0"}
+    if name == "hist.series":
+        return {**base, "hours": 24, "grain": "1h"}
+    if name == "hist.siblings":
+        return {**base, "hours": 6}
+    if name == "hist.related":
+        return {**base, "hours": 6, "min_move_pts": 1}
+    return base
+
+
+def _outputs(db: Path, as_of: datetime) -> dict[str, Any]:
+    con = gc_connect(db, read_only=True)
+    try:
+        return {n: run_tool(con, n, _hist_inputs(n), as_of).output for n in HIST_TOOLS}
+    finally:
+        con.close()
+
+
+@settings(
+    max_examples=12, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(seed=st.integers(0, 10_000), hour=st.integers(80, 7 * 24))
+def test_tools_never_see_after_as_of(
+    tmp_path_factory: pytest.TempPathFactory, seed: int, hour: int
+) -> None:
+    as_of_ts = T0 + hour * 3600
+    as_of = datetime.fromtimestamp(as_of_ts, UTC).replace(tzinfo=None)
+    a = _hist_db(tmp_path_factory.mktemp("a"), seed)
+    b = _hist_db(tmp_path_factory.mktemp("b"), seed, scramble_after=as_of_ts, late=True)
+    assert _outputs(a, as_of) == _outputs(b, as_of)
+
+
+def test_outputs_carry_no_outcome_volume_or_future_close(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=3)
+    as_of = datetime.fromtimestamp(T0 + 5 * 86400, UTC).replace(tzinfo=None)
+    outs = _outputs(db, as_of)
+    text = json.dumps(outs)
+    for banned in ("winner", "uma_status", "settled", "volume", '"y"'):
+        assert banned not in text, banned
+    assert outs["hist.market"]["closed_at"] is None  # closes on day 9, after as_of
+    assert outs["hist.market"]["question"] == "Q0?"
+    assert {s["condition_id"] for s in outs["hist.siblings"]["siblings"]} == {"0xm1"}
+    assert outs["hist.related"]["specific_tags"] == ["Iran"]  # "Politics" is on every event
+    related = {r["condition_id"] for r in outs["hist.related"]["related"]}
+    assert related <= {"0xm2"}  # shares the specific tag "Iran"; 0xm3 shares only "Politics"
+
+
+def test_hist_tools_are_registered_but_not_offered_to_the_planner() -> None:
+    assert set(HIST_TOOLS) <= set(HIST_INPUTS) <= set(ALL_INPUTS)
+    assert not set(HIST_TOOLS) & set(TOOL_NAMES)
+
+
+def test_hist_receipts_are_stable_and_series_is_capped(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=5)
+    as_of = datetime.fromtimestamp(T0 + 6 * 86400, UTC).replace(tzinfo=None)
+    con = gc_connect(db, read_only=True)
+    r1 = run_tool(con, "hist.move", {"condition_id": "0xm0"}, as_of)
+    r2 = run_tool(con, "hist.move", {"condition_id": "0xm0"}, as_of)
+    assert r1.receipt_id == r2.receipt_id
+    assert set(r1.output["change"]) == {"1h", "6h", "24h", "72h"}
+    with pytest.raises(ToolError):
+        run_tool(con, "hist.series", {"condition_id": "0xm0", "hours": 720, "grain": "10m"}, as_of)
+    missing = run_tool(con, "hist.market", {"condition_id": "0xnope"}, as_of)
+    assert missing.output == {"found": False}
+    con.close()

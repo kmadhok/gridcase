@@ -5,6 +5,7 @@ change (docs/DECISIONS.md). Every tool reads trades only through the semantic la
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -98,4 +99,47 @@ DIGEST_INPUTS: dict[str, type[BaseModel]] = {
 # the Explore chat's query: run by the chat only, not offered to the planner
 EXPLORE_INPUTS: dict[str, type[BaseModel]] = {"kpi.series": ExploreQuery}
 
-ALL_INPUTS: dict[str, type[BaseModel]] = {**TOOL_INPUTS, **DIGEST_INPUTS, **EXPLORE_INPUTS}
+
+# M15 history tools: point-in-time reads of the backfill (data/backfill.duckdb), offered to
+# the RL benchmark's agents only (gridcase/rl), never to the planner or the live store.
+class HistMarket(BaseModel):
+    condition_id: str
+
+
+class HistSeries(BaseModel):
+    condition_id: str
+    hours: int = Field(default=72, ge=1, le=720)
+    grain: Literal["10m", "1h", "1d"] = "1h"
+
+
+class HistMove(BaseModel):
+    condition_id: str
+
+
+class HistSiblings(BaseModel):
+    condition_id: str
+    hours: int = Field(default=6, ge=1, le=72)
+    top_n: int = Field(default=10, ge=1, le=25)
+
+
+class HistRelated(BaseModel):
+    condition_id: str
+    hours: int = Field(default=2, ge=1, le=24)
+    min_move_pts: float = Field(default=5.0, ge=1.0, le=50.0)
+    top_n: int = Field(default=10, ge=1, le=25)
+
+
+HIST_INPUTS: dict[str, type[BaseModel]] = {
+    "hist.market": HistMarket,
+    "hist.series": HistSeries,
+    "hist.move": HistMove,
+    "hist.siblings": HistSiblings,
+    "hist.related": HistRelated,
+}
+
+ALL_INPUTS: dict[str, type[BaseModel]] = {
+    **TOOL_INPUTS,
+    **DIGEST_INPUTS,
+    **EXPLORE_INPUTS,
+    **HIST_INPUTS,
+}

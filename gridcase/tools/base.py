@@ -34,6 +34,7 @@ _IMPLS = [
     "gridcase.tools.coverage",
     "gridcase.tools.digest",
     "gridcase.tools.series",
+    "gridcase.tools.hist",
 ]
 HOUR = timedelta(hours=1)
 
