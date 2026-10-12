@@ -830,6 +830,49 @@ def test_tinker_adapter_renders_tools_and_parses_calls(tmp_path: Path) -> None:
     con.close()
 
 
+def test_tinker_adapter_is_safe_across_eval_threads(tmp_path: Path) -> None:
+    # The fast tokenizer raises "Already borrowed" when threads share it; the first real
+    # base-model eval (16 workers) lost 599 of 600 episodes to that.
+    pytest.importorskip("tinker_cookbook")
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+
+    try:
+        from tinker_cookbook.tokenizer_utils import get_tokenizer
+
+        tok = get_tokenizer("Qwen/Qwen3-8B")
+    except Exception as e:  # no network and no cached tokenizer
+        pytest.skip(f"Qwen3 tokenizer unavailable: {e}")
+    reply = tok.encode(
+        '<tool_call>\n{"name": "submit_answer", "arguments": {"probability": 0.35, '
+        '"summary": "Thin evidence.", "claims": []}}\n</tool_call><|im_end|>',
+        add_special_tokens=False,
+    )
+
+    class Sampler:
+        def sample(self, prompt: Any, num_samples: int, sampling_params: Any) -> Any:
+            seq = SimpleNamespace(tokens=reply, logprobs=[-0.1] * len(reply))
+            return SimpleNamespace(result=lambda: SimpleNamespace(sequences=[seq]))
+
+    db = _hist_db(tmp_path, seed=16)
+    con = gc_connect(db, read_only=True)
+    agent = TinkerAgent(base_model="Qwen/Qwen3-8B", sampling_client=Sampler())
+    task = _resolve_task(T0 + 6 * 86400, 0.5)
+
+    def one(_: int) -> Any:
+        cur = con.cursor()
+        try:
+            return run_episode(agent, cur, task)
+        finally:
+            cur.close()
+
+    with ThreadPoolExecutor(16) as pool:
+        eps = list(pool.map(one, range(64)))
+    assert [e.error for e in eps if e.error] == []
+    assert all(e.probability == pytest.approx(0.35) for e in eps)
+    con.close()
+
+
 # ---------- phase F: RL training (offline parts) ----------
 #
 # Group-relative advantages (reward minus the group mean; no spread -> nothing to learn), one

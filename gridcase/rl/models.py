@@ -16,6 +16,7 @@ imported only when a TinkerAgent is built.
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any
 
 from gridcase import config
@@ -118,6 +119,8 @@ class TinkerAgent:
         self.estimate = estimate
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # the fast tokenizer raises "Already borrowed" if eval threads use it at once
+        self.tok_lock = threading.Lock()
         self.renderer = get_renderer(
             renderer_name or config.RL_RENDERER, get_tokenizer(self.base_model)
         )
@@ -144,9 +147,10 @@ class _TinkerSession:
             ToolSpec(name=t["name"], description=t["description"], parameters=t["input_schema"])
             for t in tools
         ]
-        self.messages: list[Any] = agent.renderer.create_conversation_prefix_with_tools(
-            specs, system_prompt=system
-        )
+        with agent.tok_lock:
+            self.messages: list[Any] = agent.renderer.create_conversation_prefix_with_tools(
+                specs, system_prompt=system
+            )
         self.names: dict[str, str] = {}
         self.turn = 0
 
@@ -165,18 +169,19 @@ class _TinkerSession:
             )
         if user is not None:
             self.messages.append({"role": "user", "content": user})
-        prompt = r.build_generation_prompt(self.messages)
+        with self.agent.tok_lock:
+            prompt = r.build_generation_prompt(self.messages)
+            stop = r.get_stop_sequences()
         params = types.SamplingParams(
-            max_tokens=self.agent.max_tokens,
-            temperature=self.agent.temperature,
-            stop=r.get_stop_sequences(),
+            max_tokens=self.agent.max_tokens, temperature=self.agent.temperature, stop=stop
         )
         res = self.agent.sampler.sample(
             prompt=prompt, num_samples=1, sampling_params=params
         ).result()
         seq = res.sequences[0]
         tokens = list(seq.tokens)
-        msg, _ = r.parse_response(tokens)
+        with self.agent.tok_lock:
+            msg, _ = r.parse_response(tokens)
         self.messages.append(msg)
         calls = []
         for i, tc in enumerate(msg.get("tool_calls") or []):
