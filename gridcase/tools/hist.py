@@ -240,6 +240,11 @@ def hist_flow(ctx: ToolCtx, inp: HistFlow) -> tuple[dict[str, Any], float | None
     if not status:
         return {"trade_data": False, "reason": "no trades were backfilled for this market"}, None
     complete, needed_from = bool(status[0][0]), int(status[0][1])
+    if not complete:  # the walk stopped (page cap) before this market's task dates
+        return {
+            "trade_data": False,
+            "reason": "trade history not backfilled back to this date",
+        }, None
     lo = ctx.as_of - timedelta(hours=inp.hours)
     prev = (lo - timedelta(hours=inp.hours), lo)
     filters: dict[str, Any] = {"outcome": [f"{q} · {o0}", f"{q} · {o1}"]}

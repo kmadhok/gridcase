@@ -7,7 +7,8 @@ Layout:
   resolutions.parquet   /v2/resolutions, one row per market
   prices/part-*.parquet token 0 price series (condition_id, ts, p)
   trades/part-*.parquet taker trades for task markets
-  trades_status.parquet per task market: whether its walk reached the needed date
+  trades_status/part-*  per task market: whether its walk reached the needed date (written with
+                        the matching trades part, so an interrupted run never loses it)
 """
 
 from __future__ import annotations
@@ -128,6 +129,7 @@ def _run_parts(
     batch: int,
     workers: int,
     progress: Callable[[str], None],
+    on_batch: Callable[[str], None] | None = None,
 ) -> int:
     start = len(list(dir_.glob("part-*.parquet"))) if dir_.exists() else 0
     total = 0
@@ -135,7 +137,10 @@ def _run_parts(
         chunk = items[i : i + batch]
         with ThreadPoolExecutor(workers) as pool:
             rows = [r for part in pool.map(work, chunk) for r in part]
-        write_parquet(rows, columns, dir_ / f"part-{start + b:05d}.parquet")
+        name = f"part-{start + b:05d}.parquet"
+        if on_batch is not None:  # side outputs first: a part on disk means "done"
+            on_batch(name)
+        write_parquet(rows, columns, dir_ / name)
         total += len(rows)
         progress(f"{min(i + batch, len(items))}/{len(items)} markets, {total:,} rows")
     return total
@@ -182,22 +187,26 @@ def run_trades(
     """Trades for the given markets back to `needed[condition_id]` (epoch s)."""
     done = _done(out_dir / "trades")
     todo = sorted(c for c in needed if c not in done)
-    status: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    incomplete = 0
 
     def work(cid: str) -> list[dict[str, Any]]:
         rows, complete = v2_trades(client, cid, needed[cid], max_pages)
-        status.append({"condition_id": cid, "needed_from": needed[cid], "complete": complete})
+        pending.append({"condition_id": cid, "needed_from": needed[cid], "complete": complete})
         return [{**r, "condition_id": cid} for r in rows] or [{"condition_id": cid}]
 
-    n = _run_parts(todo, work, out_dir / "trades", TRADE_COLUMNS, batch, workers, progress)
-    old: list[dict[str, Any]] = []
-    status_path = out_dir / "trades_status.parquet"
-    if status_path.exists():
-        old = [dict(zip(STATUS_COLUMNS, r, strict=True)) for r in read_parquet(status_path)]
-    write_parquet(old + status, STATUS_COLUMNS, status_path)
+    def on_batch(name: str) -> None:
+        nonlocal incomplete
+        incomplete += sum(1 for s in pending if not s["complete"])
+        write_parquet(list(pending), STATUS_COLUMNS, out_dir / "trades_status" / name)
+        pending.clear()
+
+    n = _run_parts(
+        todo, work, out_dir / "trades", TRADE_COLUMNS, batch, workers, progress, on_batch
+    )
     return {
         "markets": len(needed),
         "fetched": len(todo),
         "rows": n,
-        "incomplete": sum(1 for s in status if not s["complete"]),
+        "incomplete": incomplete,
     }

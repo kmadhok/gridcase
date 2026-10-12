@@ -859,3 +859,39 @@ def test_batches_mix_task_kinds() -> None:
     ]
     b = make_batch(pool, 15, 2 / 3, random.Random(0))
     assert len(b) == 15 and sum(t.kind == "spike_hold" for t in b) == 10
+
+
+def test_trade_status_is_written_per_batch_and_flow_refuses_incomplete_walks(
+    tmp_path: Path,
+) -> None:
+    from gridcase.backfill.jobs import run_trades
+
+    t_need = T0 + 3 * 86400
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        cid = req.url.params["condition"]
+        cursor = req.url.params.get("cursor")
+        page = int(cursor) if cursor else 0
+        ts = T0 + 9 * 86400 - page * 86400  # one day per page, newest first
+        rows = [{"proxy_wallet": "0xw", "side": "BUY", "token_id": "t0", "size": 10.0,
+                 "price": 0.5, "timestamp": ts, "outcome": "Yes", "outcome_index": 0,
+                 "transaction_hash": f"0x{cid}{page}", "title": "Q0?", "slug": "m0",
+                 "event_slug": "e1"}]  # fmt: skip
+        return httpx.Response(
+            200, json={"data": rows, "pagination": {"next_cursor": str(page + 1)}}
+        )
+
+    src = tmp_path / "src"
+    needed = {"0xm0": t_need, "0xm1": t_need, "0xm2": t_need}
+    res = run_trades(_mock_client(tmp_path, handler), src, needed, max_pages=3, workers=1, batch=2,
+                     progress=lambda _: None)  # fmt: skip
+    assert res["incomplete"] == 3  # 3 pages reach day 7, not day 3
+    assert len(list((src / "trades_status").glob("part-*.parquet"))) == 2  # one per batch
+    write_parquet(_hist_markets(), MARKET_COLUMNS, src / "markets.parquet")
+    write_parquet(_hist_prices(1), PRICE_COLUMNS, src / "prices" / "part-00000.parquet")
+    build(src, tmp_path / "b.duckdb")
+    con = gc_connect(tmp_path / "b.duckdb", read_only=True)
+    when = datetime.fromtimestamp(T0 + 4 * 86400, UTC).replace(tzinfo=None)
+    out = run_tool(con, "hist.flow", {"condition_id": "0xm0", "hours": 24}, when).output
+    assert out["trade_data"] is False and "not backfilled" in out["reason"]
+    con.close()

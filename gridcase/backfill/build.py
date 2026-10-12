@@ -99,9 +99,14 @@ def build(src: Path, db_path: Path) -> dict[str, int]:
             FROM hist_markets WHERE condition_id IN (SELECT DISTINCT condition_id FROM trades)
             """
         )
-    status = src / "trades_status.parquet"
-    if status.exists():
-        con.execute(f"CREATE TABLE trades_status AS SELECT * FROM read_parquet('{status}')")
+    status = [p for p in (src / "trades_status.parquet", src / "trades_status") if p.exists()]
+    globs = [str(p) if p.is_file() else str(p / "part-*.parquet") for p in status]
+    if globs:
+        con.execute(
+            "CREATE TABLE trades_status AS SELECT condition_id, any_value(needed_from) AS "
+            "needed_from, bool_and(complete) AS complete FROM read_parquet(?) GROUP BY 1",
+            [globs],
+        )
     else:
         con.execute(
             "CREATE TABLE trades_status "
