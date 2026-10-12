@@ -15,8 +15,8 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 **Local run (laptop, 2026-10-12):**
 - `data/` rebuilt from Polymarket. `gridcase rl tasks` reproduced the committed eval set exactly (answers sha256 `106a786b…`, same pools); the built store matches the cloud one (173,188,008 prices, 17.6M trades).
 - **Untuned Qwen3-8B: done** ($3.10).
-- **Sonnet 5.5: 456 of 600 done** ($10.19). The Anthropic account ran out of credit; the other 144 tasks (all `spike_hold`) failed with "credit balance is too low". After a top-up: `uv run gridcase rl eval --model frontier --split eval --retry-errors` (about $3.70).
-- **Training: not started.** It waits for the user's go after this table.
+- **Sonnet 5.5: done** ($13.87). The Anthropic credit ran out after 456 tasks; after a top-up the other 144 were rerun with `rl eval --retry-errors`.
+- **Training: started** on the user's go.
 - Spend: $13.39 of $150 (`data/rl/spend.jsonl`).
 
 ## What was built
@@ -42,7 +42,7 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 | Base rate | 0.2428 | −0.118 | 0.679 | 0.044 | worse than the market: +0.026 (95% CI +0.014 to +0.038) |
 | Scripted agent (harness check) | 0.2171 | 0 | – | – | Calls `hist.move` and `hist.flow`, cites a number from each, submits the market baseline. All 600 answered, 0 malformed, all 1,200 cited claims kept by the verifier. This proves the loop, the tools, the trade data and the verifier work end to end on real data. |
 | Qwen3-8B, untuned | 0.2932 | −0.350 | 0.831 | 0.204 | 588 of 600 answered (12 malformed). resolve 0.195 (= market), spike_hold 0.342 (market 0.228). Worse than the market by +0.076 (95% CI +0.054 to +0.097). $3.10. |
-| claude-sonnet-5-5 (partial) | 0.2119\* | +0.024\* | 0.591 | 0.051 | \*456 of 600 answered; the 144 credit failures are scored as p = 0.5. On the answered tasks: resolve 0.1948 vs market 0.1946 (200 tasks); **spike_hold 0.2038 vs market 0.2305** (256 tasks). $10.19. |
+| claude-sonnet-5-5 | **0.2068** | +0.048 | 0.609 | 0.043 | 600 of 600 answered (144 rerun with `--retry-errors` after a credit top-up). resolve 0.1948 (market 0.1946); **spike_hold 0.2128 vs market 0.2284** (skill +0.068). Better than the market by 0.010, 95% CI −0.023 to +0.002: not significant. Better than untuned Qwen by 0.086 (CI 0.065 to 0.108). $13.87. |
 | Qwen3-8B, RL-tuned | – | – | – | – | not started: waits for the user's go |
 
 **What the baselines say about the task:**

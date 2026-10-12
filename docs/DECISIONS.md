@@ -684,3 +684,4 @@ User decision 2026-10-12: approve a plan that backfills history, freezes an eval
 - **Spend:** $13.39 of $150 (small_eval $3.10 + $0.04 smoke + $0.003 failed run; frontier_eval $10.46 including the $0.28 pilot).
 - **Stopped** for the user: top up Anthropic credit for the Sonnet retry, and decide on training.
 - **Tests:** M15 exit 41; full suite 316 passed, 1 skipped (the cloud's skips were the Qwen tokenizer tests, which run here). ruff and mypy --strict are clean.
+- **Update, same day: Sonnet complete.** After the credit top-up, `--retry-errors` reran the 144 failed tasks ($3.68; 0 errors). Final: Brier 0.2068 vs market 0.2171 (−0.010, 95% CI −0.023 to +0.002, not significant); spike_hold 0.2128 vs 0.2284; resolve equal to the market. The provisional 0.2038 on 256 spike tasks did not hold over all 400. Training started on the user's go.
