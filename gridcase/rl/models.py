@@ -43,7 +43,7 @@ class AnthropicAgent:
         if client is None:
             import anthropic
 
-            client = anthropic.Anthropic()
+            client = anthropic.Anthropic(max_retries=8)  # ride out 429/529 on long evals
         self.client = client
 
     def session(self, system: str, tools: list[dict[str, Any]]) -> Session:

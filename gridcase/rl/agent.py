@@ -275,6 +275,9 @@ def run_episode(
     except OverBudget as e:
         ep.error = str(e)
         ep.malformed = True
+    except Exception as e:  # an API failure ends this episode, not the whole paid run
+        ep.error = f"{type(e).__name__}: {e}"
+        ep.malformed = True
     ep.seconds = time.perf_counter() - t0
     return ep
 

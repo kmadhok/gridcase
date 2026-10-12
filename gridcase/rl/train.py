@@ -64,6 +64,11 @@ def group_advantages(rewards: list[float]) -> list[float]:
     return [r - m for r in rewards]
 
 
+def trainable(episodes: list[Any]) -> list[Any]:
+    """Episodes ended by an API error or the spend cap say nothing about the policy."""
+    return [e for e in episodes if e.error is None]
+
+
 def episode_datums(raw_turns: list[dict[str, Any]], advantage: float) -> list[DatumSpec]:
     out = []
     for t in raw_turns:
@@ -180,7 +185,7 @@ def train_main(args: Any) -> int:  # pragma: no cover - needs Tinker and a key
             data: list[DatumSpec] = []
             rewards_all, dropped, calls = [], 0, 0
             for t in batch:
-                eps = results[t.task_id]
+                eps = trainable(results[t.task_id])
                 y = answers[t.task_id].y
                 rw = [reward_for(e.probability, y, e.malformed, e.penalised) for e in eps]
                 rewards_all += rw

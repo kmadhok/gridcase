@@ -71,6 +71,7 @@ from gridcase.rl.train import (
     pick_checkpoint,
     should_stop,
     steps_affordable,
+    trainable,
 )
 from gridcase.store.db import connect as gc_connect
 from gridcase.tools.base import ToolError, run_tool
@@ -708,6 +709,29 @@ def test_spend_is_reserved_before_every_paid_call(tmp_path: Path) -> None:
     assert ep.error is not None and "small_eval" in ep.error
     assert calls["n"] == 1 and spend.spent() == pytest.approx(0.03)
     con.close()
+
+
+def test_a_failed_model_call_ends_only_that_episode(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=14)
+    con = gc_connect(db, read_only=True)
+    task = _resolve_task(T0 + 6 * 86400, 0.5)
+
+    def policy(h: list[dict[str, Any]]) -> Turn:
+        raise RuntimeError("529 overloaded")
+
+    ep = run_episode(ScriptedAgent(policy), con, task)
+    assert ep.malformed and ep.probability is None
+    assert ep.error is not None and "RuntimeError" in ep.error and "529" in ep.error
+    con.close()
+
+
+def test_errored_episodes_are_left_out_of_training() -> None:
+    from gridcase.rl.agent import Episode
+
+    ok = Episode(task_id="t", model="m")
+    failed = Episode(task_id="t", model="m", error="APIError: 500")
+    assert trainable([ok, failed]) == [ok]
+    assert trainable([failed]) == []
 
 
 def test_every_model_gets_the_same_tools() -> None:
