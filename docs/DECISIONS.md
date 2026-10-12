@@ -532,3 +532,26 @@ User report: on a case, only "A broad shift" could be explored; "New traders", "
 - **Tests:** 3 new web tests (any card opens and closes, not only the top one; a failed check says so; an untested driver says so). Web 48 tests, tsc, oxlint and the build pass.
 - **Deployed 2026-10-07** (user approval: "make it live"). GitHub was briefly unreachable from the laptop, so the commits went to the VPS as a git bundle (pushed to origin afterwards) (fast-forward `5ebaf26` → `397d61c`), then `npm run build` in `web/`. No restart: the server serves `web/dist` from disk. Python and `package.json` unchanged.
 - **Checked live:** on the Weather case of 7 Oct 15:16, "One market" opens to both market checks and the sentence that ruled it out.
+
+## 2026-10-12 — Data feasibility audit for RL fine-tuning (report: `FEASIBILITY.md`)
+
+User question: is there enough data, and enough gradable events, to RL-tune a small open model on investigation tasks and compare it with an untuned small model and a frontier model? Run in a cloud container with no VPS access; the collector and the product are untouched.
+
+- **New data sources, experiment-only (rule 5).** `experiments/feasibility/` reads Gamma `/markets/keyset`, CLOB `/prices-history`, data-api `/v2/resolutions`, `/v2/tokens`, `/v2/trades` and `/v2/prices-history`. All keyless and read-only, with a disk cache and at most 4 requests a second. Nothing feeds the store, the semantic layer or the UI. `REVIEW:` putting any of this into the product needs its own plan.
+- **Data API v1 retires on 2026-10-24** (docs.polymarket.com). The collector calls v1 `/trades` and has to move to `/v2/trades` before then. `REVIEW:` raised as a separate task.
+- **`CLAUDE.md`'s "never assume a backfill is possible" is out of date.** v2 trades go back three years per market (cursor paging), the global feed about a month, and CLOB prices go back to 2023 at 1-minute fidelity. `REVIEW:` I left the caveat unedited for you to decide.
+- **Judgment calls:**
+  - **Recurring series:** "Up or Down" markets are excluded from tasks.
+  - **Market life:** runs from `startDate` to the earlier of `endDate` and `closedTime`.
+  - **Liquidity:** lifetime volume, at $100k (main) and $1M (strict).
+  - **Spikes:** on a 10-minute grid, with the base between 5¢ and 95¢, 72 h of trading before close, and a 24 h cooldown per market.
+  - **Labels:** held = retains ≥ 50% of the move.
+  - **Clusters:** event clusters within 6 h; news clusters = events sharing a tag on ≤ 2% of events, within 2 h.
+  - **Sample:** events sampled at random within volume strata, 40 per stratum, seed 7.
+  - `REVIEW:` all thresholds.
+- **Result:**
+  - **Markets:** 120,538 resolved non-recurring markets closed in the 6 months to 2026-10-11 (≥ $14k volume); 37,281 of them ≥ $100k.
+  - **Main spike cell** (10 points in 6 h, ≥ $100k): ~26,800 event clusters (90% interval 16,900–39,300), about 21,000 after news clustering, 58/42 held/reverted at +72 h.
+  - **Strictest cell:** several hundred.
+  - **Brier tasks:** ~22,900 markets ≥ $100k.
+  - **Recommendation:** (a) RL viable on counts. Build the eval set first from post-cutoff events (Jul–Oct 2026), split by news cluster.

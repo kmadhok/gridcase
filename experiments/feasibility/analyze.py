@@ -80,6 +80,9 @@ def load(
         r[0]: dict(zip(cols, r, strict=True))
         for r in con.execute(f"SELECT {', '.join(cols)} FROM {markets_t}").fetchall()
     }
+    for m in markets.values():
+        m["weight"] = float(m["weight"])
+        m["volume"] = float(m["volume"])
     pts: dict[str, list[tuple[int, float]]] = defaultdict(list)
     for cid, t, p in con.execute(
         f"SELECT condition_id, ts, p FROM {prices_t} ORDER BY condition_id, ts"
@@ -191,6 +194,52 @@ def liquidity(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     }
 
 
+def category(tags: str | None, question: str) -> str:
+    """Coarse category for the mix table (tags first, then title cues for sports)."""
+    t, q = set((tags or "").split("|")), question.lower()
+    if t & {"Esports", "Dota 2", "league of legends", "counter strike 2", "Valorant"}:
+        return "esports"
+    sports = {
+        "Sports",
+        "Soccer",
+        "MLB",
+        "NBA",
+        "NFL (All)",
+        "Tennis",
+        "Hockey",
+        "NHL",
+        "Basketball",
+        "baseball",
+        "EPL",
+        "CFB (All)",
+        "Golf",
+        "UFC",
+        "Cricket",
+        "F1",
+    }
+    if t & sports or " vs" in q or "spread" in q or "o/u" in q:
+        return "sports"
+    if t & {
+        "Politics",
+        "Elections",
+        "Geopolitics",
+        "Foreign Policy",
+        "Iran",
+        "Middle East",
+        "World",
+        "Ukraine",
+        "Trump",
+    }:
+        return "politics/geo"
+    if t & {"Crypto", "Crypto Prices", "Bitcoin", "Ethereum"}:
+        return "crypto"
+    if t & {"Economy", "Fed", "Fed Rates", "Finance", "Stocks", "Business"}:
+        return "econ/finance"
+    if t & {"Weather", "Daily Temperature", "Highest temperature"}:
+        return "weather"
+    return "other"
+
+
 def generic_tags(
     con: duckdb.DuckDBPyConnection | None, markets: dict[str, dict[str, Any]]
 ) -> set[str]:
@@ -278,6 +327,15 @@ def main(no_census: bool, prefix: str, window: tuple[int, int] | None) -> None:
         per_event = {ev: float(len(c)) for ev, c in ev_clusters.items()}
         lo, hi = bootstrap(per_event, events) if sp else (0.0, 0.0)
         w_event_clusters = sum(events[ev][1] * n for ev, n in per_event.items())
+        if x == 10 and y == 6 and vmin == 1e5 and sp:
+            mix: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+            for e in sp:
+                k = category(markets[e["cid"]]["tags"], markets[e["cid"]]["question"] or "")
+                mix[k][0] += 1
+                mix[k][1] += int(e["r72"] is not None and e["r72"] >= 0.5)
+            report["category_mix_x10_y6_100k"] = {
+                k: {"spikes": v[0], "held72": v[1]} for k, v in mix.items()
+            }
         if x == 10 and y == 6 and sp:
             report.setdefault("examples", [])
             rng = random.Random(x * 100 + int(vmin))
