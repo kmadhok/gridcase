@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import bisect
 import json
+import random
 from collections import defaultdict
+from datetime import UTC, datetime
 from itertools import product
 from typing import Any
 
@@ -57,7 +59,9 @@ class Series:
         return self.p[i] if i >= 0 else None
 
 
-def load(con: duckdb.DuckDBPyConnection) -> tuple[dict[str, dict[str, Any]], dict[str, Series]]:
+def load(
+    con: duckdb.DuckDBPyConnection, markets_t: str, prices_t: str
+) -> tuple[dict[str, dict[str, Any]], dict[str, Series]]:
     cols = [
         "condition_id",
         "ev",
@@ -74,11 +78,11 @@ def load(con: duckdb.DuckDBPyConnection) -> tuple[dict[str, dict[str, Any]], dic
     ]
     markets = {
         r[0]: dict(zip(cols, r, strict=True))
-        for r in con.execute(f"SELECT {', '.join(cols)} FROM sample_markets").fetchall()
+        for r in con.execute(f"SELECT {', '.join(cols)} FROM {markets_t}").fetchall()
     }
     pts: dict[str, list[tuple[int, float]]] = defaultdict(list)
     for cid, t, p in con.execute(
-        "SELECT condition_id, ts, p FROM prices ORDER BY condition_id, ts"
+        f"SELECT condition_id, ts, p FROM {prices_t} ORDER BY condition_id, ts"
     ).fetchall():
         pts[cid].append((t, p))
     return markets, {c: Series(v) for c, v in pts.items()}
@@ -125,8 +129,10 @@ def spikes(m: dict[str, Any], s: Series, x: float, y_h: int) -> list[dict[str, A
     return out
 
 
-def clusters(sp: list[dict[str, Any]], generic: set[str]) -> tuple[int, int, dict[int, int]]:
-    """(event clusters, news clusters, spike index -> news cluster id)."""
+def clusters(
+    sp: list[dict[str, Any]], generic: set[str]
+) -> tuple[int, int, dict[int, int], dict[int, int]]:
+    """(event clusters, news clusters, spike -> news cluster id, spike -> event cluster id)."""
     parent = list(range(len(sp)))
 
     def find(i: int) -> int:
@@ -145,7 +151,8 @@ def clusters(sp: list[dict[str, Any]], generic: set[str]) -> tuple[int, int, dic
                 break
             if sp[j]["ev"] == sp[i]["ev"]:
                 join(i, j)
-    n_event = len({find(i) for i in range(len(sp))})
+    event_ids = {i: find(i) for i in range(len(sp))}
+    n_event = len(set(event_ids.values()))
     for a, i in enumerate(order):  # shared specific tag within 2h
         ti = set(sp[i]["tags"].split("|")) - generic - {""}
         for j in order[a + 1 :]:
@@ -154,7 +161,7 @@ def clusters(sp: list[dict[str, Any]], generic: set[str]) -> tuple[int, int, dic
             if sp[j]["ev"] != sp[i]["ev"] and ti & (set(sp[j]["tags"].split("|")) - generic):
                 join(i, j)
     ids = {i: find(i) for i in range(len(sp))}
-    return n_event, len(set(ids.values())), ids
+    return n_event, len(set(ids.values())), ids, event_ids
 
 
 def liquidity(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
@@ -184,21 +191,60 @@ def liquidity(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     }
 
 
-def main(no_census: bool) -> None:
-    con = duckdb.connect(str(DB))
-    markets, series = load(con)
-    report: dict[str, Any] = {"db": str(DB)}
-    if not no_census:
-        report["liquidity"] = liquidity(con)
-    n_ev = defaultdict(int)
-    for m in markets.values():
-        for tag in set((m["tags"] or "").split("|")) - {""}:
+def generic_tags(
+    con: duckdb.DuckDBPyConnection | None, markets: dict[str, dict[str, Any]]
+) -> set[str]:
+    """Tags too broad to say two events share news: on > 2% of the frame's events (census), or
+    on > 10% of the sampled events when there is no census (the collector run)."""
+    if con is not None:
+        rows = con.execute(
+            "WITH e AS (SELECT ev, any_value(tags) AS tags FROM frame GROUP BY ev), "
+            "t AS (SELECT DISTINCT ev, unnest(string_split(tags, '|')) AS tag FROM e) "
+            "SELECT tag FROM t WHERE tag <> '' GROUP BY tag "
+            "HAVING count(*) > 0.02 * (SELECT count(*) FROM e)"
+        ).fetchall()
+        return {r[0] for r in rows}
+    n_ev: dict[str, int] = defaultdict(int)
+    for tags in {m["ev"]: m["tags"] for m in markets.values()}.values():
+        for tag in set((tags or "").split("|")) - {""}:
             n_ev[tag] += 1
     n_events = len({m["ev"] for m in markets.values()})
-    generic = {t for t, n in n_ev.items() if n > 0.10 * n_events}
+    return {t for t, n in n_ev.items() if n > 0.10 * n_events}
+
+
+def bootstrap(
+    per_event: dict[str, float], events: dict[str, tuple[str, float]], reps: int = 300
+) -> tuple[float, float]:
+    """90% interval of sum(weight x per-event count), resampling events within strata."""
+    rng = random.Random(1)
+    by_stratum: dict[str, list[str]] = defaultdict(list)
+    for ev, (stratum, _) in events.items():
+        by_stratum[stratum].append(ev)
+    totals = []
+    for _ in range(reps):
+        tot = 0.0
+        for evs in by_stratum.values():
+            for ev in rng.choices(evs, k=len(evs)):
+                tot += events[ev][1] * per_event.get(ev, 0.0)
+        totals.append(tot)
+    totals.sort()
+    return totals[int(0.05 * reps)], totals[int(0.95 * reps)]
+
+
+def main(no_census: bool, prefix: str, window: tuple[int, int] | None) -> None:
+    con = duckdb.connect(str(DB))
+    markets_t, prices_t = (
+        (f"{prefix}_markets", f"{prefix}_prices") if prefix else ("sample_markets", "prices")
+    )
+    markets, series = load(con, markets_t, prices_t)
+    report: dict[str, Any] = {"db": str(DB), "markets_table": markets_t, "window": window}
+    if not no_census:
+        report["liquidity"] = liquidity(con)
+    generic = generic_tags(None if no_census else con, markets)
+    events = {m["ev"]: (m["stratum"], float(m["weight"])) for m in markets.values()}
     report["generic_tags"] = sorted(generic)
     report["sample"] = {
-        "events": n_events,
+        "events": len(events),
         "markets": len(markets),
         "markets_with_prices": sum(1 for c in markets if series.get(c) and series[c].t),
         "price_points": sum(len(s.t) for s in series.values()),
@@ -212,18 +258,41 @@ def main(no_census: bool) -> None:
             for m in markets.values()
             if m["volume"] >= vmin
             for e in spikes(m, series.get(m["condition_id"]) or Series([]), x, y)
+            if window is None or window[0] <= e["t"] < window[1]
         ]
         held24 = sum(1 for e in sp if e["r24"] is not None and e["r24"] >= 0.5)
         held72 = sum(1 for e in sp if e["r72"] is not None and e["r72"] >= 0.5)
         clean72 = sum(
             1 for e in sp if e["r72"] is not None and (e["r72"] >= 0.75 or e["r72"] <= 0.25)
         )
-        n_event, n_news, ids = clusters(sp, generic) if sp else (0, 0, {})
+        n_event, n_news, ids, ev_ids = clusters(sp, generic) if sp else (0, 0, {}, {})
         w_spikes = sum(e["weight"] for e in sp)
         # weight each news cluster once, by its first spike's stratum weight
         first: dict[int, float] = {}
         for i, e in enumerate(sp):
             first.setdefault(ids[i], e["weight"])
+        # event clusters never span events, so they decompose per event: bootstrap those
+        ev_clusters: dict[str, set[int]] = defaultdict(set)
+        for i, e in enumerate(sp):
+            ev_clusters[e["ev"]].add(ev_ids[i])
+        per_event = {ev: float(len(c)) for ev, c in ev_clusters.items()}
+        lo, hi = bootstrap(per_event, events) if sp else (0.0, 0.0)
+        w_event_clusters = sum(events[ev][1] * n for ev, n in per_event.items())
+        if x == 10 and y == 6 and sp:
+            report.setdefault("examples", [])
+            rng = random.Random(x * 100 + int(vmin))
+            for e in rng.sample(sp, min(8, len(sp))):
+                report["examples"].append(
+                    {
+                        "min_volume": vmin,
+                        "question": markets[e["cid"]]["question"],
+                        "t": datetime.fromtimestamp(e["t"], UTC).strftime("%Y-%m-%d %H:%M"),
+                        "base": round(e["base"], 3),
+                        "move": round(e["move"], 3),
+                        "r24": None if e["r24"] is None else round(e["r24"], 2),
+                        "r72": None if e["r72"] is None else round(e["r72"], 2),
+                    }
+                )
         rows.append(
             {
                 "x_pts": x,
@@ -238,13 +307,16 @@ def main(no_census: bool) -> None:
                 "event_clusters": n_event,
                 "news_clusters": n_news,
                 "est_spikes_6mo": round(w_spikes),
+                "est_event_clusters_6mo": round(w_event_clusters),
+                "est_event_clusters_90ci": f"{round(lo)}-{round(hi)}",
                 "est_news_clusters_6mo": round(sum(first.values())),
             }
         )
     report["sensitivity"] = rows
 
     # 5. Brier-usable resolved markets
-    brier = defaultdict(float)
+    brier: dict[str, float] = defaultdict(float)
+    brier_events: dict[str, set[str]] = defaultdict(set)
     for m in markets.values():
         s = series.get(m["condition_id"])
         if not s or not s.t:
@@ -255,11 +327,16 @@ def main(no_census: bool) -> None:
             if p is not None and 0.05 <= p <= 0.95:
                 brier[f"markets_{label}"] += 1
                 brier[f"est_markets_{label}_6mo"] += m["weight"]
+                if m["ev"] not in brier_events[label]:
+                    brier_events[label].add(m["ev"])
+                    brier[f"events_{label}"] += 1
+                    brier[f"est_events_{label}_6mo"] += m["weight"]
                 if m["volume"] >= 1e5:
                     brier[f"markets_{label}_ge_100k"] += 1
                     brier[f"est_markets_{label}_ge_100k_6mo"] += m["weight"]
     report["brier"] = {k: round(v) for k, v in sorted(brier.items())}
-    OUT.write_text(json.dumps(report, indent=1, default=str))
+    out = OUT.with_name(OUT.stem + (f"_{prefix}" if prefix else "") + ".json")
+    out.write_text(json.dumps(report, indent=1, default=str))
     print(
         json.dumps({k: v for k, v in report.items() if k != "sensitivity"}, indent=1, default=str)
     )
@@ -274,4 +351,16 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-census", action="store_true", help="collector.duckdb has no census")
-    main(ap.parse_args().no_census)
+    ap.add_argument(
+        "--prefix", default="", help="read <prefix>_markets / <prefix>_prices (e.g. dense)"
+    )
+    ap.add_argument(
+        "--window", nargs=2, metavar=("START", "END"), help="only spikes in [START, END)"
+    )
+    a = ap.parse_args()
+    win = None
+    if a.window:
+        win = tuple(
+            int(datetime.fromisoformat(d).replace(tzinfo=UTC).timestamp()) for d in a.window
+        )
+    main(a.no_census, a.prefix, win)  # type: ignore[arg-type]
