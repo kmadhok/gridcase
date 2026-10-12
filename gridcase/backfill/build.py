@@ -81,14 +81,18 @@ def build(src: Path, db_path: Path) -> dict[str, int]:
         con.execute(
             f"""
             INSERT INTO trades
-            SELECT md5(concat_ws('|', transaction_hash, token_id, side, CAST(size AS VARCHAR),
-                                 CAST(price AS VARCHAR))) AS trade_id,
-                   CAST(to_timestamp(timestamp) AS TIMESTAMP) AS ts, proxy_wallet, side, size,
-                   price, size * price, token_id, condition_id, slug, nullif(event_slug, ''),
-                   outcome, title, transaction_hash, CAST(to_timestamp(timestamp) AS TIMESTAMP)
-            FROM read_parquet('{trades / "part-*.parquet"}')
-            WHERE timestamp IS NOT NULL AND proxy_wallet IS NOT NULL
-            QUALIFY row_number() OVER (PARTITION BY trade_id) = 1
+            SELECT * FROM (
+                SELECT md5(concat_ws('|', transaction_hash, token_id, side,
+                                     CAST(size AS VARCHAR), CAST(price AS VARCHAR))) AS trade_id,
+                       CAST(to_timestamp(timestamp) AS TIMESTAMP) AS ts, proxy_wallet, side,
+                       size, price, size * price, token_id, condition_id, slug,
+                       nullif(event_slug, ''), outcome, title, transaction_hash,
+                       CAST(to_timestamp(timestamp) AS TIMESTAMP)
+                FROM read_parquet('{trades / "part-*.parquet"}')
+                WHERE timestamp IS NOT NULL AND proxy_wallet IS NOT NULL
+                QUALIFY row_number() OVER (PARTITION BY trade_id) = 1
+            )
+            ORDER BY ts  -- time order: zone maps let as_of windows skip most of the table
             """
         )
         con.execute(

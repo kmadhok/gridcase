@@ -640,3 +640,31 @@ User decision 2026-10-12: approve a plan that backfills history, freezes an eval
   - A reward-hacking guard: verifier drops more than doubled, or tool use collapsing.
 - **Final eval.** The best checkpoint is scored once on eval.
 - **Tests.** 35 M15 exit tests; full suite 308 passed, 3 skipped. ruff and mypy --strict are clean.
+
+## 2026-10-12 — M15 run: backfill done, benchmark frozen, free rows measured; paid rows blocked on keys
+
+- **Backfill (cloud container, keyless).**
+  - Census: 62,998 markets.
+  - Resolutions: 62,998 of 62,998 found; 1 disagreement between Gamma and v2, excluded from resolve tasks.
+  - Prices: 173,188,008 ten-minute points, 0 retries.
+  - Trades: all 5,683 task markets complete (17.6M taker trades).
+  - `data/backfill.duckdb` built in about 3.5 minutes.
+- **Disk.** The API response cache reached 23 GB and filled the container's disk, so it was deleted after the Parquet files were written. A rebuild elsewhere re-fetches (about 3 hours at the rates above).
+- **Trades stored in time order.** This cut `hist.flow` from 5.7 s to 0.25 s per call (zone maps skip blocks outside the `as_of` window).
+- **Frozen benchmark** (`evals/m15/`, answers sha256 `106a786b…`).
+  - Eval: 600 tasks (400 `spike_hold` + 200 `resolve`), 600 distinct news clusters, 40% Sports, 51.8% positive.
+  - Validation: 250 tasks.
+  - Train manifest: 6,000 tasks in 4,921 clusters.
+  - Pools before sampling: eval 33,152 tasks, train 89,680.
+  - `gridcase rl tasks` now refuses to overwrite a committed eval set that differs on rebuild (`--force` to replace it deliberately).
+- **Free rows on eval.**
+  - Market baseline: Brier 0.2171 (resolve 0.195, spike_hold 0.228).
+  - Base rate: 0.2428; the market is better by 0.026 (95% CI +0.014 to +0.038).
+  - A scripted agent through the full harness reproduces the market baseline exactly on all 600 tasks: 2 tool calls each, 1,200 cited claims all kept by the verifier.
+  - `REVIEW:` the train-split base rates are strongly direction-dependent. Large down-spikes held 93% of the time; up-spikes held 44–51%.
+- **Paid rows blocked.**
+  - What's missing: this container has no `.env` (no `ANTHROPIC_API_KEY` or `TINKER_API_KEY`), the plan's stated stop condition.
+  - What's not run: untuned Qwen3-8B, claude-sonnet-5-5 and RL training.
+  - Spend so far: $0 of $150.
+  - How to finish: the steps are in `RESULTS_M15.md`. Run the two evals before training.
+- **Tests:** M15 exit 36 tests; full suite 309 passed, 3 skipped. ruff and mypy --strict are clean.

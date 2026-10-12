@@ -21,9 +21,9 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 | Census of resolved markets | `gridcase backfill markets` | 62,998 resolved binary, non-recurring markets with ≥ $100k volume that closed 2025-10-11 → 2026-10-11 (73% Sports). Complete: 906 pages. |
 | Outcomes | `gridcase backfill resolutions` | 62,998 of 62,998 found on `/v2/resolutions`. Gamma and v2 disagree on 1. |
 | Prices | `gridcase backfill prices` | 173,188,008 ten-minute points (token 0) across every market's life. 92k + 34k requests, 0 retries. |
-| Trades for task markets | `gridcase backfill trades` | eval + validation: 778 markets, 1.6M taker trades, all complete. Train: 4,905 markets, in progress (this draft is updated when it finishes). |
+| Trades for task markets | `gridcase backfill trades` | eval + validation: 778 markets, 1.6M taker trades, all complete. Train: 4,905 markets, 16.0M trades, all complete. 17.6M trades in total across all 5,683 task markets. |
 | Store | `data/backfill.duckdb` (`gridcase backfill build`) | `hist_*` tables plus the live store's own `trades` schema. Outcomes are in a grader-only table. |
-| History tools | `gridcase/tools/hist.py` | `hist.market`, `.move`, `.series`, `.siblings`, `.related`, `.flow`. Point in time; a leakage property test guards them. Real-data latency: most calls well under 0.5 s; `hist.related` averages 1.5 s, at most 4.3 s. |
+| History tools | `gridcase/tools/hist.py` | `hist.market`, `.move`, `.series`, `.siblings`, `.related`, `.flow`. Point in time; a leakage property test guards them. Real-data latency: most calls well under 0.5 s; `hist.flow` 0.25 s (trades stored in time order); `hist.related` averages 1.5 s, at most 4.3 s. |
 | Tasks | `gridcase rl tasks` | Pools: eval 14,800 spike + 18,352 resolve; validation 12,997 + 4,532; train 61,245 + 28,435. |
 | Frozen benchmark | `evals/m15/manifest.jsonl`, `answers.sha256` | **Eval: 600 tasks** (400 `spike_hold`, 200 `resolve`) in 600 distinct news clusters, Sports capped at 40%, 51.8% positive. **Validation: 250.** **Train: 6,000** (`train_manifest.jsonl`, 4,921 clusters). |
 | Harness | `gridcase/rl/{agent,models,reward,harness}.py`, `gridcase rl eval/report` | The same prompt, six tools plus `submit_answer`, 8-call budget and verifier for every model; a paired cluster bootstrap for comparisons. |
@@ -35,7 +35,7 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 |---|---|---|---|---|---|
 | Market baseline | **0.2171** | 0 | 0.620 | 0.044 | resolve 0.195, spike_hold 0.228 |
 | Base rate | 0.2428 | −0.118 | 0.679 | 0.044 | worse than the market: +0.026 (95% CI +0.014 to +0.038) |
-| Scripted agent (harness check) | 0.2171 | 0 | – | – | Calls `hist.move`, cites the receipt, submits the market baseline. All 600 answered, 0 malformed, 0 claims dropped. This proves the loop, the tools and the verifier work end to end on real data. |
+| Scripted agent (harness check) | 0.2171 | 0 | – | – | Calls `hist.move` and `hist.flow`, cites a number from each, submits the market baseline. All 600 answered, 0 malformed, all 1,200 cited claims kept by the verifier. This proves the loop, the tools, the trade data and the verifier work end to end on real data. |
 | Qwen3-8B, untuned | – | – | – | – | needs `TINKER_API_KEY` |
 | claude-sonnet-5-5 | – | – | – | – | needs `ANTHROPIC_API_KEY` |
 | Qwen3-8B, RL-tuned | – | – | – | – | needs `TINKER_API_KEY` (and the two rows above, to decide whether training is worth it) |
