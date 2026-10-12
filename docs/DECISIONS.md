@@ -577,3 +577,66 @@ User decision 2026-10-12: approve a plan that backfills history, freezes an eval
   - `REVIEW:` confirm Sonnet 5.5's cutoff.
 - **Keys.** The cloud container this runs in has no `.env` (no `ANTHROPIC_API_KEY`, `TINKER_API_KEY` or `OPENROUTER_API_KEY`). Per the plan, every free phase runs (backfill, tools, tasks, harness with scripted models and free baselines), and the paid runs stop at that blocker until the keys exist where the code runs.
 - **Tests:** `tests/exit/test_m15.py` phase A, 5 tests. Full suite 273 passed, 3 skipped before M15.
+
+## 2026-10-12 — M15 phases B–F: backfill, history tools, tasks, harness, trainer (code)
+
+**B. Backfill** (`gridcase/backfill/`, `gridcase backfill markets|resolutions|prices|trades|build`):
+- **Client.** A typed port of the feasibility client: disk cache with the same key scheme (that cache was reused), a shared limiter across threads, retries after Retry-After, and 400s cached.
+- **Rate.** Published limits (docs.polymarket.com, read 2026-10-12): CLOB `/prices-history` 1,000 per 10 s, `/v2/trades` 300 per 10 s, Gamma listings 900 per 10 s. The prices job ran at 20 a second with 64 workers (16 were latency-bound at about 6 a second). `REVIEW:` the rate.
+- **Census.** Gamma keyset, closed markets ending 2025-10-11 → 2026-10-11 with ≥ $100k volume. Resolved binary only (outcome prices exactly 0/1); recurring "Up or Down" series dropped. Categories come from the collector's own `categorize`.
+  - Result: 62,998 markets (73% Sports), 906 pages, complete.
+- **Resolutions.** `/v2/resolutions` for every census market: 62,998 of 62,998 found. UMA rows use `price`, native v2 rows use `payouts`.
+- **Prices.** Token 0, CLOB, 10-minute fidelity, 14-day chunks, over each market's life (start to the earlier of scheduled end and close).
+- **Trades.** Only for markets that appear in tasks, walked back to the earliest task's as_of − 7 d (at most 500 pages).
+- **Store.** `data/backfill.duckdb`, written only by `gridcase backfill build`:
+  - `hist_markets` has no outcome, volume-at-resolution or future-close fields; `hist_outcomes` is grader-only.
+  - Backfilled trades go into the live store's own schema with `collected_at = ts`, so `trades_as_of` and the semantic layer run unchanged. Here "new trader" means new to the backfilled history.
+
+**C. History tools** (`gridcase/tools/hist.py`):
+- **Tools.** hist.market, hist.move, hist.series, hist.siblings, hist.related, and hist.flow (trade flow through the semantic layer: the `outcome` dimension selects one market's trades).
+- **Point in time.** Every read goes through `prices_as_of(t)` / `hist_markets_as_of(t)`.
+- **What outputs never show.** Lifetime volume (it includes trading after as_of), a close later than as_of, or any outcome field.
+- **Leakage property test.** Hypothesis scrambles every price and trade after as_of, adds a market that starts later and moves the future close; every output must be byte-identical. The test was checked to fail when a filter is removed.
+- **Strict inputs.** History-tool inputs refuse unknown fields (`extra="forbid"`), so an invented argument comes back to the model as an error.
+- **Deviation from the plan.** No `ToolCtx.source` field: `run_tool` already takes its connection, so the agents just get a read-only backfill connection.
+
+**D. Tasks** (`gridcase/rl/tasks.py`): the feasibility definitions, unchanged.
+- `spike_hold`: X = 10 points, Y = 6 h, base in [0.05, 0.95], 72 h before close, 24 h cooldown.
+- `resolve`: close − 24 h and close − 7 d, price in [0.05, 0.95], and only where the Gamma and v2 outcomes agree.
+- **Clusters.** Event clusters within 6 h; news clusters join events that share a tag on ≤ 2% of events (and fewer than 3) within 2 h.
+- **Splits.** train ends 2026-05-08; validation 2026-05-15 → 06-15; eval 2026-07-01 → 10-11. A task whose label window passes its split's end is dropped, and so is any cluster that spans two splits.
+- **Sampling** (seed 15):
+  - eval: 400 spike + 200 resolve, 1 per cluster, Sports ≤ 40%;
+  - validation: 150 + 100;
+  - train: 4,000 + 2,000, 3 per cluster, Sports ≤ 50%.
+- **Freeze.** `evals/m15/manifest.jsonl` (no answers) and `answers.sha256` are committed; the answers stay in `data/rl/`.
+- `REVIEW:` the sizes and quotas.
+
+**E. Harness** (`gridcase/rl/{agent,models,reward,harness,cli}.py`):
+- **Same conditions for every model.** One system prompt, the six tools plus `submit_answer`, 8 tool calls and a ~6k-token cap on each tool output.
+- **Verifier.** The answer's summary and claims pass `explain/verifier.py` with `drop_uncited_numbers` (rule 3).
+- **Reward.** 1 − Brier, with p clipped to [0.01, 0.99]. −0.25 for no valid answer; another −0.25 if the budget ran out or the verifier dropped more than half the claims.
+- **Scoring.** An unanswered task scores as p = 0.5, so skipping hard tasks gains nothing.
+- **Baselines** (free):
+  - market: the price at as_of for `resolve`; the train-split held rate by move size and direction for `spike_hold`;
+  - base rate.
+- **Comparisons.** A paired bootstrap over news clusters.
+- **Sonnet 5.5** (`AnthropicAgent`): a manual tool loop with prompt caching on the tools and system prefix.
+  - `REVIEW:` no server-side fallbacks, deliberately. The claude-api skill recommends them by default, but a benchmark must not switch models mid-task.
+- **Qwen3-8B** (`TinkerAgent`): Tinker's native SamplingClient with the Cookbook renderer.
+  - The renderer is `qwen3_disable_thinking`, to keep tokens and cost down. The untuned and tuned rows use the same renderer. `REVIEW:` thinking off.
+  - Tested offline against the real Qwen3 tokenizer: the tools render, `<tool_call>`s parse, and tool results come back as `<tool_response>`.
+- **Optional dependency group.** `rl` pins tinker 0.33.1 and tinker-cookbook 0.5.7. Default syncs don't install it; the training box needs `uv sync --group rl`. A CPU PyTorch is enough there.
+
+**F. Trainer** (`gridcase/rl/train.py`, `gridcase rl train`):
+- **Algorithm** (calls taken from the Tinker docs: SDK cheatsheet and quickstart RL example, read 2026-10-12): GRPO-style importance-sampling loss, LoRA rank 32 on Qwen/Qwen3-8B, Adam at learning rate 4e-5, sampling temperature 1.0.
+- **Batches.** 8 rollouts per task, 16 tasks per step (spike : resolve = 2 : 1).
+  - `REVIEW:` 16 rather than the plan's 32. At Qwen3-8B prices ($0.195 / $0.60 / $0.44 per million tokens for prefill / sample / train) the upper-bound estimate is about $3.4 per step at 32 tasks, which buys only about 23 steps from the $85 allowance.
+- **Datums.** One per sampled turn, with zeros on the prompt.
+- **Budgeting.** A 3-step pilot measures cost per step, and the run takes as many steps as the training allowance minus a $5 reserve affords (at most 150).
+- **Checkpoints and guards.**
+  - Checkpoints every 10 steps, scored on validation only; the validation-best one is kept.
+  - Early stop after 3 checkpoints without improvement.
+  - A reward-hacking guard: verifier drops more than doubled, or tool use collapsing.
+- **Final eval.** The best checkpoint is scored once on eval.
+- **Tests.** 35 M15 exit tests; full suite 308 passed, 3 skipped. ruff and mypy --strict are clean.
