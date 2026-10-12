@@ -29,7 +29,18 @@ ASK_MODEL = os.environ.get("GRIDCASE_ASK_MODEL", CHEAP_MODEL)
 # the Explore chat (OpenRouter): picked by experiments/model_pick (DECISIONS 2026-10-05, -06)
 CHAT_MODEL = os.environ.get("GRIDCASE_CHAT_MODEL", "google/gemini-3.1-flash-lite")
 CHAT_FALLBACK_MODEL = os.environ.get("GRIDCASE_CHAT_FALLBACK_MODEL", "deepseek/deepseek-v4-flash")
+# M15 (docs/plans/2026-10-12_rl_backfill_eval_train.md): the small open model trained with RL
+# and the frontier model it is compared with, on the same tools and tasks.
+RL_BASE_MODEL = os.environ.get("GRIDCASE_RL_BASE_MODEL", "Qwen/Qwen3-8B")
+FRONTIER_MODEL = os.environ.get("GRIDCASE_FRONTIER_MODEL", "claude-sonnet-5-5")
+BACKFILL_DIR = Path(os.environ.get("GRIDCASE_BACKFILL_DIR", DATA_DIR / "backfill"))
+BACKFILL_DB = Path(os.environ.get("GRIDCASE_BACKFILL_DB", DATA_DIR / "backfill.duckdb"))
+RL_DIR = Path(os.environ.get("GRIDCASE_RL_DIR", DATA_DIR / "rl"))
+EVALS_DIR = ROOT / "evals"
 MODEL_PRICES: dict[str, tuple[float, float]] = {
+    "claude-opus-5-5": (4.0, 20.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
+    "claude-haiku-5-5": (0.10, 0.50),
     "claude-opus-5": (5.0, 25.0),
     "claude-sonnet-5": (2.0, 10.0),
     "claude-fable-5-1": (10.0, 50.0),

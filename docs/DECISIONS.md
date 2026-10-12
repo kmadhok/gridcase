@@ -555,3 +555,25 @@ User question: is there enough data, and enough gradable events, to RL-tune a sm
   - **Strictest cell:** several hundred.
   - **Brier tasks:** ~22,900 markets ≥ $100k.
   - **Recommendation:** (a) RL viable on counts. Build the eval set first from post-cutoff events (Jul–Oct 2026), split by news cluster.
+
+## 2026-10-12 — M15 phase A: RL benchmark set-up (plan `docs/plans/2026-10-12_rl_backfill_eval_train.md`)
+
+User decision 2026-10-12: approve a plan that backfills history, freezes an eval set and RL-tunes a small model, and runs "full send", without checking in. Choices made with the user: hosted RL API (Tinker), a $150 total cap, and Qwen3-8B (tuned and untuned) against claude-sonnet-5-5.
+
+- **New data sources (rule 5): the stop is waived by that approval.**
+  - Sources: Gamma `/markets/keyset`, CLOB `/prices-history`, data-api `/v2/trades` and `/v2/resolutions` (all keyless and read-only).
+  - Storage: `data/backfill/` and `data/backfill.duckdb` only. The live store, collector and server are untouched.
+  - `REVIEW:` the waiver itself.
+- **`CLAUDE.md` data caveat updated.** "Never assume a backfill is possible" is replaced by what FEASIBILITY.md found.
+- **Spend ledger** (`gridcase/rl/spend.py`, `data/rl/spend.jsonl`): append-only, $150 global cap.
+  - Phase allowances: frontier evals $35, small-model evals $15, training $85, reserve $15.
+  - Every paid call reserves before and records after.
+- **Config.**
+  - `GRIDCASE_RL_BASE_MODEL` (Qwen/Qwen3-8B) and `GRIDCASE_FRONTIER_MODEL` (claude-sonnet-5-5).
+  - Prices added for opus-5-5 ($4/$20), sonnet-5-5 ($2/$10) and haiku-5-5 ($0.10/$0.50), from the claude-api skill (cached 2026-10-06).
+- **Eval window.** `EVAL_START = 2026-07-01`.
+  - Claude Opus 5.5's knowledge cutoff is June 2026 (claude-api skill). Sonnet 5.5's isn't stated there; it shipped alongside Opus 5.5, so it's assumed to be no later.
+  - Qwen3-8B's cutoff is earlier.
+  - `REVIEW:` confirm Sonnet 5.5's cutoff.
+- **Keys.** The cloud container this runs in has no `.env` (no `ANTHROPIC_API_KEY`, `TINKER_API_KEY` or `OPENROUTER_API_KEY`). Per the plan, every free phase runs (backfill, tools, tasks, harness with scripted models and free baselines), and the paid runs stop at that blocker until the keys exist where the code runs.
+- **Tests:** `tests/exit/test_m15.py` phase A, 5 tests. Full suite 273 passed, 3 skipped before M15.
