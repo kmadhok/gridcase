@@ -28,6 +28,22 @@ from gridcase.backfill.fetch import clob_prices, life, parse_ts, settled_token0
 from gridcase.backfill.jobs import MARKET_COLUMNS, PRICE_COLUMNS, TRADE_COLUMNS, write_parquet
 from gridcase.ingest.polymarket_load import categorize
 from gridcase.rl.spend import ALLOWANCES, GLOBAL_CAP_USD, OverBudget, Spend
+from gridcase.rl.tasks import (
+    Answer,
+    ClusterItem,
+    SpikeParams,
+    Splits,
+    Task,
+    answers_sha,
+    assign_split,
+    detect_spikes,
+    drop_cross_split_clusters,
+    freeze,
+    load_answers,
+    load_manifest,
+    news_clusters,
+    sample_split,
+)
 from gridcase.store.db import connect as gc_connect
 from gridcase.tools.base import ToolError, run_tool
 from gridcase.tools.registry import ALL_INPUTS, HIST_INPUTS, TOOL_NAMES
@@ -377,3 +393,117 @@ def test_hist_receipts_are_stable_and_series_is_capped(tmp_path: Path) -> None:
     missing = run_tool(con, "hist.market", {"condition_id": "0xnope"}, as_of)
     assert missing.output == {"found": False}
     con.close()
+
+
+# ---------- phase D: tasks, splits, frozen eval set ----------
+#
+# Spikes (feasibility definitions, FEASIBILITY.md §3): |p(t) - p(t-6h)| >= 10 pts on a 10-minute
+# grid, base in [0.05, 0.95], 72 h of trading after t, 24 h cooldown per market. spike_hold's
+# answer is "retained >= 50% of the move at +72 h". resolve tasks ask at close - 24 h (and
+# close - 7 d) when the price is in [0.05, 0.95], and use only markets whose Gamma and /v2
+# outcomes agree. Splits are by as_of with purge gaps; a task whose label window passes its
+# split's end is dropped, and so is any cluster that would span two splits. The manifest
+# carries no answers; answers.sha256 pins them.
+
+DAY = 86400
+
+
+def _step_series(
+    start: int, days: int, events: list[tuple[float, float]]
+) -> list[tuple[int, float]]:
+    """10-minute points; `events` = (day offset, new price) steps."""
+    out, p = [], 0.30
+    for k in range(days * 144):
+        t = start + k * 600
+        for d, newp in events:
+            if abs(t - (start + d * DAY)) < 300:
+                p = newp
+        out.append((t, p))
+    return out
+
+
+def test_spike_detection_labels_cooldown() -> None:
+    s = 1_780_000_200 // 600 * 600
+    held = _step_series(s, 12, [(5.0, 0.45)])
+    reverted = _step_series(s, 12, [(5.0, 0.45), (5.5, 0.31)])
+    twice = _step_series(s, 12, [(5.0, 0.45), (5.5, 0.60)])  # second jump inside the cooldown
+    close = s + 12 * DAY
+    p = SpikeParams()
+    (h,) = detect_spikes(held, close, p)
+    assert h.move == pytest.approx(0.15) and h.retained72 == pytest.approx(1.0) and h.held
+    (r,) = detect_spikes(reverted, close, p)
+    assert not r.held and r.retained72 == pytest.approx(0.01 / 0.15)
+    assert len(detect_spikes(twice, close, p)) == 1
+    # no spike when the 72 h label window would pass the close
+    assert detect_spikes(held, s + 7 * DAY, p) == []
+    # no spike from an already-decided base
+    decided = [(t, 0.02 if t < s + 5 * DAY else 0.2) for t, _ in held]
+    assert detect_spikes(decided, close, p) == []
+
+
+def test_news_clusters_join_same_event_and_shared_specific_tags() -> None:
+    t = 1_780_000_000
+    spikes = [
+        ClusterItem(t, "e1", ("Iran", "Politics")),
+        ClusterItem(t + 3600, "e1", ("Iran", "Politics")),  # same event, 1 h later
+        ClusterItem(t + 1800, "e2", ("Iran", "Politics")),  # shares "Iran" within 2 h
+        ClusterItem(t + 1800, "e3", ("Politics",)),  # shares only a generic tag
+        ClusterItem(t + 9 * 3600, "e2", ("Iran",)),  # too late
+    ]
+    ids = news_clusters(spikes, generic={"Politics"})
+    assert ids[0] == ids[1] == ids[2]
+    assert len({ids[0], ids[3], ids[4]}) == 3
+
+
+SPLITS = Splits(
+    train_end=datetime(2026, 5, 8), val_start=datetime(2026, 5, 15),
+    val_end=datetime(2026, 6, 15), eval_start=datetime(2026, 7, 1),
+    eval_end=datetime(2026, 10, 11),
+)  # fmt: skip
+
+
+def test_split_assignment_with_purge() -> None:
+    d = datetime
+    assert assign_split(d(2026, 4, 1), d(2026, 4, 4), SPLITS) == "train"
+    assert assign_split(d(2026, 5, 7), d(2026, 5, 10), SPLITS) is None  # label crosses train end
+    assert assign_split(d(2026, 5, 10), d(2026, 5, 13), SPLITS) is None  # in the purge gap
+    assert assign_split(d(2026, 5, 20), d(2026, 5, 23), SPLITS) == "validation"
+    assert assign_split(d(2026, 6, 20), d(2026, 6, 23), SPLITS) is None
+    assert assign_split(d(2026, 8, 1), d(2026, 8, 4), SPLITS) == "eval"
+    assert assign_split(d(2026, 10, 9), d(2026, 10, 12), SPLITS) is None
+
+
+def _task(
+    i: int, split: str, cluster: str, cat: str = "Politics", kind: str = "spike_hold"
+) -> Task:
+    return Task(
+        task_id=f"t{i}", kind=kind, condition_id=f"0x{i}", as_of=datetime(2026, 8, 1),  # type: ignore[arg-type]
+        facts={}, cluster_id=cluster, split=split, category=cat,  # type: ignore[arg-type]
+    )  # fmt: skip
+
+
+def test_clusters_never_span_splits_and_sampling_respects_quotas() -> None:
+    tasks = [_task(0, "train", "c1"), _task(1, "eval", "c1"), _task(2, "eval", "c2")]
+    kept = drop_cross_split_clusters(tasks)
+    assert [t.task_id for t in kept] == ["t2"]
+    pool = [_task(i, "eval", f"c{i // 2}", "Sports" if i % 3 else "Politics") for i in range(60)]
+    picked = sample_split(pool, n=10, per_cluster=1, sports_cap=0.4, seed=1)
+    assert len(picked) == 10
+    assert len({t.cluster_id for t in picked}) == 10
+    assert sum(t.category == "Sports" for t in picked) <= 4
+    assert picked == sample_split(pool, n=10, per_cluster=1, sports_cap=0.4, seed=1)  # stable
+
+
+def test_manifest_has_no_answers_and_the_hash_pins_them(tmp_path: Path) -> None:
+    tasks = [_task(i, "eval", f"c{i}") for i in range(3)]
+    answers = {
+        t.task_id: Answer(task_id=t.task_id, y=float(i % 2), detail={}) for i, t in enumerate(tasks)
+    }
+    sha = freeze(tasks, answers, tmp_path / "evals", tmp_path / "rl")
+    lines = (tmp_path / "evals" / "manifest.jsonl").read_text().splitlines()
+    assert len(lines) == 3
+    for ln in lines:
+        assert not {"y", "answer", "retained72", "winner"} & set(json.loads(ln))
+    assert (tmp_path / "evals" / "answers.sha256").read_text().strip() == sha
+    assert answers_sha(load_answers(tmp_path / "rl" / "answers.jsonl")) == sha
+    assert load_manifest(tmp_path / "evals" / "manifest.jsonl") == tasks
