@@ -3,9 +3,11 @@
 gridcase rl tasks                 build tasks from data/backfill.duckdb, sample each split,
                                   freeze eval+validation (evals/m15/), write train tasks and
                                   the trade-backfill needs (data/rl/)
-gridcase rl eval --model M --split S [--limit N]
+gridcase rl eval --model M --split S [--limit N] [--retry-errors]
                                   M: market | base_rate (free) | base (untuned small model,
                                   Tinker) | frontier (Anthropic) | ckpt:tinker://...
+                                  --retry-errors reruns only the tasks an API failure or the
+                                  spend cap ended, and merges them into the existing results
 gridcase rl report                one table over every results file, with paired bootstraps
 """
 
@@ -22,7 +24,9 @@ from gridcase.rl.harness import (
     base_rate_baseline,
     base_rates,
     compare,
+    errored_task_ids,
     market_baseline,
+    merge_retry,
     run_eval,
 )
 from gridcase.rl.spend import Spend
@@ -133,11 +137,19 @@ def _load(split: str) -> tuple[list[Task], dict[str, Answer], dict[str, float]]:
     return tasks, answers, rates
 
 
-def evaluate(model: str, split: str, limit: int | None, workers: int) -> dict[str, Any]:
+def evaluate(
+    model: str, split: str, limit: int | None, workers: int, retry_errors: bool = False
+) -> dict[str, Any]:
     tasks, answers, rates = _load(split)
     tasks = tasks[: limit or None]
     name = model.replace("ckpt:tinker://", "ckpt-").replace("/", "_").replace(":", "_")
     out = M15 / "results" / f"{name}_{split}.json"
+    final, old = out, None
+    if retry_errors:
+        old = json.loads(out.read_text())
+        retry = errored_task_ids(old)
+        tasks = [t for t in tasks if t.task_id in retry]
+        out = out.with_name(out.stem + "_retry.json")
     if model in ("market", "base_rate"):
         fn = market_baseline if model == "market" else base_rate_baseline
         summary: dict[str, Any] = run_eval(model, tasks, answers, rates, out, baseline=fn)[
@@ -165,7 +177,28 @@ def evaluate(model: str, split: str, limit: int | None, workers: int) -> dict[st
                        workers=workers)  # fmt: skip
     finally:
         con.close()
+    if old is not None:
+        res = _merge_retry_files(old, res, final, out)
     return dict(res["summary"]["all"])
+
+
+def _merge_retry_files(
+    old: dict[str, Any], new: dict[str, Any], final: Path, retry: Path
+) -> dict[str, Any]:
+    merged = merge_retry(old, new)
+    final.write_text(json.dumps(merged, indent=1, default=str))
+    eps_final = final.with_name(final.stem + "_episodes.jsonl")
+    eps_retry = retry.with_name(retry.stem + "_episodes.jsonl")
+    if eps_retry.exists():
+        redone = {r["task_id"] for r in new["rows"]}
+        kept = [
+            line for line in eps_final.read_text().splitlines(keepends=True)
+            if json.loads(line)["task_id"] not in redone
+        ] if eps_final.exists() else []  # fmt: skip
+        eps_final.write_text("".join(kept) + eps_retry.read_text())
+        eps_retry.unlink()
+    retry.unlink(missing_ok=True)
+    return merged
 
 
 def report() -> str:
@@ -211,7 +244,8 @@ def main(args: Any) -> int:
     if args.rl_cmd == "tasks":
         print(json.dumps(build_and_freeze(force=args.force), indent=1))
     elif args.rl_cmd == "eval":
-        print(json.dumps(evaluate(args.model, args.split, args.limit, args.workers), indent=1))
+        res = evaluate(args.model, args.split, args.limit, args.workers, args.retry_errors)
+        print(json.dumps(res, indent=1))
     elif args.rl_cmd == "report":
         print(report())
     else:

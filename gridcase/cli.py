@@ -299,6 +299,9 @@ def main(argv: list[str] | None = None) -> int:
     rle.add_argument("--split", default="eval", choices=["eval", "validation", "train"])
     rle.add_argument("--limit", type=int)
     rle.add_argument("--workers", type=int, default=8)
+    rle.add_argument(
+        "--retry-errors", action="store_true", help="rerun only tasks an API failure ended"
+    )
     rl_sub.add_parser("report", help="one table over every results file")
     rlt = rl_sub.add_parser("train", help="LoRA RL on Tinker (paid; validation-selected)")
     rlt.add_argument("--tasks-per-step", type=int, default=16)

@@ -117,6 +117,18 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
+def errored_task_ids(result: dict[str, Any]) -> set[str]:
+    """Tasks lost to an API failure or the spend cap, not to the model's own answer."""
+    return {r["task_id"] for r in result["rows"] if r.get("error")}
+
+
+def merge_retry(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    """`old` with the rows of `new` swapped in by task id, re-summarised."""
+    fresh = {r["task_id"]: r for r in new["rows"]}
+    rows = [fresh.get(r["task_id"], r) for r in old["rows"]]
+    return {"name": old["name"], "summary": summarize(rows), "rows": rows}
+
+
 def run_eval(
     name: str,
     tasks: list[Task],

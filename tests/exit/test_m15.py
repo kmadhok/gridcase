@@ -734,6 +734,30 @@ def test_errored_episodes_are_left_out_of_training() -> None:
     assert trainable([failed]) == []
 
 
+def test_a_retry_replaces_only_the_errored_rows() -> None:
+    from gridcase.rl.harness import errored_task_ids, merge_retry, summarize
+
+    def row(tid: str, p: float | None, error: str | None) -> dict[str, Any]:
+        return {
+            "task_id": tid, "kind": "resolve", "category": "Sports", "cluster_id": tid,
+            "y": 1.0, "p": p, "market_p": 0.5, "brier": None if p is None else (1 - p) ** 2,
+            "log_loss": None if p is None else -math.log(p), "market_brier": 0.25,
+            "reward": 0.0, "tool_calls": 1,
+            "turns": 1, "claims": 0, "dropped": 0, "budget_exceeded": False,
+            "malformed": p is None, "error": error, "usd": 0.01, "seconds": 1.0,
+        }  # fmt: skip
+
+    ok, failed = row("a", 0.8, None), row("b", None, "BadRequestError: credit balance")
+    malformed_by_model = row("c", None, None)  # the model's own failure is not retried
+    old = {"name": "frontier", "rows": [ok, failed, malformed_by_model]}
+    old["summary"] = summarize(old["rows"])
+    assert errored_task_ids(old) == {"b"}
+    merged = merge_retry(old, {"rows": [row("b", 0.6, None)]})
+    assert [r["task_id"] for r in merged["rows"]] == ["a", "b", "c"]
+    assert merged["rows"][1]["p"] == 0.6 and merged["rows"][0] is ok
+    assert merged["summary"]["all"]["answered"] == 2 and merged["name"] == "frontier"
+
+
 def test_every_model_gets_the_same_tools() -> None:
     names = [t["name"] for t in tool_specs()]
     assert names == [*(n.replace(".", "_") for n in AGENT_TOOLS), "submit_answer"]
