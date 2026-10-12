@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from gridcase.explore.query import ExploreQuery
 from gridcase.semantic.kpis import FilterValue, Limit
@@ -102,34 +102,39 @@ EXPLORE_INPUTS: dict[str, type[BaseModel]] = {"kpi.series": ExploreQuery}
 
 # M15 history tools: point-in-time reads of the backfill (data/backfill.duckdb), offered to
 # the RL benchmark's agents only (gridcase/rl), never to the planner or the live store.
-class HistMarket(BaseModel):
+# Unknown fields are refused, so a model's invented argument comes back as an error.
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class HistMarket(_Strict):
     condition_id: str
 
 
-class HistSeries(BaseModel):
+class HistSeries(_Strict):
     condition_id: str
     hours: int = Field(default=72, ge=1, le=720)
     grain: Literal["10m", "1h", "1d"] = "1h"
 
 
-class HistMove(BaseModel):
+class HistMove(_Strict):
     condition_id: str
 
 
-class HistSiblings(BaseModel):
+class HistSiblings(_Strict):
     condition_id: str
     hours: int = Field(default=6, ge=1, le=72)
     top_n: int = Field(default=10, ge=1, le=25)
 
 
-class HistRelated(BaseModel):
+class HistRelated(_Strict):
     condition_id: str
     hours: int = Field(default=2, ge=1, le=24)
     min_move_pts: float = Field(default=5.0, ge=1.0, le=50.0)
     top_n: int = Field(default=10, ge=1, le=25)
 
 
-class HistFlow(BaseModel):
+class HistFlow(_Strict):
     condition_id: str
     hours: int = Field(default=24, ge=1, le=168)
 

@@ -152,6 +152,13 @@ def cmd_backfill(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rl(args: argparse.Namespace) -> int:
+    """M15: tasks, evals, report and training (docs/plans/2026-10-12_rl_backfill_eval_train.md)."""
+    from gridcase.rl.cli import main as rl_main
+
+    return rl_main(args)
+
+
 def choose_llm_factory(llm: str, has_key: bool) -> Callable[[], LLM]:
     """auto = the real planner when a key is present, else the template FakeLLM (logged)."""
     from gridcase.planner.llm import AnthropicLLM, FakeLLM
@@ -273,6 +280,21 @@ def main(argv: list[str] | None = None) -> int:
     bft.add_argument("--max-pages", type=int, default=500)
     bft.add_argument("--workers", type=int, default=4)
     bf_sub.add_parser("build", help="build data/backfill.duckdb from the Parquet files")
+    rl = sub.add_parser("rl", help="M15: build tasks, run evals, report, train")
+    rl.set_defaults(fn=cmd_rl)
+    rl_sub = rl.add_subparsers(dest="rl_cmd", required=True)
+    rl_sub.add_parser("tasks", help="build, sample and freeze the task sets from the backfill")
+    rle = rl_sub.add_parser("eval", help="run a model or baseline over a split")
+    rle.add_argument(
+        "--model", required=True, help="market | base_rate | base | frontier | ckpt:tinker://..."
+    )
+    rle.add_argument("--split", default="eval", choices=["eval", "validation", "train"])
+    rle.add_argument("--limit", type=int)
+    rle.add_argument("--workers", type=int, default=8)
+    rl_sub.add_parser("report", help="one table over every results file")
+    rlt = rl_sub.add_parser("train", help="LoRA RL on Tinker (paid; validation-selected)")
+    rlt.add_argument("--tasks-per-step", type=int, default=16)
+    rlt.add_argument("--group-size", type=int, default=8)
     srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
     _add_serve_args(srv)
     srv.set_defaults(fn=cmd_serve)

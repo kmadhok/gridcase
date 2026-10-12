@@ -33,6 +33,9 @@ CHAT_FALLBACK_MODEL = os.environ.get("GRIDCASE_CHAT_FALLBACK_MODEL", "deepseek/d
 # and the frontier model it is compared with, on the same tools and tasks.
 RL_BASE_MODEL = os.environ.get("GRIDCASE_RL_BASE_MODEL", "Qwen/Qwen3-8B")
 FRONTIER_MODEL = os.environ.get("GRIDCASE_FRONTIER_MODEL", "claude-sonnet-5-5")
+# Cookbook renderer for the small model; thinking off keeps tokens (and cost) down, and the
+# untuned and tuned rows use the same one (DECISIONS 2026-10-12, M15 phase E)
+RL_RENDERER = os.environ.get("GRIDCASE_RL_RENDERER", "qwen3_disable_thinking")
 BACKFILL_DIR = Path(os.environ.get("GRIDCASE_BACKFILL_DIR", DATA_DIR / "backfill"))
 BACKFILL_DB = Path(os.environ.get("GRIDCASE_BACKFILL_DB", DATA_DIR / "backfill.duckdb"))
 RL_DIR = Path(os.environ.get("GRIDCASE_RL_DIR", DATA_DIR / "rl"))
@@ -67,6 +70,11 @@ def ask_daily_usd() -> float:
 def has_anthropic_api_key() -> bool:
     """Presence only; the SDK reads the value itself. Never surface the key."""
     return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+
+
+def has_tinker_api_key() -> bool:
+    """Presence only; the Tinker SDK reads the value itself. Never surface the key."""
+    return bool(os.environ.get("TINKER_API_KEY", "").strip())
 
 
 def has_openrouter_api_key() -> bool:

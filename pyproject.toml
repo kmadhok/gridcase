@@ -34,6 +34,12 @@ dev = [
     "types-pyyaml>=6.0",
     "dbt-duckdb>=1.11.0",
 ]
+# M15 RL training and the small-model evals (Tinker). Not installed by default:
+# `uv sync --group rl` (pulls PyTorch; a CPU build is enough for tokenizing and rendering).
+rl = [
+    "tinker==0.33.1",
+    "tinker-cookbook==0.5.7",
+]
 
 [tool.ruff]
 line-length = 100

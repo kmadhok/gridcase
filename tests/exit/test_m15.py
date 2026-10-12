@@ -10,6 +10,7 @@ reservation that would pass the phase's allowance or the global cap ($150)."""
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,18 @@ from gridcase.backfill.jobs import (
     write_parquet,
 )
 from gridcase.ingest.polymarket_load import categorize
+from gridcase.rl.agent import (
+    AGENT_TOOLS,
+    MAX_TOOL_CALLS,
+    ScriptedAgent,
+    ToolCall,
+    Turn,
+    run_episode,
+    tool_specs,
+)
+from gridcase.rl.harness import market_baseline
+from gridcase.rl.models import AnthropicAgent, TinkerAgent
+from gridcase.rl.reward import brier, ece, log_loss, paired_bootstrap, reward_for
 from gridcase.rl.spend import ALLOWANCES, GLOBAL_CAP_USD, OverBudget, Spend
 from gridcase.rl.tasks import (
     Answer,
@@ -49,6 +62,15 @@ from gridcase.rl.tasks import (
     load_manifest,
     news_clusters,
     sample_split,
+)
+from gridcase.rl.train import (
+    episode_datums,
+    group_advantages,
+    hacking_signal,
+    make_batch,
+    pick_checkpoint,
+    should_stop,
+    steps_affordable,
 )
 from gridcase.store.db import connect as gc_connect
 from gridcase.tools.base import ToolError, run_tool
@@ -555,3 +577,285 @@ def test_manifest_has_no_answers_and_the_hash_pins_them(tmp_path: Path) -> None:
     assert (tmp_path / "evals" / "answers.sha256").read_text().strip() == sha
     assert answers_sha(load_answers(tmp_path / "rl" / "answers.jsonl")) == sha
     assert load_manifest(tmp_path / "evals" / "manifest.jsonl") == tasks
+
+
+# ---------- phase E: agent harness, reward, baselines ----------
+#
+# Every model gets the same system prompt, the same tools (hist.* plus submit_answer), a budget
+# of 8 tool calls and a cap on tool-output size. Tool calls run through run_tool at the task's
+# as_of. submit_answer's summary and claims pass explain/verifier.py (uncited numbers dropped).
+# Reward = 1 - (p - y)^2 with p clipped to [0.01, 0.99]; -0.25 for no valid answer; a further
+# -0.25 if the tool budget ran out or the verifier dropped more than half the claims.
+
+
+def _resolve_task(as_of_ts: int, price: float) -> Task:
+    return Task(
+        task_id=f"resolve:0xm0:{as_of_ts}", kind="resolve", condition_id="0xm0",
+        as_of=datetime.fromtimestamp(as_of_ts, UTC).replace(tzinfo=None),
+        facts={"horizon_hours": 24, "price_now": price}, cluster_id="event:e1",
+        split="eval", category="Politics",
+    )  # fmt: skip
+
+
+def test_reward_and_scores() -> None:
+    assert reward_for(0.8, 1.0, malformed=False, penalised=False) == pytest.approx(0.96)
+    assert reward_for(1.0, 0.0, malformed=False, penalised=False) == pytest.approx(1 - 0.99**2)
+    assert reward_for(None, 1.0, malformed=True, penalised=False) == -0.25
+    assert reward_for(0.5, 1.0, malformed=False, penalised=True) == pytest.approx(0.5)
+    assert brier(0.7, 1.0) == pytest.approx(0.09)
+    assert log_loss(0.0, 0.0) == pytest.approx(-math.log(0.99))
+    assert ece([0.1, 0.1, 0.9, 0.9], [0.0, 0.0, 1.0, 1.0], bins=10) == pytest.approx(0.1)
+
+
+def test_paired_bootstrap_over_clusters() -> None:
+    a = {f"t{i}": 0.10 for i in range(40)}
+    b = {f"t{i}": 0.20 for i in range(40)}
+    cluster = {f"t{i}": f"c{i // 4}" for i in range(40)}
+    mean, lo, hi = paired_bootstrap(a, b, cluster, draws=500, seed=1)
+    assert (
+        mean == pytest.approx(-0.10) and lo == pytest.approx(-0.10) and hi == pytest.approx(-0.10)
+    )
+    b2 = {k: (0.0 if i % 2 else 0.3) for i, k in enumerate(b)}  # noisy, mean 0.15
+    mean2, lo2, hi2 = paired_bootstrap(a, b2, cluster, draws=500, seed=1)
+    assert lo2 <= mean2 <= hi2 and mean2 == pytest.approx(-0.05)
+
+
+def _turn(calls: list[tuple[str, dict[str, Any]]], usd: float = 0.0) -> Turn:
+    return Turn(
+        text="",
+        calls=[ToolCall(id=f"c{i}", name=n, arguments=a) for i, (n, a) in enumerate(calls)],
+        usd=usd,
+    )
+
+
+def test_scripted_agent_reproduces_the_market_baseline(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=11)
+    as_of_ts = T0 + 6 * 86400
+    con = gc_connect(db, read_only=True)
+    move = run_tool(con, "hist.move", {"condition_id": "0xm0"}, _resolve_task(as_of_ts, 0.5).as_of)
+    task = _resolve_task(as_of_ts, move.output["price"])
+    seen: dict[str, Any] = {}
+
+    def policy(history: list[dict[str, Any]]) -> Turn:
+        if len(history) == 1:
+            return _turn([("hist_move", {"condition_id": "0xm0"})])
+        result = json.loads(history[-1]["results"][0][1])
+        seen.update(result)
+        p = result["output"]["price"]
+        return _turn([("submit_answer", {
+            "probability": p, "summary": "The market price is the forecast.",
+            "claims": [{"text": f"The price is {p}.", "receipt_ids": [result["receipt_id"]]},
+                       {"text": "It will surely be 0.777.", "receipt_ids": []}],
+        })])  # fmt: skip
+
+    ep = run_episode(ScriptedAgent(policy), con, task)
+    assert ep.probability == pytest.approx(market_baseline(task, {}))
+    assert ep.tool_calls == 1 and not ep.malformed and not ep.budget_exceeded
+    assert len(ep.claims) == 1 and len(ep.dropped) == 1  # the uncited number is dropped
+    assert seen["receipt_id"] == move.receipt_id  # the same receipt, at the task's as_of
+    con.close()
+
+
+def test_tool_budget_and_malformed_answers(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=12)
+    con = gc_connect(db, read_only=True)
+    task = _resolve_task(T0 + 6 * 86400, 0.5)
+    greedy = ScriptedAgent(lambda h: _turn([("hist_move", {"condition_id": "0xm0"})] * 3))
+    ep = run_episode(greedy, con, task)
+    assert ep.budget_exceeded and ep.malformed and ep.probability is None
+    assert ep.tool_calls == MAX_TOOL_CALLS
+    bad = ScriptedAgent(lambda h: _turn([("submit_answer", {"probability": 1.7, "summary": "x"})]))
+    assert run_episode(bad, con, task).malformed
+    errs = ScriptedAgent(
+        lambda h: (
+            _turn([("hist_move", {"condition_id": "0xm0", "bogus": 1})])
+            if len(h) == 1
+            else _turn([("submit_answer", {"probability": 0.4, "summary": "ok", "claims": []})])
+        )
+    )
+    ep2 = run_episode(errs, con, task)
+    assert ep2.probability == 0.4 and "error" in ep2.transcript[1]["results"][0][1]
+    con.close()
+
+
+def test_spend_is_reserved_before_every_paid_call(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=13)
+    con = gc_connect(db, read_only=True)
+    task = _resolve_task(T0 + 6 * 86400, 0.5)
+    spend = Spend(tmp_path / "spend.jsonl", cap=0.05)
+    calls = {"n": 0}
+
+    def policy(h: list[dict[str, Any]]) -> Turn:
+        calls["n"] += 1
+        return _turn([("hist_move", {"condition_id": "0xm0"})], usd=0.03)
+
+    ep = run_episode(
+        ScriptedAgent(policy, phase="small_eval", estimate=0.03), con, task, spend=spend
+    )
+    assert ep.error is not None and "small_eval" in ep.error
+    assert calls["n"] == 1 and spend.spent() == pytest.approx(0.03)
+    con.close()
+
+
+def test_every_model_gets_the_same_tools() -> None:
+    names = [t["name"] for t in tool_specs()]
+    assert names == [*(n.replace(".", "_") for n in AGENT_TOOLS), "submit_answer"]
+    assert set(AGENT_TOOLS) <= set(HIST_INPUTS)
+    for t in tool_specs():
+        assert t["input_schema"]["type"] == "object"
+
+
+class _FakeAnthropic:
+    """Messages API stand-in: replays scripted responses and records each request."""
+
+    def __init__(self, responses: list[Any]) -> None:
+        self.responses = responses
+        self.requests: list[dict[str, Any]] = []
+        self.messages = self
+
+    def create(self, **kw: Any) -> Any:
+        self.requests.append(
+            json.loads(json.dumps(kw, default=lambda o: getattr(o, "__dict__", str(o))))
+        )
+        return self.responses.pop(0)
+
+
+def _block(**kw: Any) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(**kw)
+
+
+def test_anthropic_adapter_shapes_messages_and_costs(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    db = _hist_db(tmp_path, seed=14)
+    con = gc_connect(db, read_only=True)
+    task = _resolve_task(T0 + 6 * 86400, 0.5)
+    usage = SimpleNamespace(input_tokens=1000, cache_creation_input_tokens=0,
+                            cache_read_input_tokens=2000, output_tokens=100)  # fmt: skip
+    client = _FakeAnthropic([
+        SimpleNamespace(content=[_block(type="tool_use", id="tu1", name="hist_move",
+                                        input={"condition_id": "0xm0"})],
+                        usage=usage, stop_reason="tool_use"),
+        SimpleNamespace(content=[_block(type="tool_use", id="tu2", name="submit_answer",
+                                        input={"probability": 0.6, "summary": "ok", "claims": []})],
+                        usage=usage, stop_reason="tool_use"),
+    ])  # fmt: skip
+    agent = AnthropicAgent(model="claude-sonnet-5-5", client=client)
+    ep = run_episode(agent, con, task)
+    assert ep.probability == 0.6 and ep.tool_calls == 1
+    first, second = client.requests
+    assert first["model"] == "claude-sonnet-5-5" and "fallbacks" not in first
+    assert first["cache_control"] == {"type": "ephemeral"}
+    assert [t["name"] for t in first["tools"]] == [t["name"] for t in tool_specs()]
+    last_user = second["messages"][-1]
+    assert last_user["role"] == "user" and last_user["content"][0]["type"] == "tool_result"
+    assert last_user["content"][0]["tool_use_id"] == "tu1"
+    per_turn = (1000 * 2.0 + 2000 * 2.0 * 0.1 + 100 * 10.0) / 1e6
+    assert ep.usd == pytest.approx(2 * per_turn)
+    con.close()
+
+
+def test_tinker_adapter_renders_tools_and_parses_calls(tmp_path: Path) -> None:
+    pytest.importorskip("tinker_cookbook")
+    from types import SimpleNamespace
+
+    try:
+        from tinker_cookbook.tokenizer_utils import get_tokenizer
+
+        tok = get_tokenizer("Qwen/Qwen3-8B")
+    except Exception as e:  # no network and no cached tokenizer
+        pytest.skip(f"Qwen3 tokenizer unavailable: {e}")
+    replies = [
+        '<tool_call>\n{"name": "hist_move", "arguments": {"condition_id": "0xm0"}}\n'
+        "</tool_call><|im_end|>",
+        '<tool_call>\n{"name": "submit_answer", "arguments": {"probability": 0.35, '
+        '"summary": "Thin evidence.", "claims": []}}\n</tool_call><|im_end|>',
+    ]
+    prompts: list[str] = []
+
+    class Sampler:
+        def sample(self, prompt: Any, num_samples: int, sampling_params: Any) -> Any:
+            prompts.append(tok.decode(prompt.to_ints()))
+            ids = tok.encode(replies.pop(0), add_special_tokens=False)
+            seq = SimpleNamespace(tokens=ids, logprobs=[-0.1] * len(ids))
+            return SimpleNamespace(result=lambda: SimpleNamespace(sequences=[seq]))
+
+    db = _hist_db(tmp_path, seed=15)
+    con = gc_connect(db, read_only=True)
+    agent = TinkerAgent(base_model="Qwen/Qwen3-8B", sampling_client=Sampler())
+    ep = run_episode(agent, con, _resolve_task(T0 + 6 * 86400, 0.5))
+    assert ep.probability == pytest.approx(0.35) and ep.tool_calls == 1
+    assert '"name": "hist_flow"' in prompts[0] and "submit_answer" in prompts[0]  # same tools
+    assert "<tool_response>" in prompts[1] and "receipt_id" in prompts[1]  # result fed back
+    assert ep.raw_turns[0]["logprobs"] and ep.raw_turns[0]["prompt_tokens"]
+    con.close()
+
+
+# ---------- phase F: RL training (offline parts) ----------
+#
+# Group-relative advantages (reward minus the group mean; no spread -> nothing to learn), one
+# Datum per sampled turn (prompt + sampled tokens shifted by one; logprobs and advantage on the
+# sampled tokens, zeros on the prompt), the step count a pilot's cost affords, checkpoint choice
+# on validation scores only, early stopping, and the reward-hacking guard.
+
+
+def test_group_advantages() -> None:
+    assert group_advantages([1.0, 0.0, 0.5, 0.5]) == pytest.approx([0.5, -0.5, 0.0, 0.0])
+    assert group_advantages([0.7, 0.7, 0.7]) == [0.0, 0.0, 0.0]
+    assert group_advantages([]) == []
+
+
+def test_episode_datums_shift_and_mask() -> None:
+    turns = [
+        {"prompt_tokens": [1, 2, 3], "tokens": [4, 5], "logprobs": [-0.1, -0.2]},
+        {"prompt_tokens": [1, 2, 3, 4, 5, 9], "tokens": [6], "logprobs": [-0.3]},
+        {"prompt_tokens": [1], "tokens": [7], "logprobs": []},  # no logprobs: skipped
+        None,
+    ]
+    d1, d2 = episode_datums(turns, 0.5)  # type: ignore[arg-type]
+    assert d1.input_tokens == [1, 2, 3, 4] and d1.target_tokens == [2, 3, 4, 5]
+    assert d1.logprobs == [0.0, 0.0, -0.1, -0.2]
+    assert d1.advantages == [0.0, 0.0, 0.5, 0.5]
+    assert len(d2.input_tokens) == len(d2.target_tokens) == len(d2.advantages) == 6
+    assert d2.advantages[-1] == 0.5 and sum(d2.advantages[:-1]) == 0.0
+
+
+def test_steps_affordable_from_the_pilot() -> None:
+    assert steps_affordable(85.0, 2.0, 5.0, 150) == 40
+    assert steps_affordable(85.0, 0.1, 5.0, 150) == 150  # capped
+    assert steps_affordable(4.0, 2.0, 5.0, 150) == 0
+    assert steps_affordable(10.0, 0.0, 5.0, 150) == 150
+
+
+def test_checkpoint_choice_uses_validation_only() -> None:
+    history = [
+        {"step": 10, "path": "a", "val_brier": 0.20, "eval_brier": 0.10},
+        {"step": 20, "path": "b", "val_brier": 0.18, "eval_brier": 0.30},
+        {"step": 30, "path": "c", "val_brier": 0.18, "eval_brier": 0.01},
+    ]
+    best = pick_checkpoint(history)
+    assert best is not None and best["path"] == "b"  # best validation, earliest on ties
+    assert pick_checkpoint([]) is None
+
+
+def test_early_stop_and_hacking_guard() -> None:
+    h = [{"step": s, "val_brier": v} for s, v in [(10, 0.20), (20, 0.19), (30, 0.21), (40, 0.22)]]
+    assert not should_stop(h[:3], patience=3)
+    assert should_stop(h + [{"step": 50, "val_brier": 0.20}], patience=3)
+    assert not should_stop(h + [{"step": 50, "val_brier": 0.18}], patience=3)
+    first = {"dropped": 0.4, "tool_calls": 3.0}
+    assert hacking_signal(first, {"dropped": 0.5, "tool_calls": 2.5}) is None
+    assert "verifier" in (hacking_signal(first, {"dropped": 1.2, "tool_calls": 3.0}) or "")
+    assert "tool calls" in (hacking_signal(first, {"dropped": 0.1, "tool_calls": 0.1}) or "")
+
+
+def test_batches_mix_task_kinds() -> None:
+    import random
+
+    pool = [_task(i, "train", f"c{i}", kind="spike_hold") for i in range(30)] + [
+        _task(100 + i, "train", f"r{i}", kind="resolve") for i in range(30)
+    ]
+    b = make_batch(pool, 15, 2 / 3, random.Random(0))
+    assert len(b) == 15 and sum(t.kind == "spike_hold" for t in b) == 10
