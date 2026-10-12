@@ -9,6 +9,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 from gridcase import config
 from gridcase.ingest.polymarket import COLLECT_EVERY_S
@@ -126,6 +127,31 @@ def cmd_warehouse(args: argparse.Namespace) -> int:
     return publish()
 
 
+def cmd_backfill(args: argparse.Namespace) -> int:
+    """M15 backfill (keyless Polymarket read APIs) into data/backfill/ and data/backfill.duckdb."""
+    import json as _json
+
+    from gridcase.backfill import jobs
+    from gridcase.backfill.build import build
+    from gridcase.backfill.client import Client
+
+    out = config.BACKFILL_DIR
+    client = Client(out / "cache", rate_per_s=args.rate)
+    if args.backfill_cmd == "markets":
+        res = jobs.run_markets(client, out, args.start, args.end, args.min_volume)
+    elif args.backfill_cmd == "resolutions":
+        res = jobs.run_resolutions(client, out)
+    elif args.backfill_cmd == "prices":
+        res = jobs.run_prices(client, out, args.fidelity, args.workers, limit=args.limit)
+    elif args.backfill_cmd == "trades":
+        needed = {k: int(v) for k, v in _json.loads(Path(args.needed).read_text()).items()}
+        res = jobs.run_trades(client, out, needed, args.max_pages, args.workers)
+    else:
+        res = build(out, config.BACKFILL_DB)
+    print(_json.dumps({**res, "api": client.stats()}))
+    return 0
+
+
 def choose_llm_factory(llm: str, has_key: bool) -> Callable[[], LLM]:
     """auto = the real planner when a key is present, else the template FakeLLM (logged)."""
     from gridcase.planner.llm import AnthropicLLM, FakeLLM
@@ -229,6 +255,24 @@ def main(argv: list[str] | None = None) -> int:
     check = warehouse_sub.add_parser("check-sources", help="fail when warehouse inputs are stale")
     check.add_argument("--max-age-minutes", type=float, default=15)
     warehouse_sub.add_parser("publish", help="copy the marts to MotherDuck (or a local file)")
+    bf = sub.add_parser("backfill", help="M15: backfill closed markets, prices, trades")
+    bf.add_argument("--rate", type=float, default=8.0, help="requests per second, all threads")
+    bf.set_defaults(fn=cmd_backfill)
+    bf_sub = bf.add_subparsers(dest="backfill_cmd", required=True)
+    bfm = bf_sub.add_parser("markets", help="census of closed resolved binary markets (Gamma)")
+    bfm.add_argument("--start", default="2025-10-11")
+    bfm.add_argument("--end", default="2026-10-11")
+    bfm.add_argument("--min-volume", type=float, default=100_000)
+    bf_sub.add_parser("resolutions", help="settled outcomes from data-api /v2/resolutions")
+    bfp = bf_sub.add_parser("prices", help="token 0 price series from CLOB /prices-history")
+    bfp.add_argument("--fidelity", type=int, default=10, help="minutes")
+    bfp.add_argument("--workers", type=int, default=8)
+    bfp.add_argument("--limit", type=int, help="at most this many markets (largest first)")
+    bft = bf_sub.add_parser("trades", help="taker trades for task markets (data-api /v2/trades)")
+    bft.add_argument("--needed", required=True, help="JSON {condition_id: earliest epoch s}")
+    bft.add_argument("--max-pages", type=int, default=500)
+    bft.add_argument("--workers", type=int, default=4)
+    bf_sub.add_parser("build", help="build data/backfill.duckdb from the Parquet files")
     srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
     _add_serve_args(srv)
     srv.set_defaults(fn=cmd_serve)
