@@ -12,7 +12,12 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 - the free baselines;
 - the RL trainer, tested offline.
 
-**Not run: the three paid rows** (untuned Qwen3-8B, Sonnet 5.5, tuned Qwen3-8B). This container has no `.env`, so there's no `ANTHROPIC_API_KEY` or `TINKER_API_KEY`. That's the plan's one stated stop condition. Each paid row is one command once the keys exist (see "How to finish"). The spend ledger caps the total at $150.
+**Local run (laptop, 2026-10-12):**
+- `data/` rebuilt from Polymarket. `gridcase rl tasks` reproduced the committed eval set exactly (answers sha256 `106a786b…`, same pools); the built store matches the cloud one (173,188,008 prices, 17.6M trades).
+- **Untuned Qwen3-8B: done** ($3.10).
+- **Sonnet 5.5: 456 of 600 done** ($10.19). The Anthropic account ran out of credit; the other 144 tasks (all `spike_hold`) failed with "credit balance is too low". After a top-up: `uv run gridcase rl eval --model frontier --split eval --retry-errors` (about $3.70).
+- **Training: not started.** It waits for the user's go after this table.
+- Spend: $13.39 of $150 (`data/rl/spend.jsonl`).
 
 ## What was built
 
@@ -36,9 +41,9 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 | Market baseline | **0.2171** | 0 | 0.620 | 0.044 | resolve 0.195, spike_hold 0.228 |
 | Base rate | 0.2428 | −0.118 | 0.679 | 0.044 | worse than the market: +0.026 (95% CI +0.014 to +0.038) |
 | Scripted agent (harness check) | 0.2171 | 0 | – | – | Calls `hist.move` and `hist.flow`, cites a number from each, submits the market baseline. All 600 answered, 0 malformed, all 1,200 cited claims kept by the verifier. This proves the loop, the tools, the trade data and the verifier work end to end on real data. |
-| Qwen3-8B, untuned | – | – | – | – | needs `TINKER_API_KEY` |
-| claude-sonnet-5-5 | – | – | – | – | needs `ANTHROPIC_API_KEY` |
-| Qwen3-8B, RL-tuned | – | – | – | – | needs `TINKER_API_KEY` (and the two rows above, to decide whether training is worth it) |
+| Qwen3-8B, untuned | 0.2932 | −0.350 | 0.831 | 0.204 | 588 of 600 answered (12 malformed). resolve 0.195 (= market), spike_hold 0.342 (market 0.228). Worse than the market by +0.076 (95% CI +0.054 to +0.097). $3.10. |
+| claude-sonnet-5-5 (partial) | 0.2119\* | +0.024\* | 0.591 | 0.051 | \*456 of 600 answered; the 144 credit failures are scored as p = 0.5. On the answered tasks: resolve 0.1948 vs market 0.1946 (200 tasks); **spike_hold 0.2038 vs market 0.2305** (256 tasks). $10.19. |
+| Qwen3-8B, RL-tuned | – | – | – | – | not started: waits for the user's go |
 
 **What the baselines say about the task:**
 - The **market price is the bar to beat**: Brier 0.217 overall, 0.195 on `resolve`.

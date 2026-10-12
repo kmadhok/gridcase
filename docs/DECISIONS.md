@@ -668,3 +668,19 @@ User decision 2026-10-12: approve a plan that backfills history, freezes an eval
   - Spend so far: $0 of $150.
   - How to finish: the steps are in `RESULTS_M15.md`. Run the two evals before training.
 - **Tests:** M15 exit 36 tests; full suite 309 passed, 3 skipped. ruff and mypy --strict are clean.
+
+## 2026-10-12 — M15 local run: data rebuilt, eval set reproduced, paid evals (Sonnet partial)
+
+- **Rebuild on the laptop** (keyless, ~3.5 h). Census 62,998; resolutions 62,998; prices 126,384 requests, 57 retries, all succeeded; trades 778 + 4,905 markets, 17,638,968 rows after the build. `gridcase rl tasks` reproduced the committed eval set exactly (sha256 `106a786b…`), so no `--force`.
+- **Response cache is gzipped** (`4a4af75`). The uncompressed cache reached 23 GB in the cloud; the laptop had 19 GB free. Compressed it stayed near 1–2 GB. Old `.json` entries are still read.
+- **An API failure now ends one episode, not the run** (`10efc7a`). `run_eval` writes results only at the end, so one uncaught error would lose every paid episode. Errors are recorded per row and scored as unanswered; errored episodes are left out of training groups; the Anthropic client retries 8 times.
+- **Tokenizer lock in `TinkerAgent`** (`21a59ec`). The first base-model eval (16 threads) lost 599 of 600 episodes to the fast tokenizer's "Already borrowed" error ($0.003 spent). Rendering and parsing now hold a lock; sampling stays concurrent. A 64-episode, 16-thread test reproduces the bug and now passes.
+- **`rl eval --retry-errors`** (`d6a7d60`) reruns only rows with an `error` (API failure or spend cap) and merges them by task id. Tasks the model itself failed are not retried, so a model cannot get a second try at a hard task.
+- **Sonnet cost pilot.** 12 eval tasks (6 per kind) before the full run: $0.020 per `resolve` task, $0.026 per `spike_hold`, so ~$14 projected for 600 (allowance $35). Pilot results went to /tmp, not `evals/m15/results/`.
+- **Results** (eval split, 600 tasks):
+  - Untuned Qwen3-8B: Brier 0.2932, skill vs market −0.35; 12 malformed. It matches the market on `resolve` (0.195) and is far worse on `spike_hold` (0.342 vs 0.228). $3.10.
+  - Sonnet 5.5, 456 of 600: the Anthropic account's credit ran out; 144 `spike_hold` tasks failed. On the answered tasks it ties the market on `resolve` (0.1948 vs 0.1946) and beats it on `spike_hold` (0.2038 vs 0.2305, 256 tasks). `REVIEW:` provisional until the 144 are rerun.
+  - `REVIEW:` the verifier dropped many of Sonnet's claims (813 over 456 answers), mostly uncited numbers. It does not change the score, but the summaries cite less than they say.
+- **Spend:** $13.39 of $150 (small_eval $3.10 + $0.04 smoke + $0.003 failed run; frontier_eval $10.46 including the $0.28 pilot).
+- **Stopped** for the user: top up Anthropic credit for the Sonnet retry, and decide on training.
+- **Tests:** M15 exit 41; full suite 316 passed, 1 skipped (the cloud's skips were the Qwen tokenizer tests, which run here). ruff and mypy --strict are clean.
