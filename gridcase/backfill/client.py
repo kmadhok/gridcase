@@ -7,11 +7,13 @@ backfill resumes where it stopped. A shared limiter spaces requests across threa
 2026-10-12). 429 and 5xx answers are retried after Retry-After; a 400 is a deterministic
 refusal and is cached like an answer. No authenticated or trading endpoint is ever called.
 
-The cache key and layout match experiments/feasibility/api.py, so that cache is reusable.
+The cache key and layout match experiments/feasibility/api.py, so that cache is reusable;
+new entries are written gzipped (`.json.gz`) and both forms are read.
 """
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import logging
@@ -65,10 +67,13 @@ class Client:
     def get(self, url: str, params: dict[str, Any] | None = None) -> Any:
         params = {k: v for k, v in (params or {}).items() if v is not None}
         path = self._path(url, params)
-        if path.exists():
-            with self._lock:
-                self.cache_hits += 1
-            return json.loads(path.read_text())["body"]
+        gz = path.with_suffix(".json.gz")
+        for cached in (gz, path):
+            if cached.exists():
+                with self._lock:
+                    self.cache_hits += 1
+                raw = gzip.decompress(cached.read_bytes()) if cached is gz else cached.read_bytes()
+                return json.loads(raw)["body"]
         if self.offline:
             raise LookupError(f"not cached (offline): {url} {params}")
         for attempt in range(7):
@@ -95,10 +100,12 @@ class Client:
             else:
                 r.raise_for_status()
                 body = r.json()
-            path.parent.mkdir(parents=True, exist_ok=True)
+            # gzip: the uncompressed cache reached 23 GB on the full backfill.
+            gz.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"url": url, "params": params, "body": body}))
-            tmp.replace(path)
+            entry = json.dumps({"url": url, "params": params, "body": body}).encode()
+            tmp.write_bytes(gzip.compress(entry, compresslevel=5))
+            tmp.replace(gz)
             return body
         raise RuntimeError(f"gave up after retries: {url} {params}")
 

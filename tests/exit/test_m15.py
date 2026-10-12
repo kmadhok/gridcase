@@ -157,6 +157,19 @@ def test_client_caches_answers_and_400s_and_retries_429(tmp_path: Path) -> None:
     assert len(calls) == n and c.cache_hits == 2
 
 
+def test_client_cache_is_gzipped_and_still_reads_plain_json(tmp_path: Path) -> None:
+    c = _mock_client(tmp_path, lambda req: httpx.Response(200, json={"ok": 1}))
+    assert c.get("https://x.test/a", {"x": "1"}) == {"ok": 1}
+    assert [p.suffixes for p in (tmp_path / "cache").rglob("*.*")] == [[".json", ".gz"]]
+    # an entry from the older, uncompressed cache is served without a request
+    legacy = c._path("https://x.test/b", {})
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps({"url": "https://x.test/b", "params": {}, "body": [7]}))
+    offline = Client(tmp_path / "cache", offline=True)
+    assert offline.get("https://x.test/a", {"x": "1"}) == {"ok": 1}
+    assert offline.get("https://x.test/b") == [7]
+
+
 def test_prices_are_fetched_in_chunks_under_15_days(tmp_path: Path) -> None:
     windows: list[tuple[int, int]] = []
 
