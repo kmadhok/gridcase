@@ -29,6 +29,7 @@ from gridcase.rl.spend import Spend
 from gridcase.rl.tasks import (
     Answer,
     Task,
+    answers_sha,
     build_tasks,
     freeze,
     load_answers,
@@ -47,7 +48,30 @@ SIZES = {  # (spike_hold, resolve, tasks per cluster, Sports cap)
 SEED = 15
 
 
-def build_and_freeze() -> dict[str, Any]:
+class FrozenMismatch(RuntimeError):
+    """A rebuild produced a different eval/validation set than the committed one."""
+
+
+def _check_frozen(frozen: list[Task], answers: dict[str, Answer]) -> None:
+    """The committed manifest and answer hash are the benchmark; a rebuild must reproduce them
+    exactly (it then only rewrites data/rl/answers.jsonl), or stop and say what changed."""
+    path = M15 / "manifest.jsonl"
+    if not path.exists():
+        return
+    old = {t.task_id: t for t in load_manifest(path)}
+    new = {t.task_id: t for t in frozen}
+    old_sha = (M15 / "answers.sha256").read_text().strip()
+    new_sha = answers_sha({k: answers[k] for k in new})
+    if old != new or old_sha != new_sha:
+        sha_note = "same" if old_sha == new_sha else "differs"
+        raise FrozenMismatch(
+            f"rebuilt tasks differ from the committed eval set: {len(set(old) - set(new))} "
+            f"missing, {len(set(new) - set(old))} new, answers sha {sha_note}; "
+            "rerun with --force only to deliberately replace the benchmark"
+        )
+
+
+def build_and_freeze(force: bool = False) -> dict[str, Any]:
     con = connect(config.BACKFILL_DB, read_only=True)
     try:
         tasks, answers = build_tasks(con)
@@ -62,6 +86,8 @@ def build_and_freeze() -> dict[str, Any]:
         res = sample_split([t for t in pool if t.kind == "resolve"], n_res, per_cluster, cap, SEED)
         picked[split] = spikes + res
     frozen = picked["eval"] + picked["validation"]
+    if not force:
+        _check_frozen(frozen, answers)
     sha = freeze(frozen, answers, M15, config.RL_DIR)
     write_manifest(picked["train"], M15 / "train_manifest.jsonl")
     train_answers = {t.task_id: answers[t.task_id] for t in picked["train"]}
@@ -183,7 +209,7 @@ def report() -> str:
 
 def main(args: Any) -> int:
     if args.rl_cmd == "tasks":
-        print(json.dumps(build_and_freeze(), indent=1))
+        print(json.dumps(build_and_freeze(force=args.force), indent=1))
     elif args.rl_cmd == "eval":
         print(json.dumps(evaluate(args.model, args.split, args.limit, args.workers), indent=1))
     elif args.rl_cmd == "report":

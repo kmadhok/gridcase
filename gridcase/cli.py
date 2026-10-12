@@ -283,7 +283,12 @@ def main(argv: list[str] | None = None) -> int:
     rl = sub.add_parser("rl", help="M15: build tasks, run evals, report, train")
     rl.set_defaults(fn=cmd_rl)
     rl_sub = rl.add_subparsers(dest="rl_cmd", required=True)
-    rl_sub.add_parser("tasks", help="build, sample and freeze the task sets from the backfill")
+    rlk = rl_sub.add_parser(
+        "tasks", help="build, sample and freeze the task sets from the backfill"
+    )
+    rlk.add_argument(
+        "--force", action="store_true", help="replace a committed eval set that differs"
+    )
     rle = rl_sub.add_parser("eval", help="run a model or baseline over a split")
     rle.add_argument(
         "--model", required=True, help="market | base_rate | base | frontier | ckpt:tinker://..."
