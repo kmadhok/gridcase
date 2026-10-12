@@ -142,7 +142,9 @@ def cmd_backfill(args: argparse.Namespace) -> int:
     elif args.backfill_cmd == "resolutions":
         res = jobs.run_resolutions(client, out)
     elif args.backfill_cmd == "prices":
-        res = jobs.run_prices(client, out, args.fidelity, args.workers, limit=args.limit)
+        res = jobs.run_prices(
+            client, out, args.fidelity, args.workers, batch=args.batch, limit=args.limit
+        )
     elif args.backfill_cmd == "trades":
         needed = {k: int(v) for k, v in _json.loads(Path(args.needed).read_text()).items()}
         res = jobs.run_trades(client, out, needed, args.max_pages, args.workers)
@@ -275,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     bfp.add_argument("--fidelity", type=int, default=10, help="minutes")
     bfp.add_argument("--workers", type=int, default=8)
     bfp.add_argument("--limit", type=int, help="at most this many markets (largest first)")
+    bfp.add_argument("--batch", type=int, default=400, help="markets per Parquet part")
     bft = bf_sub.add_parser("trades", help="taker trades for task markets (data-api /v2/trades)")
     bft.add_argument("--needed", required=True, help="JSON {condition_id: earliest epoch s}")
     bft.add_argument("--max-pages", type=int, default=500)
