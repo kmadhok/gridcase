@@ -1101,3 +1101,369 @@ def test_a_frozen_holdout_cannot_be_silently_replaced(tmp_path: Path) -> None:
         check_frozen(tasks, flipped, hold)
     with pytest.raises(FrozenMismatch):
         check_frozen(tasks[:2], answers, hold)
+
+
+# ---------- M15 step 2: a trainer that cannot collapse to a constant ----------
+#
+# The first run's tuned model answered 0.65 on 95% of spike tasks. Each change below is
+# configurable in TrainConfig and is tested against its requirement: std-normalised group
+# advantages (a 0.02 Brier gap still gives a unit-size signal; degenerate groups stay zero);
+# per-episode length normalisation with an answer-turn weight (every episode carries the same
+# total weight, prompt tokens stay zero); a KL penalty to the base model in the Cookbook's form
+# plus a collapse guard; stratified batches that always carry both directions and the large-move
+# buckets; a step count re-planned every step; one compact rollout row per training episode;
+# and an offline toy that reproduces the collapse under the old scheme and learns under the new.
+
+
+def test_std_normalised_advantages_keep_unit_scale_signal() -> None:
+    from gridcase.rl.train import group_advantages
+
+    old = group_advantages([1.0, 0.0, 0.5, 0.5], norm="mean")
+    assert old == pytest.approx([0.5, -0.5, 0.0, 0.0])  # the first run's rule, kept as an option
+    sharp = [0.8775, 0.8775, 0.8775, 0.8844, 0.8775, 0.8775, 0.8775, 0.8775]  # one 0.66, seven 0.65
+    assert max(abs(a) for a in group_advantages(sharp, norm="mean")) < 0.01  # ~70x too small
+    new = group_advantages(sharp, norm="std")
+    assert max(new) > 1.5 and sum(new) == pytest.approx(0.0, abs=1e-9)
+    assert new.index(max(new)) == 3
+    assert group_advantages([0.7, 0.7, 0.7], norm="std") == [0.0, 0.0, 0.0]  # degenerate
+    assert group_advantages([], norm="std") == []
+    wide = group_advantages([1.0, 0.0], norm="std")
+    assert wide == pytest.approx([1.0, -1.0], abs=0.01)  # (r - mean) / (std + eps)
+
+
+def test_episode_weights_sum_to_one_and_favour_the_answer_turn() -> None:
+    from gridcase.rl.train import episode_datums, turn_weights
+
+    def turn(n_prompt: int, n: int) -> dict[str, Any]:
+        return {"prompt_tokens": list(range(n_prompt)), "tokens": [7] * n, "logprobs": [-0.1] * n}
+
+    short = [turn(10, 4), turn(20, 6)]  # tool turn, then the answer turn
+    long = [turn(10, 40), turn(60, 40), turn(120, 40), turn(200, 20)]
+    for turns in (short, long):
+        w = turn_weights(turns, answer_turn=len(turns) - 1, answer_weight=4.0, length_norm=True)
+        datums = episode_datums(turns, 1.0, w)
+        total = sum(sum(abs(a) for a in d.advantages) for d in datums)
+        assert total == pytest.approx(1.0)  # equal total weight whatever the token count
+        for d, t in zip(datums, turns, strict=True):
+            n_prompt = len(t["prompt_tokens"]) - 1
+            assert all(a == 0.0 for a in d.advantages[:n_prompt])  # prompt stays zero
+            assert all(wt == 0.0 for wt in d.weights[:n_prompt])
+            assert len(set(d.advantages[n_prompt:])) == 1  # uniform within a turn
+        per_tok_tool, per_tok_ans = datums[0].advantages[-1], datums[-1].advantages[-1]
+        assert per_tok_ans == pytest.approx(4.0 * per_tok_tool)
+    # a 2-token answer among 400 tokens still carries 4 / (4 + 1) ... of nothing: the weight is
+    # per token, so the answer turn's share is 4 n_ans / (4 n_ans + n_other)
+    w = turn_weights(long, answer_turn=3, answer_weight=4.0, length_norm=True)
+    share = w[3] * 20 / (w[3] * 20 + sum(w[i] * 40 for i in range(3)))
+    assert share == pytest.approx(80 / 200)
+    # without normalisation (the first run) every sampled token carried the whole advantage
+    plain = episode_datums(short, 0.5, None)
+    assert plain[0].advantages[-1] == 0.5 and plain[1].advantages[-1] == 0.5
+    # no answer turn (malformed episode): tool turns still count, nothing is up-weighted
+    assert turn_weights(short, answer_turn=None, answer_weight=4.0, length_norm=True) == [
+        pytest.approx(0.1),
+        pytest.approx(0.1),
+    ]
+    # a turn without logprobs is skipped by episode_datums and gets no weight
+    skipped = [turn(10, 4), {"prompt_tokens": [1, 2], "tokens": [3], "logprobs": []}]
+    assert turn_weights(skipped, answer_turn=1, answer_weight=4.0, length_norm=True)[1] == 0.0
+    assert len(episode_datums(skipped, 1.0, None)) == 1
+
+
+def test_degenerate_groups_still_get_the_entropy_term() -> None:
+    from gridcase.rl.agent import Episode
+    from gridcase.rl.train import TrainConfig, apply_kl, step_datums
+
+    def ep(n: int) -> Episode:
+        e = Episode(task_id="t", model="m", probability=0.6, turns=1, answer_turn=0)
+        e.raw_turns = [{"prompt_tokens": [1, 2, 3], "tokens": [4] * n, "logprobs": [-0.2] * n}]
+        return e
+
+    groups = [[ep(2), ep(3)], [ep(2), ep(2)]]
+    advs = [[1.0, -1.0], [0.0, 0.0]]  # the second group is degenerate
+    assert len(step_datums(groups, advs, TrainConfig(kl_coef=0.0))) == 2
+    data = step_datums(groups, advs, TrainConfig(kl_coef=0.1))
+    assert len(data) == 4
+    assert data[2].advantages == [0.0] * 4 and data[2].weights[-1] > 0  # trainable
+    # the entropy term reshapes the degenerate group's tokens too
+    refs: list[list[float | None]] = [[0.0] * len(d.logprobs) for d in data]
+    apply_kl(data, refs, coef=0.1)
+    assert data[2].advantages[-1] == pytest.approx(0.0, abs=1e-12)  # same logprob: no change
+    data[2].logprobs[-1] = -3.0  # one token far rarer than the rest
+    apply_kl(data, refs, coef=0.1)
+    assert data[2].advantages[-1] > 0.0
+
+
+def test_kl_penalty_follows_the_cookbook_form_on_weighted_tokens() -> None:
+    # tinker_cookbook/rl/metrics.py::incorporate_kl_penalty adds coef * mask * (avg_diff - diff)
+    # to the advantages, diff = logp_sampled - logp_base over action tokens. Here mask is the
+    # per-token weight, so the KL term has the same per-episode scale as the reward advantage.
+    from gridcase.rl.train import DatumSpec, apply_kl
+
+    a = DatumSpec([1, 2, 3, 4], [2, 3, 4, 5], [0.0, 0.0, -0.5, -0.5], [0.0, 0.0, 0.3, 0.3],
+                  [0.0, 0.0, 0.1, 0.1])  # fmt: skip
+    b = DatumSpec([1, 2, 3, 4], [2, 3, 4, 5], [0.0, 0.0, -0.5, -0.5], [0.0, 0.0, -0.3, -0.3],
+                  [0.0, 0.0, 0.1, 0.1])  # fmt: skip
+    # reference logprobs over the sampled tokens: a's tokens have risen far above the base
+    ref = {0: [None, None, -2.5, -2.5], 1: [None, None, -0.5, -0.5]}
+    stats = apply_kl([a, b], [ref[0], ref[1]], coef=0.5)
+    assert a.advantages[:2] == [0.0, 0.0] and b.advantages[:2] == [0.0, 0.0]  # prompt stays zero
+    # diff_a = 2.0, diff_b = 0.0, avg = 1.0: a is pushed down, b up, by coef * w * 1.0 = 0.05
+    assert a.advantages[2:] == pytest.approx([0.25, 0.25])
+    assert b.advantages[2:] == pytest.approx([-0.25, -0.25])
+    assert stats["kl_policy_base"] == pytest.approx(1.0)
+    # the term is zero-mean under the weights: it reshapes, it does not add reward
+    total = sum(x for d in (a, b) for x in d.advantages)
+    assert total == pytest.approx(0.0, abs=1e-9)
+    # coef 0 leaves the advantages alone
+    c = DatumSpec([1, 2], [2, 3], [0.0, -0.1], [0.0, 0.7], [0.0, 1.0])
+    apply_kl([c], [[None, -3.0]], coef=0.0)
+    assert c.advantages == [0.0, 0.7]
+
+
+def test_collapse_guard_reads_degenerate_groups_and_spike_spread() -> None:
+    from gridcase.rl.train import TrainConfig, collapse_signal, step_metrics
+
+    def group(kind: str, ps: list[float], ys: float = 1.0) -> list[dict[str, Any]]:
+        return [{"kind": kind, "p": p, "reward": 1 - (p - ys) ** 2} for p in ps]
+
+    healthy = [group("spike_hold", [0.3, 0.6, 0.8, 0.65]), group("spike_hold", [0.65, 0.7]),
+               group("resolve", [0.4, 0.4]), group("spike_hold", [0.2, 0.9])]  # fmt: skip
+    m = step_metrics(healthy)
+    assert m["degenerate_frac"] == pytest.approx(0.25)
+    assert m["degenerate_frac_spike"] == pytest.approx(0.0)
+    assert m["spike_p_distinct"] == 7 and m["spike_p_std"] > 0.15
+    collapsed = [group("spike_hold", [0.65] * 4), group("spike_hold", [0.65] * 4),
+                 group("resolve", [0.4, 0.5]), group("spike_hold", [0.65, 0.66])]  # fmt: skip
+    c = step_metrics(collapsed)
+    assert c["degenerate_frac_spike"] == pytest.approx(2 / 3) and c["spike_p_distinct"] == 2
+    assert c["spike_p_std"] < 0.01
+    cfg = TrainConfig(collapse_degenerate_frac=0.5, collapse_distinct_min=3, collapse_patience=3)
+    assert collapse_signal([m, c, c], cfg) is None  # not yet persistent
+    sig = collapse_signal([m, c, c, c], cfg)
+    assert sig is not None and "degenerate" in sig
+    # a deterministic policy whose answers differ across tasks is not collapse: every group
+    # is degenerate, but the answers spread, and the entropy term still acts on those groups
+    sharp = [group("spike_hold", [0.2] * 4), group("spike_hold", [0.9] * 4),
+             group("spike_hold", [0.55] * 4), group("spike_hold", [0.7] * 4)]  # fmt: skip
+    d = step_metrics(sharp)
+    assert d["degenerate_frac_spike"] == 1.0 and d["spike_p_std"] > 0.2
+    assert collapse_signal([d, d, d, d], cfg) is None
+    assert collapse_signal([c, c, m], cfg) is None  # a healthy step resets the streak
+    # too few distinct spike answers also counts, even with spread inside groups
+    few = [
+        group("spike_hold", [0.65, 0.7]),
+        group("spike_hold", [0.7, 0.65]),
+        group("resolve", [0.3, 0.6]),
+    ]
+    f = step_metrics(few)
+    assert f["degenerate_frac_spike"] == 0.0 and f["spike_p_distinct"] == 2
+    assert "distinct" in (collapse_signal([f, f, f], cfg) or "")
+    # empty step (every episode errored)
+    assert step_metrics([])["degenerate_frac"] == 0.0
+
+
+def test_stratified_batches_cover_both_directions_and_large_moves() -> None:
+    import random
+
+    from gridcase.rl.harness import bucket
+    from gridcase.rl.train import TrainConfig, make_batch
+
+    def spike(i: int, move: float) -> Task:
+        return Task(task_id=f"s{i}", kind="spike_hold", condition_id=f"0x{i}",  # type: ignore[arg-type]
+                    as_of=datetime(2026, 8, 1), facts={"move_pts": move, "price_now": 0.5},
+                    cluster_id=f"c{i}", split="train", category="Politics")  # fmt: skip
+
+    # a pool like the train split: large down-moves are rare (~3%), large up-moves rarer
+    moves = [12.0] * 300 + [-12.0] * 100 + [17.0] * 80 + [-17.0] * 60 + [24.0] * 60 + [-24.0] * 30
+    moves += [35.0] * 10 + [-35.0] * 10
+    pool = [spike(i, m) for i, m in enumerate(moves)] + [
+        _task(1000 + i, "train", f"r{i}", kind="resolve") for i in range(300)
+    ]
+    rng = random.Random(0)
+    misses = 0
+    for _ in range(50):
+        b = make_batch(pool, 16, 2 / 3, rng, stratify=True)
+        assert len(b) == 16 and sum(t.kind == "resolve" for t in b) == 5  # resolve share unchanged
+        spikes = [t for t in b if t.kind == "spike_hold"]
+        assert len({t.task_id for t in b}) == 16
+        buckets = {bucket(float(t.facts["move_pts"])) for t in spikes}
+        assert {"up:30-101", "down:30-101"} <= buckets  # large moves in every step
+        assert any(k.startswith("up") for k in buckets) and any(
+            k.startswith("down") for k in buckets
+        )
+        misses += len(buckets) < 8
+    assert misses == 0  # 11 spike slots cover all 8 direction x size buckets
+    # uniform sampling (the first run) misses the large-move buckets most steps
+    plain_misses = 0
+    for _ in range(50):
+        plain = make_batch(pool, 16, 2 / 3, rng, stratify=False)
+        seen = {bucket(float(t.facts["move_pts"])) for t in plain if t.kind == "spike_hold"}
+        plain_misses += "down:30-101" not in seen
+    assert plain_misses > 25
+    # fewer spike slots than buckets: still one per bucket as far as they go, no duplicates
+    small = make_batch(pool, 6, 2 / 3, rng, stratify=True)
+    assert len(small) == 6 and len({t.task_id for t in small}) == 6
+    # group size is a config knob and sets the episodes per step
+    assert TrainConfig(group_size=16).group_size == 16
+    assert TrainConfig().episodes_per_step == 16 * 8
+    assert TrainConfig(group_size=16, tasks_per_step=12).episodes_per_step == 192
+
+
+def test_steps_are_replanned_every_step_from_the_running_average() -> None:
+    from gridcase.rl.train import plan_steps
+
+    # after 3 steps at $2.04 each with $85 left: 3 + floor((85 - 5) / 2.04) = 42
+    assert plan_steps(step=3, spent=6.12, remaining=78.88, reserve=5.0, cap=150) == 3 + 36
+    # steps got cheaper (~$1): the plan grows instead of leaving $43 unused
+    assert plan_steps(step=20, spent=25.0, remaining=60.0, reserve=5.0, cap=150) == 20 + 44
+    # steps got dearer: the plan shrinks, the reserve is kept
+    assert plan_steps(step=10, spent=30.0, remaining=20.0, reserve=5.0, cap=150) == 10 + 5
+    assert plan_steps(step=10, spent=30.0, remaining=5.0, reserve=5.0, cap=150) == 10
+    assert plan_steps(step=10, spent=0.0, remaining=50.0, reserve=5.0, cap=150) == 150  # free: cap
+    assert plan_steps(step=0, spent=0.0, remaining=50.0, reserve=5.0, cap=150) == 150
+    assert plan_steps(step=100, spent=10.0, remaining=500.0, reserve=5.0, cap=120) == 120
+
+
+def test_every_training_episode_leaves_one_compact_rollout_row(tmp_path: Path) -> None:
+    from gridcase.rl.agent import Episode
+    from gridcase.rl.train import append_rollouts, rollout_row
+
+    task = Task(task_id="s1", kind="spike_hold", condition_id="0x1", as_of=datetime(2026, 8, 1),  # type: ignore[arg-type]
+                facts={"move_pts": -32.0, "price_now": 0.2}, cluster_id="c", split="train",
+                category="Politics")  # fmt: skip
+    ep = Episode(task_id="s1", model="m", probability=0.8, tool_calls=3, turns=4,
+                 transcript=[{"role": "user", "content": "x" * 10_000}])  # fmt: skip
+    ep.raw_turns = [
+        {"prompt_tokens": list(range(5000)), "tokens": [1] * 50, "logprobs": [-0.1] * 50}
+    ]
+    row = rollout_row(step=7, task=task, ep=ep, reward=0.96, advantage=1.2)
+    assert row == {
+        "step": 7, "task_id": "s1", "kind": "spike_hold", "bucket": "down:30-101", "p": 0.8,
+        "reward": 0.96, "turns": 4, "tool_calls": 3, "malformed": False, "penalised": False,
+        "advantage": 1.2, "tokens": 50, "error": None,
+    }  # fmt: skip
+    res = Task(task_id="r1", kind="resolve", condition_id="0x2", as_of=datetime(2026, 8, 1),  # type: ignore[arg-type]
+               facts={"price_now": 0.4}, cluster_id="c", split="train",
+               category="Politics")  # fmt: skip
+    bad = Episode(task_id="r1", model="m", malformed=True, turns=2)
+    row2 = rollout_row(step=7, task=res, ep=bad, reward=-0.25, advantage=-0.9)
+    assert row2["bucket"] == "resolve" and row2["p"] is None and row2["malformed"]
+    failed = Episode(task_id="r1", model="m", malformed=True, error="RuntimeError: 503")
+    assert rollout_row(step=7, task=res, ep=failed, reward=-0.25, advantage=0.0)["error"] == (
+        "RuntimeError: 503"
+    )
+    path = tmp_path / "rl" / "train_rollouts.jsonl"
+    append_rollouts(path, [row, row2])
+    append_rollouts(path, [row])
+    lines = path.read_text().splitlines()
+    assert len(lines) == 3 and json.loads(lines[0]) == row and len(lines[0]) < 300  # compact
+    assert json.loads(lines[1])["p"] is None
+
+
+def test_per_group_std_normalisation_is_biased_for_a_brier_reward() -> None:
+    # Samples in a group share the task's outcome. Around a sharp answer p, a y = 1 group's
+    # rewards spread 2(1 - p) per unit of p and a y = 0 group's 2p: that ratio is what tells the
+    # policy which way is cheaper. Per-group std normalisation makes both unit-size, so the
+    # expected push is (2P - 1) x spread, toward an extreme, not toward P. Normalising by the
+    # step's pooled spread keeps the ratio.
+    from gridcase.rl.train import batch_advantages
+
+    ps = [0.79, 0.80, 0.81]
+    y1 = [1 - (p - 1) ** 2 for p in ps]
+    y0 = [1 - (p - 0) ** 2 for p in ps]
+    per_group = batch_advantages([y1, y0], norm="group_std", eps=0.0)
+    assert per_group[0][2] == pytest.approx(-per_group[1][2], rel=0.02)  # same size, opposite
+    pooled = batch_advantages([y1, y0], norm="batch_std", eps=0.0)
+    assert pooled[0][2] / -pooled[1][2] == pytest.approx(0.2 / 0.8, rel=0.02)
+    mean = batch_advantages([y1, y0], norm="mean")
+    assert mean[0][2] / -mean[1][2] == pytest.approx(0.2 / 0.8, rel=0.02)
+    rms = math.sqrt(sum(a * a for g in pooled for a in g) / 6)
+    assert rms == pytest.approx(1.0)  # unit RMS over the step
+    assert batch_advantages([[0.5, 0.5], y1], norm="batch_std")[0] == [0.0, 0.0]  # degenerate
+
+
+def test_toy_old_scheme_sharpens_to_a_constant_and_new_scheme_keeps_learning() -> None:
+    # experiments/rl_toy: a policy over a grid of answers with a shared bias and feature terms
+    # (direction, headroom, size), groups of samples that share the task's outcome, Adam with
+    # Tinker's defaults, degenerate groups dropped. Rewards from the committed base rates and
+    # the post-mortem's headroom curve. The old scheme (reward minus group mean, token-sum,
+    # uniform batches, no entropy term) sharpens onto two grid bins and most groups go
+    # degenerate; the new one (batch-normalised, length-normalised, entropy bonus, stratified)
+    # keeps the spread, keeps learning, and ends closer to the direction/headroom rule.
+    from gridcase.rl.toy import NEW, OLD, simulate
+
+    seeds = (1, 2, 3)
+    old = [simulate(OLD, steps=120, seed=s) for s in seeds]
+    new = [simulate(NEW, steps=120, seed=s) for s in seeds]
+    const, rule = old[0].constant_brier, old[0].rule_brier
+    assert const > rule + 0.03  # the toy world has something to learn
+    assert new[0].rule_brier == pytest.approx(rule)
+    mean = lambda rs, f: sum(f(r) for r in rs) / len(rs)  # noqa: E731
+    # old: two live answers, half the groups degenerate, the direction gap (truth ~0.28) unlearned
+    assert all(r.spike_p_distinct <= 3 for r in old)
+    assert all(r.degenerate_frac_last >= 0.3 for r in old)
+    assert all(r.mean_p["down"] - r.mean_p["up"] < 0.1 for r in old)
+    # new: spread alive, fewer degenerate groups, better Brier, steeper headroom answers
+    assert all(r.spike_p_distinct >= 5 for r in new)
+    assert all(r.degenerate_frac_last < 0.3 for r in new)
+    assert mean(new, lambda r: r.brier) < mean(old, lambda r: r.brier)
+    assert mean(new, lambda r: r.brier) < const - 0.01
+    assert all(r.headroom_corr < -0.7 for r in new)
+    h_gap = lambda r: r.mean_p["headroom <=0.05"] - r.mean_p["headroom >0.5"]  # noqa: E731
+    assert mean(new, h_gap) > mean(old, h_gap) + 0.05
+    assert mean(new, lambda r: r.mean_p["down"]) > mean(old, lambda r: r.mean_p["down"])
+
+
+def test_train_cli_flags_map_onto_the_config() -> None:
+    from gridcase.cli import main as cli_main  # noqa: F401  (argparse wiring lives there)
+    from gridcase.rl.train import TrainConfig, config_from_args
+
+    class Args:
+        tasks_per_step = 12
+        group_size = 16
+        max_steps = 12
+        learning_rate = None
+        kl_coef = 0.05
+        kl_target = "uniform"
+        stratify = None  # flag not given: config default
+        length_norm = False
+
+    cfg = config_from_args(Args())
+    assert (cfg.tasks_per_step, cfg.group_size, cfg.max_steps) == (12, 16, 12)
+    assert cfg.learning_rate == TrainConfig().learning_rate
+    assert cfg.kl_coef == 0.05 and cfg.kl_target == "uniform"
+    assert cfg.stratify is True and cfg.length_norm is False
+    assert cfg.episodes_per_step == 192
+
+
+def test_diagnose_reads_direction_and_headroom_from_a_results_file(tmp_path: Path) -> None:
+    from gridcase.rl.diagnose import diagnose, headroom
+    from gridcase.rl.tasks import write_manifest
+
+    def spike(i: int, move: float, price: float) -> Task:
+        return Task(task_id=f"s{i}", kind="spike_hold", condition_id=f"0x{i}",  # type: ignore[arg-type]
+                    as_of=datetime(2026, 8, 1), facts={"move_pts": move, "price_now": price},
+                    cluster_id=f"c{i}", split="validation", category="Politics")  # fmt: skip
+
+    tasks = [spike(0, 20.0, 0.9), spike(1, 20.0, 0.6), spike(2, -20.0, 0.1), spike(3, -20.0, 0.4)]
+    assert [headroom(t) for t in tasks] == pytest.approx([0.1, 0.4, 0.1, 0.4])
+    tasks.append(_task(9, "validation", "r", kind="resolve"))
+    write_manifest(tasks, tmp_path / "manifest.jsonl")
+    # answers rise after down-moves and fall with headroom: a model that read the prompt
+    rows = [
+        {"task_id": "s0", "p": 0.55, "y": 1.0}, {"task_id": "s1", "p": 0.45, "y": 0.0},
+        {"task_id": "s2", "p": 0.9, "y": 1.0}, {"task_id": "s3", "p": 0.7, "y": 1.0},
+        {"task_id": "t9", "p": 0.3, "y": 0.0},
+    ]  # fmt: skip
+    (tmp_path / "res.json").write_text(json.dumps({"rows": rows}))
+    d = diagnose(tmp_path / "res.json", tmp_path / "manifest.jsonl")
+    assert d["n"] == 4 and d["distinct_p"] == 4
+    assert d["mean_p_up"] == pytest.approx(0.5) and d["mean_p_down"] == pytest.approx(0.8)
+    assert d["direction_corr"] > 0.8 and d["headroom_corr"] < -0.3
+    assert d["brier"] < d["best_constant_brier"]
+    # a constant answer: no correlation, one distinct value, Brier at the constant's level
+    const = [{**r, "p": 0.65} for r in rows]
+    (tmp_path / "c.json").write_text(json.dumps({"rows": const}))
+    c = diagnose(tmp_path / "c.json", tmp_path / "manifest.jsonl")
+    assert c["direction_corr"] == 0.0 and c["headroom_corr"] == 0.0 and c["distinct_p"] == 1

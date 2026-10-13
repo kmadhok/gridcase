@@ -171,6 +171,7 @@ class Episode:
     dropped: list[str] = field(default_factory=list)
     tool_calls: int = 0
     turns: int = 0
+    answer_turn: int | None = None  # index of the turn that called submit_answer
     budget_exceeded: bool = False
     malformed: bool = False
     error: str | None = None
@@ -239,6 +240,7 @@ def run_episode(
                 )
             submit = next((c for c in turn.calls if c.name == "submit_answer"), None)
             if submit is not None:
+                ep.answer_turn = ep.turns - 1
                 _finish(ep, submit.arguments, receipts)
                 break
             if not turn.calls:

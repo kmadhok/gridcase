@@ -305,9 +305,25 @@ def main(argv: list[str] | None = None) -> int:
         "--retry-errors", action="store_true", help="rerun only tasks an API failure ended"
     )
     rl_sub.add_parser("report", help="one table over every results file")
+    rld = rl_sub.add_parser("diagnose", help="spike_hold answers vs direction and headroom")
+    rld.add_argument("--file", required=True, help="a results file under evals/m15/results/")
     rlt = rl_sub.add_parser("train", help="LoRA RL on Tinker (paid; validation-selected)")
     rlt.add_argument("--tasks-per-step", type=int, default=16)
     rlt.add_argument("--group-size", type=int, default=8)
+    # step 2 knobs; unset ones take gridcase/rl/train.py::TrainConfig defaults
+    rlt.add_argument("--max-steps", type=int)
+    rlt.add_argument("--learning-rate", type=float)
+    rlt.add_argument("--eval-every", type=int)
+    rlt.add_argument("--advantage-norm", choices=["mean", "group_std", "batch_std"])
+    rlt.add_argument("--answer-turn-weight", type=float)
+    rlt.add_argument("--kl-coef", type=float, help="0 disables the KL term")
+    rlt.add_argument("--kl-target", choices=["base", "uniform"])
+    rlt.add_argument("--no-stratify", dest="stratify", action="store_false", default=None)
+    rlt.add_argument("--no-length-norm", dest="length_norm", action="store_false", default=None)
+    rlt.add_argument(
+        "--no-final-eval", dest="final_eval", action="store_false", default=None,
+        help="skip the 600-task eval of the best checkpoint at the end (pilots)",
+    )  # fmt: skip
     srv = sub.add_parser("serve", help="run the MCP + JSON API + UI server (single DB writer)")
     _add_serve_args(srv)
     srv.set_defaults(fn=cmd_serve)

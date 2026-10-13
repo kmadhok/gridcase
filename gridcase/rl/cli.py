@@ -11,6 +11,8 @@ gridcase rl eval --model M --split S [--limit N] [--retry-errors]
                                   --retry-errors reruns only the tasks an API failure or the
                                   spend cap ended, and merges them into the existing results
 gridcase rl report                one table over every results file, with paired bootstraps
+gridcase rl diagnose --file F     do spike_hold answers in a results file follow direction and
+                                  headroom (gridcase/rl/diagnose.py)
 """
 
 from __future__ import annotations
@@ -269,6 +271,12 @@ def main(args: Any) -> int:
         print(json.dumps(res, indent=1))
     elif args.rl_cmd == "report":
         print(report())
+    elif args.rl_cmd == "diagnose":
+        from gridcase.rl.diagnose import diagnose
+
+        path = Path(args.file)
+        manifest = HOLDOUT / "manifest.jsonl" if "holdout" in path.stem else M15 / "manifest.jsonl"
+        print(json.dumps(diagnose(path, manifest), indent=1))
     else:
         from gridcase.rl.train import train_main
 
