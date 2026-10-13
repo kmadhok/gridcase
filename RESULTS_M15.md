@@ -36,14 +36,19 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 
 ## Results (eval split, 600 tasks)
 
-| Row | Brier | Skill vs market | Log loss | ECE | Notes |
+"Market" is the market-implied baseline since 2026-10-12: the price for `resolve`; for `spike_hold`, `price_now` after an up-move and `1 − price_now` after a down-move. The earlier spike_hold "market" row was a train bucket base rate; it is kept as **bucket rate**. Paired differences are 95% cluster-bootstrap intervals.
+
+| Row | Brier | Skill vs market | resolve | spike_hold | Notes |
 |---|---|---|---|---|---|
-| Market baseline | **0.2171** | 0 | 0.620 | 0.044 | resolve 0.195, spike_hold 0.228 |
-| Base rate | 0.2428 | −0.118 | 0.679 | 0.044 | worse than the market: +0.026 (95% CI +0.014 to +0.038) |
-| Scripted agent (harness check) | 0.2171 | 0 | – | – | Calls `hist.move` and `hist.flow`, cites a number from each, submits the market baseline. All 600 answered, 0 malformed, all 1,200 cited claims kept by the verifier. This proves the loop, the tools, the trade data and the verifier work end to end on real data. |
-| Qwen3-8B, untuned | 0.2932 | −0.350 | 0.831 | 0.204 | 588 of 600 answered (12 malformed). resolve 0.195 (= market), spike_hold 0.342 (market 0.228). Worse than the market by +0.076 (95% CI +0.054 to +0.097). $3.10. |
-| claude-sonnet-5-5 | **0.2068** | +0.048 | 0.609 | 0.043 | 600 of 600 answered (144 rerun with `--retry-errors` after a credit top-up). resolve 0.1948 (market 0.1946); **spike_hold 0.2128 vs market 0.2284** (skill +0.068). Better than the market by 0.010, 95% CI −0.023 to +0.002: not significant. Better than untuned Qwen by 0.086 (CI 0.065 to 0.108). $13.87. |
-| Qwen3-8B, RL-tuned | 0.2297 | −0.058 | 0.651 | 0.064 | 600 of 600 answered. resolve 0.197 (market 0.195); spike_hold 0.246 (market 0.228). Better than untuned Qwen by 0.064 (95% CI 0.045 to 0.082) and than the base rate by 0.013 (CI 0.004 to 0.023); worse than the market by 0.013 (CI 0.004 to 0.021) and than Sonnet by 0.023 (CI 0.010 to 0.036). $1.28. |
+| **Market (price-implied)** | **0.2052** | 0 | 0.195 | 0.211 | free |
+| claude-sonnet-5-5 | 0.2068 | −0.008 | 0.195 | 0.213 | vs market +0.002 (−0.011 to +0.014): no edge. $13.87 |
+| Bucket rate (old "market") | 0.2171 | −0.058 | 0.195 | 0.228 | train hold rate by direction × size |
+| Qwen3-8B, RL-tuned | 0.2297 | −0.119 | 0.197 | 0.246 | vs market +0.025 (+0.012 to +0.037); a constant 0.65 on spikes. $1.28 |
+| Base rate | 0.2428 | −0.183 | 0.242 | 0.243 | one rate per task kind |
+| Qwen3-8B, untuned | 0.2932 | −0.429 | 0.195 | 0.342 | 588 of 600 answered. $3.10 |
+| Scripted agent (harness check) | 0.2171 | – | – | – | submits the bucket rate after two cited tool calls; proves the loop end to end |
+
+**Final grading moves to the holdout.** These 600 tasks were studied in the post-mortem, so they now serve development only. `evals/m15/holdout/` holds 1,872 fresh tasks from the same window (1,334 spike_hold, 538 resolve; answers sha256 `42a90f78…`) sharing no news cluster and no market with them; grade with `gridcase rl eval --split holdout`. Resolve came out short of the 666 target because resolve tasks cluster by event and one task per cluster is kept.
 
 **What the paid rows say** (corrected 2026-10-12 after a four-way independent analysis; the first write-up was wrong in three places):
 - **The spike_hold "market baseline" is not a market price.** `market_baseline` (`gridcase/rl/harness.py:47-51`) returns the train hold rate for the move's direction × size bucket; only on `resolve` is it the price. A market-implied, zero-parameter baseline, P(hold) = `price_now` for an up-move and `1 − price_now` for a down-move, scores **0.2105** on eval spike_hold (bucket rule 0.2284) and **0.2052** overall (old "market" 0.2171).

@@ -1,5 +1,6 @@
 {
  "answers_sha256": "106a786bcd91f4cae1396f82bce1287eb313db015eb711f6bbd76a349d0072b8",
+ "holdout_answers_sha256": "42a90f78dbdf3a2f81e1b071605bf8b3143be058def9c6367e00b9f08feb3252",
  "pool": {
   "eval/resolve": 18352,
   "eval/spike_hold": 14800,
@@ -62,9 +63,27 @@
    },
    "clusters": 4921,
    "y_rate": 0.562
+  },
+  "holdout": {
+   "n": 1872,
+   "by_kind": {
+    "spike_hold": 1334,
+    "resolve": 538
+   },
+   "by_category": {
+    "Sports": 799,
+    "Crypto": 451,
+    "Politics": 417,
+    "Tech & Science": 75,
+    "Economy & Finance": 60,
+    "Culture": 57,
+    "Weather": 13
+   },
+   "clusters": 1872,
+   "y_rate": 0.583
   }
  },
- "trade_markets": 5683,
+ "trade_markets": 7083,
  "base_rates": {
   "down:10-15": 0.6515151515151515,
   "down:15-20": 0.6607773851590106,
