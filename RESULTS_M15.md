@@ -66,6 +66,53 @@ Plan: `docs/plans/2026-10-12_rl_backfill_eval_train.md` (approved "full send", 2
 - The **market price is the bar to beat**: Brier 0.217 overall, 0.195 on `resolve`.
 - **Base rates are informative.** In the train split, large downward spikes held 93% of the time (moves of 30 points or more), while upward spikes held 44–51%. A model that learns only this already matches the market baseline on `spike_hold`, so a model has to read the evidence (siblings, related news moves, trade flow) to beat it.
 
+## Step 2: trainer fixes (2026-10-12, offline; nothing spent)
+
+Decisions: `docs/DECISIONS.md`, "M15 step 2". Code: `gridcase/rl/train.py` (every change is a `TrainConfig` knob and a `gridcase rl train` flag), `gridcase/rl/toy.py` + `experiments/rl_toy/` (the offline proof), `gridcase/rl/diagnose.py` (`gridcase rl diagnose --file …`: do a results file's spike answers follow direction and headroom).
+
+**What changed in the trainer.**
+- **Advantages** (`advantage_norm`, default `batch_std`): reward minus the group mean, divided by the step's pooled within-group spread, so a step's advantages have unit RMS however sharp the policy is. The per-group std form the post-mortem asked for is available (`group_std`) but is **biased for a Brier reward**: the samples of a group share the task's outcome, a y = 1 group's rewards spread 2(1 − p) per unit of p and a y = 0 group's 2p, and dividing each group by its own spread erases that ratio, so the expected push is (2P − 1) × spread, toward an extreme rather than toward P. The toy confirms it (answers drift up; seed variance 6× the others). `mean` is the first run's rule.
+- **Length normalisation** (`length_norm`, `answer_turn_weight` = 4): every episode's sampled tokens sum to one unit of weight whatever its token count, and the turn that calls `submit_answer` carries 4× per token (prompt tokens stay zero). Tinker's `importance_sampling` loss is a plain sum over tokens, so the advantage tensor is the only place to do this.
+- **Spread kept alive** (`kl_coef` = 0.1, `kl_target` = `uniform`): the Cookbook's KL-penalty form (coef × w × (avg − diff) added to the advantages, `tinker_cookbook/rl/metrics.py::incorporate_kl_penalty`) with the per-token weights as the mask. With a uniform reference it is an entropy bonus and costs no extra API calls. KL to the untouched base model is implemented (`--kl-target base`, reference logprobs from `SamplingClient.compute_logprobs(prompt_logprobs_last_n=…)`) but the toy rejects it as the default: the base model's down-move answers (mode 0.35) are wrong, and pulling toward them costs Brier (see the table).
+- **Stratified batches** (`stratify`): one spike task from each direction × size bucket first, the rest at random; the resolve share is unchanged. Group size is a knob (`--group-size`); 16 doubles the sampling cost per step.
+- **Step count re-planned every step** after the pilot steps from the remaining allowance, the reserve and the running average cost per step (the first run fixed it after 3 steps and left $43 unused).
+- **Rollouts and collapse metrics**: one compact row per training episode in `data/rl/train_rollouts.jsonl` (step, task, kind, bucket, p, reward, turns, tool calls, malformed, penalised, advantage, tokens); `train_log.jsonl` gains the fraction of degenerate groups (overall and spike_hold), the spread and distinct count of spike answers, and the planned step count. A **collapse guard** stops training when spike groups are ≥ 50% degenerate, or spike answers take ≤ 3 distinct values, for 3 steps running.
+
+**What the toy showed** (`experiments/rl_toy/results.md`; 200 steps, 5 seeds, same world and seeds for every row). The world: direction × size × headroom contexts with hold rates from the committed base rates and the post-mortem's headroom curve (0.95 → 0.44). The policy: a softmax over answers 0.05 … 0.95 with a shared bias and feature terms (down-move, headroom, size), started from the untuned Qwen's own answer histograms (mode 0.65 after up-moves, 0.35 after down-moves); plus a tool-call-length policy with the harness's over-budget penalty. Groups of 8 share one outcome; Adam with Tinker's defaults; degenerate groups dropped. Best constant on the grid: **0.2183**; the direction/headroom rule: **0.1760**; truth: up-moves hold ~0.47, down-moves ~0.75.
+
+| scheme (toy lr 0.1; lr 0.2 in `results.md`) | Brier | live answers | degenerate groups | mean p up / down |
+|---|---|---|---|---|
+| old (first run's rule) | 0.2073 ± 0.0019 | 2.8 | 0.54 | 0.59 / 0.62 |
+| old + batch_std only | 0.2038 ± 0.0047 | 3.0 | 0.50 | 0.64 / 0.65 |
+| old + per-group std | 0.2116 ± 0.0159 | 2.2 | 0.62 | 0.73 / 0.81 |
+| old + stratify only | 0.2050 ± 0.0043 | 2.8 | 0.60 | 0.61 / 0.64 |
+| old + length norm, answer ×4 only | 0.2071 ± 0.0023 | 3.0 | 0.54 | 0.61 / 0.62 |
+| old + KL to base 0.03 / 0.1 / 0.3 | 0.2131 / 0.2562 / 0.2911 | 9 / 10 / 12 | 0.00 | 0.64 / 0.60 … 0.66 / 0.38 |
+| old + entropy 0.03 / 0.1 / 0.3 | 0.1995 / 0.2197 / 0.2655 | 11 / 15 / 19 | 0.00 | 0.66 / 0.73 … 0.53 / 0.60 |
+| old, groups of 16 | 0.2082 ± 0.0010 | 2.6 | 0.50 | 0.59 / 0.63 |
+| new without the entropy term | 0.2048 ± 0.0052 | 3.0 | 0.58 | 0.62 / 0.64 |
+| new with KL to base 0.1 instead | 0.2027 ± 0.0032 | 6.2 | 0.15 | 0.62 / 0.63 |
+| **new** (batch_std + length + entropy 0.1 + stratify) | **0.1953 ± 0.0016** | 7.0 | 0.22 | 0.64 / 0.72 |
+| new, groups of 16 | 0.1924 ± 0.0008 | 8.6 | 0.05 | 0.65 / 0.75 |
+
+- The old scheme reproduces the run's shape: it sharpens to 2–3 live answers within ~30 steps, more than half the groups go degenerate, the answer barely depends on direction (gap 0.05 against a true 0.28), and it stalls. It does not reproduce the full Brier collapse: headroom is a clean feature in the toy, so it still beats the constant by 0.011 (the real model learned nothing of headroom).
+- Alone, advantage normalisation, stratification and length weighting change nothing measurable (differences within 1–2 seed standard deviations; Adam normalises per parameter, and the length/answer weighting only matters when parameters are shared, which the toy cannot model). They stay on first-principles grounds. The scale of the advantages sets the scale of the entropy coefficient: with mean-centred advantages 0.03 works (0.1995) and 0.1 is too strong (0.2197); with batch_std, whose advantages keep unit RMS as the policy sharpens, 0.1 works (0.1953) and 0.03 is too weak (0.2044, 41% degenerate). batch_std is kept so the coefficient means the same thing all through training.
+- The entropy bonus is the change that matters: groups stop going degenerate and learning continues; with the full new scheme the down-move answer reaches 0.72–0.75 (truth 0.75) and the headroom slope is about 2.5× the old one. The up-move answer stays near 0.64 (truth 0.47) in every variant: the toy learns about half the gap to the rule, not all of it.
+- Groups of 16 are better per step (0.1924, 5% degenerate, the lowest seed variance) and about equal per dollar (at 100 steps 0.1977, against 0.1953 for groups of 8 at 200).
+- A dropped idea: KL to the base model. Also note the Tinker docs' own advice against per-group std normalisation (Dr. GRPO): agreed, for a different reason than theirs.
+
+**Pilot proposal (needs approval; not run).** Purpose: check the mechanics and the early signal on the real model before spending the remaining ~$43 of the training allowance.
+
+```bash
+uv run gridcase rl train --max-steps 6 --eval-every 6 --no-final-eval
+```
+Config: the defaults (16 tasks × 8 samples per step, LoRA rank 32, lr 4e-5, temperature 1.0, batch_std advantages, length normalisation with the answer turn ×4, entropy bonus 0.1, stratified batches, collapse guard 50% / 3 answers / 3 steps), 6 steps, one validation checkpoint at step 6, no 600-task eval at the end. Cost: the first run's first three steps cost $2.04 each (the early, long episodes; later steps ~$1, $41.97 over 39 steps) and the entropy term adds no API calls, so 6 × $2.04 = **$12.2 worst case** plus the 250-task validation eval ($1.32 for the untuned model, less for a shorter-episode policy): **≤ $13.5, expected $8–11**. A step costs about twice that with `--group-size 16`; use it for the follow-on only if the pilot's degenerate fraction is above 0.3.
+
+Pass/fail, judged on the 250 validation tasks (`gridcase rl diagnose --file evals/m15/results/val_step6_validation.json`) and `data/rl/train_log.jsonl`. For scale, the same command on the eval 600 gives the first run's tuned model direction corr −0.02, headroom corr −0.04, 4 distinct answers, spike Brier 0.246 (best constant 0.242); Sonnet +0.32, −0.52, 54 distinct, 0.213.
+- **Pass** (go on to spend the rest, ~20–25 more steps, checkpoints every 10): spike answers follow the prompt (mean p after down-moves exceeds up-moves by ≥ 0.03 and direction corr > +0.1; headroom corr < −0.1); spread alive (≥ 8 distinct spike answers, p std ≥ 0.05, degenerate spike groups < 0.3 at steps 3–5, no guard stop); validation Brier below the first run's step-10 value (0.284 overall) and spike Brier below the untuned 0.34; 768 rows in `train_rollouts.jsonl`.
+- **Fail** (stop, report, do not spend the rest): any of those missing, a guard stop, or verifier drops per episode doubling.
+- For the follow-on run, the bar the post-mortem set: validation spike Brier below the constant's 0.2475 by step 20 and heading toward ~0.21 (the market-implied baseline is 0.2176 on validation), with the degenerate spike fraction staying under 0.3.
+
 ## How to finish (paid, on a machine with keys)
 
 This container has no `.env`, so no `ANTHROPIC_API_KEY` and no `TINKER_API_KEY`. Everything free ran here. The three paid rows need a machine that has both keys. That's the laptop, not the VPS: the VPS is memory-tight and must not be disturbed.
