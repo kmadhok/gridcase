@@ -695,3 +695,10 @@ User decision 2026-10-12: approve a plan that backfills history, freezes an eval
 - **`rl report` skipped the trainer's files.** `train_history.json` and `train_state.json` live in `evals/m15/results/` and crashed the report; it now reads only files with a `summary`.
 - **Spend: $64.41 of $150** (train $41.97, small_eval $8.24, frontier_eval $14.21).
 - **Tests:** full suite 317 passed, 1 skipped. ruff and mypy --strict are clean.
+
+## 2026-10-12 — M15 post-mortem: four independent analyses of the training run
+
+- **Method.** Four read-only subagents (three Fable, one Opus), each on one question: training dynamics, what the policy learned, the reward/algorithm, and the data's signal ceiling. No paid calls. The two load-bearing claims were re-checked by hand: `market_baseline` for spike_hold is the bucket base rate (`harness.py:47-51`), and the market-implied baseline (`price_now` / `1 − price_now`) scores 0.2105 on eval spike_hold and 0.2052 overall; Sonnet − it +0.0016 (CI −0.011 to +0.014), tuned Qwen − it +0.0245 (CI +0.012 to +0.037).
+- **Conclusions** (detail in RESULTS_M15.md): the tuned model is indistinguishable from a constant 0.65 on spikes; it plateaued at step 20; the mean-centred Brier advantage with no entropy/KL term drives sharpening onto the policy's prior mode and starves direction-conditional learning; the signal (direction × headroom, both in the prompt) is simple and was learnable; Sonnet's apparent edge over the "market" came from the weak spike_hold baseline.
+- **Corrections to the earlier entry:** "market-relative reward" is a no-op under mean-centred advantages, and direction is already in the prompt. Replacing both with std-normalised advantages, per-episode length normalisation, a KL/degeneracy guard, stratified batches, and a market-implied spike baseline.
+- `REVIEW:` changing the spike_hold baseline redefines the benchmark's "market" row. The frozen eval set and answers are unaffected; only the comparison row changes. Not done without the user's go.
