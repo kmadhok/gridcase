@@ -1,10 +1,12 @@
 """`gridcase rl ...`: build and freeze the task sets, run evals, report.
 
 gridcase rl tasks                 build tasks from data/backfill.duckdb, sample each split,
-                                  freeze eval+validation (evals/m15/), write train tasks and
-                                  the trade-backfill needs (data/rl/)
+                                  freeze eval+validation (evals/m15/) and the fresh holdout
+                                  (evals/m15/holdout/), write train tasks and the
+                                  trade-backfill needs (data/rl/)
 gridcase rl eval --model M --split S [--limit N] [--retry-errors]
-                                  M: market | base_rate (free) | base (untuned small model,
+                                  S: eval | validation | train | holdout (final grading)
+                                  M: market | bucket_rate | base_rate (free) | base (untuned,
                                   Tinker) | frontier (Anthropic) | ckpt:tinker://...
                                   --retry-errors reruns only the tasks an API failure or the
                                   spend cap ended, and merges them into the existing results
@@ -23,6 +25,7 @@ from gridcase import config
 from gridcase.rl.harness import (
     base_rate_baseline,
     base_rates,
+    bucket_rate_baseline,
     compare,
     errored_task_ids,
     market_baseline,
@@ -38,6 +41,7 @@ from gridcase.rl.tasks import (
     freeze,
     load_answers,
     load_manifest,
+    pick_holdout,
     sample_split,
     write_manifest,
 )
@@ -50,26 +54,33 @@ SIZES = {  # (spike_hold, resolve, tasks per cluster, Sports cap)
     "train": (4000, 2000, 3, 0.5),
 }
 SEED = 15
+# Final-grading set, frozen 2026-10-12 after the post-mortem studied the eval 600: same window,
+# no shared news cluster or market with them. (spike_hold, resolve, Sports cap)
+HOLDOUT = M15 / "holdout"
+HOLDOUT_SIZE = (1334, 666, 0.4)
+HOLDOUT_SEED = 16
+HOLDOUT_ANSWERS = "holdout_answers.jsonl"
 
 
 class FrozenMismatch(RuntimeError):
     """A rebuild produced a different eval/validation set than the committed one."""
 
 
-def _check_frozen(frozen: list[Task], answers: dict[str, Answer]) -> None:
+def check_frozen(frozen: list[Task], answers: dict[str, Answer], evals_dir: Path = M15) -> None:
     """The committed manifest and answer hash are the benchmark; a rebuild must reproduce them
-    exactly (it then only rewrites data/rl/answers.jsonl), or stop and say what changed."""
-    path = M15 / "manifest.jsonl"
+    exactly (it then only rewrites the answers file in data/rl/), or stop and say what changed."""
+    path = evals_dir / "manifest.jsonl"
     if not path.exists():
         return
     old = {t.task_id: t for t in load_manifest(path)}
     new = {t.task_id: t for t in frozen}
-    old_sha = (M15 / "answers.sha256").read_text().strip()
+    old_sha = (evals_dir / "answers.sha256").read_text().strip()
     new_sha = answers_sha({k: answers[k] for k in new})
     if old != new or old_sha != new_sha:
         sha_note = "same" if old_sha == new_sha else "differs"
         raise FrozenMismatch(
-            f"rebuilt tasks differ from the committed eval set: {len(set(old) - set(new))} "
+            f"rebuilt tasks differ from the committed set in {evals_dir.name}/: "
+            f"{len(set(old) - set(new))} "
             f"missing, {len(set(new) - set(old))} new, answers sha {sha_note}; "
             "rerun with --force only to deliberately replace the benchmark"
         )
@@ -90,24 +101,31 @@ def build_and_freeze(force: bool = False) -> dict[str, Any]:
         res = sample_split([t for t in pool if t.kind == "resolve"], n_res, per_cluster, cap, SEED)
         picked[split] = spikes + res
     frozen = picked["eval"] + picked["validation"]
-    if not force:
-        _check_frozen(frozen, answers)
+    n_spike, n_res, cap = HOLDOUT_SIZE
+    eval_pool = [t for t in tasks if t.split == "eval"]
+    holdout = pick_holdout(eval_pool, picked["eval"], n_spike, n_res, cap, HOLDOUT_SEED)
+    if not force:  # check every frozen set before writing any of them
+        check_frozen(frozen, answers)
+        check_frozen(holdout, answers, HOLDOUT)
     sha = freeze(frozen, answers, M15, config.RL_DIR)
+    holdout_sha = freeze(holdout, answers, HOLDOUT, config.RL_DIR, answers_name=HOLDOUT_ANSWERS)
+    picked["holdout"] = holdout
     write_manifest(picked["train"], M15 / "train_manifest.jsonl")
     train_answers = {t.task_id: answers[t.task_id] for t in picked["train"]}
     (config.RL_DIR / "train_answers.jsonl").write_text(
         "".join(a.model_dump_json() + "\n" for _, a in sorted(train_answers.items()))
     )
     needed: dict[str, int] = {}
-    for t in [*frozen, *picked["train"]]:
+    for t in [*frozen, *holdout, *picked["train"]]:
         start = int(t.as_of.replace(tzinfo=UTC).timestamp()) - 7 * 86400  # as_of is naive UTC
         needed[t.condition_id] = min(needed.get(t.condition_id, start), start)
     (config.RL_DIR / "trades_needed.json").write_text(json.dumps(needed))
-    rates = base_rates(picked["train"], train_answers)
+    rates = base_rates(picked["train"], train_answers)  # train only
     (M15 / "base_rates.json").write_text(json.dumps(rates, indent=1))
     pool_counts = Counter((t.split, t.kind) for t in tasks)
     summary = {
         "answers_sha256": sha,
+        "holdout_answers_sha256": holdout_sha,
         "pool": {f"{s}/{k}": n for (s, k), n in sorted(pool_counts.items())},
         "picked": {
             s: {
@@ -130,6 +148,9 @@ def _load(split: str) -> tuple[list[Task], dict[str, Answer], dict[str, float]]:
     if split == "train":
         tasks = load_manifest(M15 / "train_manifest.jsonl")
         answers = load_answers(config.RL_DIR / "train_answers.jsonl")
+    elif split == "holdout":
+        tasks = load_manifest(HOLDOUT / "manifest.jsonl")
+        answers = load_answers(config.RL_DIR / HOLDOUT_ANSWERS)
     else:
         tasks = [t for t in load_manifest(M15 / "manifest.jsonl") if t.split == split]
         answers = load_answers(config.RL_DIR / "answers.jsonl")
@@ -150,8 +171,10 @@ def evaluate(
         retry = errored_task_ids(old)
         tasks = [t for t in tasks if t.task_id in retry]
         out = out.with_name(out.stem + "_retry.json")
-    if model in ("market", "base_rate"):
-        fn = market_baseline if model == "market" else base_rate_baseline
+    baselines = {"market": market_baseline, "bucket_rate": bucket_rate_baseline,
+                 "base_rate": base_rate_baseline}  # fmt: skip
+    if model in baselines:
+        fn = baselines[model]
         summary: dict[str, Any] = run_eval(model, tasks, answers, rates, out, baseline=fn)[
             "summary"
         ]

@@ -40,6 +40,7 @@ from gridcase.rl.agent import (
     ScriptedAgent,
     ToolCall,
     Turn,
+    prompt_for,
     run_episode,
     tool_specs,
 )
@@ -1018,3 +1019,85 @@ def test_trade_status_is_written_per_batch_and_flow_refuses_incomplete_walks(
     out = run_tool(con, "hist.flow", {"condition_id": "0xm0", "hours": 24}, when).output
     assert out["trade_data"] is False and "not backfilled" in out["reason"]
     con.close()
+
+
+# ---------- step 1 after the post-mortem: fresh holdout, market-implied baseline, no close cue ----
+#
+# The 600 eval tasks were studied in the post-mortem, so final grading moves to a fresh holdout
+# drawn from the same eval window that shares no news cluster and no market with them, frozen and
+# protected like the first set. The spike_hold "market" row becomes the price's own implication
+# (price_now for an up-move, 1 - price_now for a down-move); the old bucket rule stays as
+# bucket_rate. The resolve prompt no longer says when the market closes: a forecaster knows the
+# scheduled end (hist.market), not that a market will close early.
+
+
+def _spike(i: int, cluster: str, cid: str, cat: str = "Politics", kind: str = "spike_hold") -> Task:
+    return Task(
+        task_id=f"{kind}:{cid}:{i}", kind=kind, condition_id=cid,  # type: ignore[arg-type]
+        as_of=datetime(2026, 8, 1), facts={}, cluster_id=cluster, split="eval", category=cat,
+    )  # fmt: skip
+
+
+def test_market_baseline_is_what_the_price_implies() -> None:
+    from gridcase.rl.harness import bucket_rate_baseline
+
+    rates = {"up:20-30": 0.44, "down:20-30": 0.78, "spike_hold": 0.61, "resolve": 0.46}
+
+    def task(kind: str, facts: dict[str, Any]) -> Task:
+        return Task(task_id="t", kind=kind, condition_id="0x1", as_of=datetime(2026, 8, 1),  # type: ignore[arg-type]
+                    facts=facts, cluster_id="c", split="eval", category="Politics")  # fmt: skip
+
+    assert market_baseline(task("resolve", {"price_now": 0.3}), rates) == pytest.approx(0.3)
+    up = task("spike_hold", {"price_now": 0.6, "move_pts": 20.0})
+    down = task("spike_hold", {"price_now": 0.3, "move_pts": -20.0})
+    assert market_baseline(up, rates) == pytest.approx(0.6)
+    assert market_baseline(down, rates) == pytest.approx(0.7)
+    assert bucket_rate_baseline(up, rates) == pytest.approx(0.44)  # the old rule, kept
+    assert bucket_rate_baseline(down, rates) == pytest.approx(0.78)
+
+
+def test_resolve_prompt_does_not_say_when_the_market_closes() -> None:
+    p = prompt_for(_resolve_task(T0 + 6 * 86400, 0.42))
+    assert "0.42" in p and "first outcome" in p
+    assert "close" not in p.split("as_of")[1] and "hours" not in p
+
+
+def test_holdout_shares_no_cluster_or_market_with_the_studied_set() -> None:
+    from gridcase.rl.tasks import pick_holdout
+
+    used = [_spike(0, "c0", "0xa"), _spike(1, "c1", "0xb", kind="resolve")]
+    pool = [
+        *used,
+        _spike(2, "c0", "0xz"),  # same news cluster as a used task
+        _spike(3, "c9", "0xb", kind="resolve"),  # same market as a used task
+        *[_spike(i, f"n{i}", f"0x{i}", "Sports" if i % 2 else "Crypto") for i in range(10, 40)],
+        *[_spike(i, f"n{i}", f"0x{i}", kind="resolve") for i in range(40, 60)],
+    ]
+    picked = pick_holdout(pool, used, n_spike=10, n_resolve=5, sports_cap=0.4, seed=16)
+    assert sum(t.kind == "spike_hold" for t in picked) == 10
+    assert sum(t.kind == "resolve" for t in picked) == 5
+    used_clusters = {t.cluster_id for t in used}
+    used_markets = {t.condition_id for t in used}
+    assert not any(t.cluster_id in used_clusters or t.condition_id in used_markets for t in picked)
+    assert len({t.cluster_id for t in picked}) == len(picked)  # one task per news cluster
+    assert sum(t.category == "Sports" for t in picked if t.kind == "spike_hold") <= 4
+    assert picked == pick_holdout(pool, used, 10, 5, 0.4, 16)  # deterministic
+
+
+def test_a_frozen_holdout_cannot_be_silently_replaced(tmp_path: Path) -> None:
+    from gridcase.rl.cli import FrozenMismatch, check_frozen
+
+    tasks = [_spike(i, f"c{i}", f"0x{i}") for i in range(3)]
+    answers = {t.task_id: Answer(task_id=t.task_id, y=float(i % 2), detail={})
+               for i, t in enumerate(tasks)}  # fmt: skip
+    hold, rl = tmp_path / "holdout", tmp_path / "rl"
+    check_frozen(tasks, answers, hold)  # nothing committed yet: allowed
+    sha = freeze(tasks, answers, hold, rl, answers_name="holdout_answers.jsonl")
+    assert answers_sha(load_answers(rl / "holdout_answers.jsonl")) == sha
+    assert not (rl / "answers.jsonl").exists()  # the first eval set's answers are untouched
+    check_frozen(tasks, answers, hold)  # an identical rebuild passes
+    flipped = {**answers, "spike_hold:0x0:0": Answer(task_id="spike_hold:0x0:0", y=1.0, detail={})}
+    with pytest.raises(FrozenMismatch):
+        check_frozen(tasks, flipped, hold)
+    with pytest.raises(FrozenMismatch):
+        check_frozen(tasks[:2], answers, hold)

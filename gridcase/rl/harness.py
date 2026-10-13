@@ -45,6 +45,18 @@ def base_rates(train: list[Task], answers: dict[str, Answer]) -> dict[str, float
 
 
 def market_baseline(task: Task, rates: dict[str, float]) -> float:
+    """What the price itself implies. resolve: the price. spike_hold: the chance the price ends
+    on the side the move points to, i.e. price_now after an up-move, 1 - price_now after a
+    down-move (the price as a martingale ending at 0 or 1)."""
+    p = float(task.facts["price_now"])
+    if task.kind == "resolve" or float(task.facts["move_pts"]) > 0:
+        return p
+    return 1.0 - p
+
+
+def bucket_rate_baseline(task: Task, rates: dict[str, float]) -> float:
+    """The train hold rate for the move's direction x size bucket (the pre-2026-10-12 "market"
+    row for spike_hold); the price for resolve."""
     if task.kind == "resolve":
         return float(task.facts["price_now"])
     key = bucket(float(task.facts["move_pts"]))

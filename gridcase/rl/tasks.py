@@ -233,12 +233,38 @@ def write_manifest(tasks: list[Task], path: Path) -> None:
     path.write_text("".join(t.model_dump_json() + "\n" for t in rows))
 
 
-def freeze(tasks: list[Task], answers: dict[str, Answer], evals_dir: Path, rl_dir: Path) -> str:
+def pick_holdout(
+    pool: list[Task],
+    used: list[Task],
+    n_spike: int,
+    n_resolve: int,
+    sports_cap: float,
+    seed: int,
+) -> list[Task]:
+    """A fresh test set: tasks sharing no news cluster and no market with `used`, one per
+    cluster, sampled like the frozen splits."""
+    clusters = {t.cluster_id for t in used}
+    markets = {t.condition_id for t in used}
+    fresh = [t for t in pool if t.cluster_id not in clusters and t.condition_id not in markets]
+    spikes = [t for t in fresh if t.kind == "spike_hold"]
+    picked = sample_split(spikes, n_spike, 1, sports_cap, seed)
+    taken = {t.cluster_id for t in picked}  # a cluster can hold both kinds; keep one task
+    res = [t for t in fresh if t.kind == "resolve" and t.cluster_id not in taken]
+    return picked + sample_split(res, n_resolve, 1, sports_cap, seed)
+
+
+def freeze(
+    tasks: list[Task],
+    answers: dict[str, Answer],
+    evals_dir: Path,
+    rl_dir: Path,
+    answers_name: str = "answers.jsonl",
+) -> str:
     """Write the answer-free manifest (committed) and the answers (data/rl, not committed)."""
     write_manifest(tasks, evals_dir / "manifest.jsonl")
     mine = {t.task_id: answers[t.task_id] for t in tasks}
     rl_dir.mkdir(parents=True, exist_ok=True)
-    (rl_dir / "answers.jsonl").write_text(
+    (rl_dir / answers_name).write_text(
         "".join(a.model_dump_json() + "\n" for _, a in sorted(mine.items()))
     )
     sha = answers_sha(mine)

@@ -294,9 +294,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     rle = rl_sub.add_parser("eval", help="run a model or baseline over a split")
     rle.add_argument(
-        "--model", required=True, help="market | base_rate | base | frontier | ckpt:tinker://..."
+        "--model",
+        required=True,
+        help="market | bucket_rate | base_rate | base | frontier | ckpt:tinker://...",
     )
-    rle.add_argument("--split", default="eval", choices=["eval", "validation", "train"])
+    rle.add_argument("--split", default="eval", choices=["eval", "validation", "train", "holdout"])
     rle.add_argument("--limit", type=int)
     rle.add_argument("--workers", type=int, default=8)
     rle.add_argument(

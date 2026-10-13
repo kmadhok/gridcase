@@ -126,9 +126,9 @@ def prompt_for(task: Task) -> str:
             "submit your probability."
         )
     return head + (
-        f"The market closes in about {f['horizon_hours']} hours; its price now is "
-        f"{f['price_now']}. Question: what is the probability that the market's first outcome "
-        "wins? Investigate, then submit your probability."
+        # no horizon: a forecaster knows the scheduled end (hist.market), not an early close
+        f"The market's price now is {f['price_now']}. Question: what is the probability that "
+        "the market's first outcome wins? Investigate, then submit your probability."
     )
 
 
