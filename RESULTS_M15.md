@@ -115,6 +115,12 @@ Pass/fail, judged on the 250 validation tasks (`gridcase rl diagnose --file eval
 
 **Pilot result (2026-10-13, $12.10): failed.** Spread stayed alive (33 distinct spike answers, no degenerate spike groups, no guard stop), but on the 250 validation tasks the step-6 checkpoint equals the untuned model: overall Brier 0.2994 (untuned 0.2994; bar 0.284), spike Brier 0.348 (bar 0.34), direction corr −0.72 (bar > +0.1), headroom corr +0.36 (bar < −0.1). The follow-on run was not started. Why, and what to do instead: `docs/M15_DIAGNOSIS.md`.
 
+## Step 3: fix the framing, not the weights (2026-10-14)
+
+User decisions D1–D3 (docs/DECISIONS.md, 2026-10-14) implemented: a spike that fell is shown as a rise of the market's second outcome (in the prompt and in the own-market tools), the prompt states the market-implied hold probability q, the summary is not a checked claim, and the task facts are a citable receipt. On the validation spike tasks, with tools and no training, the untuned Qwen3-8B goes from spike Brier 0.344 (gap to q +0.128) to **0.203 (gap −0.010 [−0.021, +0.001])**. Direction corr goes from −0.84 to +0.45, and the penalised share from 55% to 8%. A 25% blend with q beats q on validation (−0.0033 [−0.0062, −0.0004]).
+
+Thinking on, worked examples, SFT and RL are not needed to match the market. Per docs/M15_FINETUNING_GUIDE.md, the remaining test is a pre-registered one-shot holdout eval (≈ $11, not yet run; draft in DECISIONS.md). Details: docs/M15_DIAGNOSIS.md §8, data/rl/diagnosis/p3/summary.md.
+
 ## How to finish (paid, on a machine with keys)
 
 This container has no `.env`, so no `ANTHROPIC_API_KEY` and no `TINKER_API_KEY`. Everything free ran here. The three paid rows need a machine that has both keys. That's the laptop, not the VPS: the VPS is memory-tight and must not be disturbed.

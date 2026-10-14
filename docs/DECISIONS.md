@@ -757,3 +757,49 @@ Research behind these: `docs/M15_FINETUNING_GUIDE.md` (six fact-checked research
 - **TinkerAgent** takes `top_p` / `top_k`. The thinking-on evals use the Qwen3-8B card's T 0.6, top-p 0.95, top-k 20.
 - **Ledger:** seeded with the laptop's pre-pilot spend ($41.97 train, $8.24 small_eval, $14.21 frontier_eval; `model: carried-over:…`), so the cap now sees $80.03 of $150. `REVIEW:` the small_eval allowance has $2.24 left, so P3 is charged to the `reserve` allowance ($15). The cap is unchanged.
 - **Tests:** 5 new exit tests (BD prompt; tools reframed in the shown outcome, prompt price = `hist.move` price; summary unchecked and facts citable; strict vs product matcher; answer written as text). Full suite 337 passed, 3 skipped; ruff and mypy --strict clean.
+
+## 2026-10-14 — M15 P3: the BD framing with tools passes every gate; RL and SFT are not needed
+
+Validation spike tasks (n ≈ 150), with tools, charged to `reserve` ($6.82; total spend $86.85 of $150). Analysis: `experiments/m15_diagnosis/p3_analyze.py` → `data/rl/diagnosis/p3/summary.md`. Gaps are against q on the same rows, with cluster-bootstrap 95% CIs.
+
+| Arm | Brier | Gap to q | Blend 0.25·p + 0.75·q vs q | Dir corr | Copy-q share | Malformed | Penalised | $ |
+|---|---|---|---|---|---|---|---|---|
+| Framing A, thinking off (P2 capture, reference) | 0.344 | +0.128 [+0.073, +0.184] | +0.006 [−0.007, +0.018] | −0.84 | 0.06 | 0.04 | 0.55 | 0.89 |
+| **BD, thinking off** | **0.203** | **−0.010 [−0.021, +0.001]** | **−0.0033 [−0.0062, −0.0004]** | +0.45 | 0.73 | 0.01 | 0.08 | 0.89 |
+| BD + 3 worked examples, thinking off | 0.215 | +0.000 [−0.001, +0.001] | +0.0000 | +0.42 | 0.98 | 0.04 | 0.16 | 1.03 |
+| BD, thinking on (T 0.6, top-p 0.95, top-k 20), 1 sample | 0.225 | +0.011 [−0.006, +0.030] | +0.0002 [−0.004, +0.005] | +0.41 | 0.64 | 0.06 | 0.13 | 1.26 |
+| BD, thinking on, mean of 3 samples | 0.204 | −0.008 [−0.019, +0.003] | −0.0031 [−0.0061, −0.0003] | +0.47 | 0.39 | 0.05 | 0.12 | 3.82 |
+
+- **BD thinking off passes every P3 gate:**
+  - Brier ≤ 0.25; direction corr > 0; down corr(p, q) 0.90 ≥ 0.4.
+  - corr(p, headroom) −0.97 for rises and −0.90 for drops (right sign both ways).
+  - Malformed 1%; zero frame mismatches; penalised 8%, against 55% under framing A.
+- **It also passes Gate A** (within +0.006 of q on validation): rung 1 is enough. Three quarters of its answers copy q. Where it departs it does slightly better: the 25% blend beats q with a CI that excludes 0, the first evidence of information beyond the market. `REVIEW:` validation has now been looked at several times, so this needs the one-shot holdout.
+- **Worked examples make it copy q** (98%). Thinking on costs more, varies more and only ties thinking off when 3 samples are averaged (4.3× the cost).
+- **RL is not recommended.** The thinking-on spread probe under BD (T = 1.0, 10 up + 10 down tasks × 6) gives within-task sd 0.03 for rises and 0.09 for drops, below the 0.12 RL gate. BD anchors the model on q, so RL would have little to explore. 7 of 10 down tasks and 9 of 10 up tasks had at least one sample on the correct side.
+- **Free checks** (`data/rl/diagnosis/free/report.md`, `experiments/m15_diagnosis/free_*.py`):
+  - The market's own path carries information beyond q, but only ≈ 0.005–0.010 Brier on a new period. Path logistic on eval: −0.0015 [−0.014, +0.012].
+  - The stable signal is move speed: when most of a 6h move came in the last hour, it holds 10–17 points less often than q implies.
+  - Re-scored under D2, the penalised share halves (base_eval 55% → 28%). The strict matcher drops only 1–4% of previously kept claims.
+  - `REVIEW:` the benchmark verifier still drops window lengths ("over 24h") and numbers in market names ("O/U 7.5") as unsupported numbers. Excusing them would be a new rule; not done.
+- **Proposed next step** (needs the user's go): the pre-registered one-shot holdout eval below.
+
+### Pre-registration draft: M15 holdout (not yet run)
+
+- **Set:** the frozen holdout, all 1,872 tasks (1,334 spike_hold, 538 resolve); run once.
+- **Models:**
+  - q (free).
+  - BD framing, thinking off, T 0.7, one sample: `uv run gridcase rl eval --model base --split holdout` with `GRIDCASE_RL_FRAMING=bd`, the default.
+  - Report-only, derived for free: the 0.25·p + 0.75·q blend, and the path logistic fitted on train.
+- **Primary test (D3 = match):** on spike tasks, paired cluster-bootstrap Brier(BD) − Brier(q). Pass if the 95% upper bound is ≤ +0.015.
+- **Secondary:**
+  - Direction corr > 0 with its CI excluding 0.
+  - Per-direction mean p within 0.07 of the holdout hold rate.
+  - Within-direction corr(p, headroom) < 0 both ways.
+  - sd(p) ≥ 0.12.
+  - ECE ≤ ECE(q) + 0.01.
+  - Malformed ≤ 5%.
+  - Copy-q share reported.
+  - Resolve Brier vs the price, reported.
+- **Stretch (information beyond q):** the blend's 95% upper bound vs q is < 0.
+- **Cost:** ≈ $11. The small_eval allowance has $2.24 left and reserve $8.18, so it needs the user to move allowance (e.g. $15 from the unused train allowance to small_eval); the global cap is unchanged.
