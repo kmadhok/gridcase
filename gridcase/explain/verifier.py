@@ -39,16 +39,17 @@ SCALE = {
 }
 
 
-def number_tokens(text: str) -> list[tuple[float, float]]:
+def number_tokens(text: str, plain_rounding: bool = False) -> list[tuple[float, float]]:
     """Each number in the text with the rounding it was written at: '$2.9M' is 2,900,000 give
-    or take 50,000 (half its last digit); plain numbers carry no extra rounding."""
+    or take 50,000 (half its last digit); plain numbers carry no extra rounding unless
+    `plain_rounding` ('0.27' is then 0.27 give or take 0.005)."""
     cleaned = DATE_LIKE.sub(" ", text)
     out: list[tuple[float, float]] = []
     for m in NUMBER.finditer(cleaned):
         raw = m.group("n").replace(",", "")
         scale = SCALE.get(m.group("s") or "", 1.0)
         decimals = len(raw.split(".")[1]) if "." in raw else 0
-        slack = 0.5 * 10**-decimals * scale if scale != 1.0 else 0.0
+        slack = 0.5 * 10**-decimals * scale if scale != 1.0 or plain_rounding else 0.0
         out.append((float(raw) * scale, slack))
     return out
 
@@ -92,9 +93,10 @@ def _without_labels(text: str, labels: set[str]) -> str:
     return text
 
 
-def _matches(n: float, values: list[float], slack: float = 0.0) -> bool:
+def _matches(n: float, values: list[float], slack: float = 0.0, strict: bool = False) -> bool:
     """Prose drops signs ("fell 8,236" for -8236), so magnitudes are compared; `slack` is the
-    rounding the number was written at ($2.9M)."""
+    rounding the number was written at ($2.9M). `strict` drops the whole-unit rounding on small
+    numbers, under which any probability matches any price."""
     a = abs(n)
     for v in values:
         b = abs(v)
@@ -102,7 +104,7 @@ def _matches(n: float, values: list[float], slack: float = 0.0) -> bool:
             return True
         if abs(a - b) <= TOLERANCE * max(a, b, 1e-9):
             return True
-        if abs(a - b) < 0.5 and b < 100:  # rounding to whole units on small numbers
+        if not strict and abs(a - b) < 0.5 and b < 100:  # whole-unit rounding on small numbers
             return True
     return False
 
@@ -115,9 +117,12 @@ def verify(
     conclusion: Conclusion,
     receipts: dict[str, Receipt],
     drop_uncited_numbers: bool = False,
+    strict: bool = False,
 ) -> tuple[Conclusion, list[str]]:
     """drop_uncited_numbers: an uncited sentence that states a figure is dropped instead of
-    kept as inferred (the question box: interpretation may explain, not assert numbers)."""
+    kept as inferred (the question box: interpretation may explain, not assert numbers).
+    strict: a number must equal a cited value to the precision it was written at (the M15
+    benchmark; the product keeps the looser rule)."""
     kept: list[Claim] = []
     dropped: list[str] = []
     for c in conclusion.claims:
@@ -141,7 +146,11 @@ def verify(
         for rid in c.receipt_ids:
             _labels(receipts[rid].output, labels)
         text = _without_labels(c.text, labels)
-        bad = [n for n, slack in number_tokens(text) if not _matches(n, values, slack)]
+        bad = [
+            n
+            for n, slack in number_tokens(text, plain_rounding=strict)
+            if not _matches(n, values, slack, strict)
+        ]
         if bad:
             dropped.append(f"{c.text[:60]}: number {_fmt(bad[0])} not in cited receipts")
             continue

@@ -109,6 +109,8 @@ class TinkerAgent:
         max_tokens: int = 1024,
         renderer_name: str | None = None,
         sampling_client: Any = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
     ) -> None:
         from tinker_cookbook.renderers import get_renderer
         from tinker_cookbook.tokenizer_utils import get_tokenizer
@@ -119,6 +121,8 @@ class TinkerAgent:
         self.estimate = estimate
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # thinking-on decoding per the Qwen3-8B card (T 0.6, top-p 0.95, top-k 20); None = default
+        self.top_p, self.top_k = top_p, top_k
         # the fast tokenizer raises "Already borrowed" if eval threads use it at once
         self.tok_lock = threading.Lock()
         self.renderer = get_renderer(
@@ -173,7 +177,11 @@ class _TinkerSession:
             prompt = r.build_generation_prompt(self.messages)
             stop = r.get_stop_sequences()
         params = types.SamplingParams(
-            max_tokens=self.agent.max_tokens, temperature=self.agent.temperature, stop=stop
+            max_tokens=self.agent.max_tokens,
+            temperature=self.agent.temperature,
+            stop=stop,
+            top_p=1.0 if self.agent.top_p is None else self.agent.top_p,
+            top_k=-1 if self.agent.top_k is None else self.agent.top_k,
         )
         res = self.agent.sampler.sample(
             prompt=prompt, num_samples=1, sampling_params=params
@@ -199,13 +207,16 @@ class _TinkerSession:
         n_in = prompt.length
         prefill, sample, _ = TINKER_PRICES.get(self.agent.base_model, (0.3, 1.0, 1.0))
         content = msg.get("content")
-        text = (
-            content
-            if isinstance(content, str)
-            else "".join(str(c.get("text", "")) for c in content or [] if isinstance(c, dict))
-        )
+        if isinstance(content, str):
+            text, thinking = content, ""
+        else:
+            parts = [c for c in content or [] if isinstance(c, dict)]
+            text = "".join(str(c.get("text", "")) for c in parts)
+            thoughts = [c for c in parts if c.get("type") == "thinking"]
+            thinking = "".join(str(c.get("thinking", "")) for c in thoughts)
         return Turn(
             text=text,
+            thinking=thinking,
             calls=calls,
             input_tokens=n_in,
             output_tokens=len(tokens),

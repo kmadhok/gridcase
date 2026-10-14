@@ -693,6 +693,33 @@ def test_tool_budget_and_malformed_answers(tmp_path: Path) -> None:
     con.close()
 
 
+def test_transcript_keeps_what_the_model_wrote(tmp_path: Path) -> None:
+    """Diagnosis needs the model's own words: text and thinking go into the transcript."""
+    db = _hist_db(tmp_path, seed=12)
+    con = gc_connect(db, read_only=True)
+    task = _resolve_task(T0 + 6 * 86400, 0.5)
+
+    def policy(h: list[dict[str, Any]]) -> Turn:
+        if len(h) == 1:
+            t = _turn([("hist_move", {"condition_id": "0xm0"})])
+            t.text, t.thinking = "Check the move first.", "The price rose; does it stick?"
+            return t
+        t = _turn([("submit_answer", {"probability": 0.3, "summary": "ok", "claims": []})])
+        t.thinking = "Moves like this fade."
+        return t
+
+    ep = run_episode(ScriptedAgent(policy), con, task)
+    assert ep.transcript[1]["text"] == "Check the move first."
+    assert ep.transcript[1]["thinking"] == "The price rose; does it stick?"
+    assert ep.transcript[-1] == {
+        "role": "assistant",
+        "thinking": "Moves like this fade.",
+        "submit": {"probability": 0.3, "summary": "ok", "claims": []},
+    }
+    assert list(ep.transcript[-1]["submit"]) == ["probability", "summary", "claims"]
+    con.close()
+
+
 def test_spend_is_reserved_before_every_paid_call(tmp_path: Path) -> None:
     db = _hist_db(tmp_path, seed=13)
     con = gc_connect(db, read_only=True)
@@ -1467,3 +1494,148 @@ def test_diagnose_reads_direction_and_headroom_from_a_results_file(tmp_path: Pat
     (tmp_path / "c.json").write_text(json.dumps({"rows": const}))
     c = diagnose(tmp_path / "c.json", tmp_path / "manifest.jsonl")
     assert c["direction_corr"] == 0.0 and c["headroom_corr"] == 0.0 and c["distinct_p"] == 1
+
+
+# ---------- M15 step 3: BD framing (D1), unchecked summary, facts receipt (D2) ----------
+#
+# User decisions 2026-10-14 (docs/M15_FINETUNING_GUIDE.md §6): a spike that fell is shown as a
+# rise of the market's second outcome, in the prompt and in the own-market tools, and the prompt
+# states the market-implied hold probability q. The submit summary is no longer a checked claim;
+# the task's facts are a receipt claims may cite. The benchmark verifier matches numbers strictly
+# (a probability no longer "verifies" against any price within 0.5); the product verifier is
+# unchanged.
+
+
+def _down_spike(db: Path, as_of_ts: int, drop: float = 0.2) -> Task:
+    con = gc_connect(db, read_only=True)
+    as_of = datetime.fromtimestamp(as_of_ts, UTC).replace(tzinfo=None)
+    now = float(run_tool(con, "hist.move", {"condition_id": "0xm0"}, as_of).output["price"])
+    con.close()
+    before = round(now + drop, 4)
+    return Task(
+        task_id=f"spike_hold:0xm0:{as_of_ts}", kind="spike_hold", condition_id="0xm0",
+        as_of=as_of, cluster_id="news:x", split="eval", category="Politics",
+        facts={"move_pts": round((now - before) * 100, 1), "window_hours": 6,
+               "price_before": before, "price_now": now, "horizon_hours": 72},
+    )  # fmt: skip
+
+
+def _results(ep: Any) -> dict[str, dict[str, Any]]:
+    """Tool name -> output, from an episode's transcript."""
+    out = {}
+    for step in ep.transcript:
+        if step["role"] == "tool":
+            for (name, _), (_, content) in zip(step["calls"], step["results"], strict=True):
+                out[name] = json.loads(content)
+    return out
+
+
+def test_bd_prompt_shows_a_drop_as_a_rise_of_the_other_outcome() -> None:
+    t = Task(
+        task_id="spike_hold:0x1:1", kind="spike_hold", condition_id="0x1",
+        as_of=datetime(2026, 8, 1), cluster_id="c", split="eval", category="Politics",
+        facts={"move_pts": -22.0, "window_hours": 6, "price_before": 0.49, "price_now": 0.27,
+               "horizon_hours": 72},
+    )  # fmt: skip
+    bd = prompt_for(t, framing="bd", facts_id="r123")
+    assert "second outcome" in bd and "from 0.51 to 0.73 (+22.0 points)" in bd
+    assert "the price ends on the side this move points to is 0.730" in bd
+    assert "receipt r123" in bd
+    a = prompt_for(t, framing="a", facts_id="r123")
+    assert "from 0.49 to 0.27 (-22.0 points)" in a and "For reference" not in a
+    up = Task(**{**t.model_dump(), "facts": {**t.facts, "move_pts": 22.0, "price_before": 0.27,
+                                               "price_now": 0.49}})  # fmt: skip
+    bd_up = prompt_for(up, framing="bd")
+    assert "the market's price moved from 0.27 to 0.49 (+22.0 points)" in bd_up
+    assert "points to is 0.490" in bd_up
+
+
+def test_bd_tools_report_the_own_market_in_the_shown_outcome(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=21)
+    con = gc_connect(db, read_only=True)
+    task = _down_spike(db, T0 + 6 * 86400)
+    calls = [("hist_move", {"condition_id": "0xm0"}), ("hist_market", {"condition_id": "0xm0"}),
+             ("hist_series", {"condition_id": "0xm0", "hours": 24, "grain": "1h"}),
+             ("hist_siblings", {"condition_id": "0xm0", "hours": 6})]  # fmt: skip
+
+    def policy(h: list[dict[str, Any]]) -> Turn:
+        if len(h) == 1:
+            return _turn(calls)
+        move = json.loads(h[1]["results"][0][1])
+        return _turn([("submit_answer", {
+            "probability": 0.7, "summary": f"It rose to {move['output']['price']}.",
+            "claims": [{"text": f"The price is {move['output']['price']}.",
+                        "receipt_ids": [move["receipt_id"]]}],
+        })])  # fmt: skip
+
+    raw = {n: run_tool(con, n.replace("_", "."), a, task.as_of).output for n, a in calls}
+    ep = run_episode(ScriptedAgent(policy), con, task, framing="bd")
+    got = {k: v["output"] for k, v in _results(ep).items()}
+    move = got["hist_move"]
+    assert move["price"] == pytest.approx(1 - raw["hist_move"]["price"])
+    assert move["price"] == pytest.approx(1 - task.facts["price_now"])  # matches the prompt
+    assert f"to {round(1 - task.facts['price_now'], 4)}" in ep.transcript[0]["content"]
+    for k, v in raw["hist_move"]["change"].items():
+        assert move["change"][k] is None if v is None else move["change"][k] == pytest.approx(-v)
+    assert move["prices_are_for"] == "No" and got["hist_market"]["price_is_for"] == "No"
+    for (_, p0), (_, p1) in zip(raw["hist_series"]["points"], got["hist_series"]["points"],
+                                strict=True):  # fmt: skip
+        assert p1 == pytest.approx(1 - p0)
+    assert got["hist_siblings"]["prices_are_for"] == "each market's first outcome"
+    assert not ep.dropped and not ep.penalised and ep.probability == 0.7
+    plain = run_episode(ScriptedAgent(policy), con, task, framing="a")
+    assert _results(plain)["hist_move"]["output"] == raw["hist_move"]
+    con.close()
+
+
+def test_summary_is_not_checked_and_task_facts_are_citable(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=22)
+    con = gc_connect(db, read_only=True)
+    task = _resolve_task(T0 + 6 * 86400, 0.42)
+
+    def policy(h: list[dict[str, Any]]) -> Turn:
+        rid = h[0]["content"].split("receipt ")[1].split(".")[0]
+        return _turn([("submit_answer", {
+            "probability": 0.42, "summary": "At 0.42 the market gives it 42%.",
+            "claims": [{"text": "The price now is 0.42.", "receipt_ids": [rid]}],
+        })])  # fmt: skip
+
+    ep = run_episode(ScriptedAgent(policy), con, task, framing="bd")
+    assert ep.dropped == [] and not ep.penalised
+    assert [c.text for c in ep.claims] == ["The price now is 0.42."]
+    assert "not checked" in tool_specs()[-1]["description"]
+    con.close()
+
+
+def test_benchmark_matcher_is_strict_and_the_product_verifier_unchanged() -> None:
+    from gridcase.explain.schema import Claim, Conclusion
+    from gridcase.explain.verifier import verify
+    from gridcase.ledger.schema import Receipt
+
+    r = Receipt.build(tool="hist.move", inputs={}, as_of=datetime(2026, 8, 1),
+                      output={"price": 0.4, "sd": 0.2735}, data_version=None, effect_size=None,
+                      runtime_ms=0, sql=[])  # fmt: skip
+    claims = [Claim(text="The answer is 0.65.", receipt_ids=[r.receipt_id]),
+              Claim(text="The spread is about 0.27.", receipt_ids=[r.receipt_id])]  # fmt: skip
+    concl = Conclusion(case_id="c", top_hypothesis=None, ranked=[], claims=claims)
+    strict, dropped = verify(concl, {r.receipt_id: r}, drop_uncited_numbers=True, strict=True)
+    assert [c.text for c in strict.claims] == ["The spread is about 0.27."] and len(dropped) == 1
+    lenient, _ = verify(concl, {r.receipt_id: r}, drop_uncited_numbers=True)
+    assert len(lenient.claims) == 2  # the product rule: whole-unit rounding on small numbers
+
+
+def test_a_submit_written_as_text_is_still_read(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=23)
+    con = gc_connect(db, read_only=True)
+    task = _resolve_task(T0 + 6 * 86400, 0.42)
+    for text in (
+        'Done. {"name": "submit_answer", "arguments": {"probability": 0.3, "summary": "x", '
+        '"claims": []}}',
+        '{"probability": 0.3, "summary": "x", "claims": []}',
+    ):
+        t = Turn(text=text, calls=[])
+        ep = run_episode(ScriptedAgent(lambda h, t=t: t), con, task)
+        assert ep.probability == 0.3 and not ep.malformed and ep.parsed_from_text
+    silent = run_episode(ScriptedAgent(lambda h: Turn(text="I think 0.3", calls=[])), con, task)
+    assert silent.malformed  # no JSON: nudged once, then malformed, as before
+    con.close()

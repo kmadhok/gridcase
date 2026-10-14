@@ -36,6 +36,9 @@ FRONTIER_MODEL = os.environ.get("GRIDCASE_FRONTIER_MODEL", "claude-sonnet-5-5")
 # Cookbook renderer for the small model; thinking off keeps tokens (and cost) down, and the
 # untuned and tuned rows use the same one (DECISIONS 2026-10-12, M15 phase E)
 RL_RENDERER = os.environ.get("GRIDCASE_RL_RENDERER", "qwen3_disable_thinking")
+# How a spike is shown: "bd" shows a drop as a rise of the market's second outcome and states the
+# market-implied hold probability (user decision D1, 2026-10-14); "a" is the original wording
+RL_FRAMING = os.environ.get("GRIDCASE_RL_FRAMING", "bd")
 BACKFILL_DIR = Path(os.environ.get("GRIDCASE_BACKFILL_DIR", DATA_DIR / "backfill"))
 BACKFILL_DB = Path(os.environ.get("GRIDCASE_BACKFILL_DB", DATA_DIR / "backfill.duckdb"))
 RL_DIR = Path(os.environ.get("GRIDCASE_RL_DIR", DATA_DIR / "rl"))
