@@ -68,6 +68,10 @@ def test_tunnel_publishes_the_server_without_mcp() -> None:
     assert rules[1]["hostname"] == "marketcase.kanumadhok.com"
     assert rules[1]["service"] == "http://100.125.186.6:8710"
     assert rules[-1] == {"service": "http_status:404"}  # anything else: nothing
+    # By id, not name: the host then needs only that tunnel's credentials file, not the account cert.
+    import uuid
+
+    uuid.UUID(cfg["tunnel"])
     text = (DEPLOY / "install.sh").read_text()
     assert "cert.pem" in text and "enable --now gridcase-tunnel.service" in text
 

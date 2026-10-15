@@ -33,13 +33,13 @@ systemctl --user enable --now gridcase-collector.service
 systemctl --user enable --now gridcase-server.service
 systemctl --user restart gridcase-server.service
 systemctl --user enable --now gridcase-airflow.service
-if [ -f "$HOME/.cloudflared/cert.pem" ]; then
+if [ -f "$HOME/.cloudflared/cert.pem" ] || ls "$HOME"/.cloudflared/*.json >/dev/null 2>&1; then
   install -m 0644 "$here/gridcase-tunnel.service" "$dest/gridcase-tunnel.service"
   install -m 0600 "$here/cloudflared-marketcase.yml" "$HOME/.cloudflared/marketcase.yml"
   systemctl --user daemon-reload
   systemctl --user enable --now gridcase-tunnel.service
   systemctl --user restart gridcase-tunnel.service
 else
-  echo "Cloudflare not authorised yet (no ~/.cloudflared/cert.pem): public tunnel skipped" >&2
+  echo "Cloudflare not authorised yet (no cert.pem or tunnel credentials in ~/.cloudflared): public tunnel skipped" >&2
 fi
 systemctl --user status gridcase-server.service --no-pager | head -5 || true
