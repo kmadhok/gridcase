@@ -1,11 +1,11 @@
 # Cloudflare Tunnel routing for MarketCase (installed as ~/.cloudflared/marketcase.yml).
 # The tunnel is found by name; its credentials file sits next to cert.pem in ~/.cloudflared.
-tunnel: marketcase
+tunnel: marketcase-kayak
 ingress:
   # MCP can start paid investigations: never public (the app refuses it too)
   - hostname: marketcase.kanumadhok.com
     path: ^/(marketcase/)?mcp
     service: http_status:404
   - hostname: marketcase.kanumadhok.com
-    service: http://100.115.94.44:8710
+    service: http://100.125.186.6:8710
   - service: http_status:404

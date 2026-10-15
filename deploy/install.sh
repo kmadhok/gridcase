@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or refresh the MarketCase user units on the VPS. Idempotent; touches only gridcase-*.
+# Install or refresh the MarketCase user units on the production host (kayak). Idempotent; touches only gridcase-*.
 #   gridcase-collector: saves every Polymarket trade (raw files only, never the database)
 #   gridcase-server:    loads trades, runs the hourly watch, serves MCP + API + UI (the only
 #                       process that writes the DuckDB store)

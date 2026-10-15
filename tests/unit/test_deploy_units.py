@@ -23,7 +23,7 @@ def test_server_service_is_the_single_writer_and_binds_tailscale_only() -> None:
     s = _unit("gridcase-server.service")
     execs = " ; ".join(s["ExecStart"])
     assert "gridcase serve" in execs
-    assert "--host 100.115.94.44" in execs
+    assert "--host 100.125.186.6" in execs
     assert "--port 8710" in execs
     assert "--no-ingest" not in execs  # the server owns ingest; no second writer process
     assert s["Restart"] == ["on-failure"]
@@ -53,7 +53,7 @@ def test_install_script_enables_the_collector_in_every_mode() -> None:
 
 
 def test_tunnel_publishes_the_server_without_mcp() -> None:
-    """kanumadhok.com/marketcase reaches the VPS through a Cloudflare Tunnel (outbound only: no
+    """kanumadhok.com/marketcase reaches kayak through a Cloudflare Tunnel (outbound only: no
     port opened). The tunnel refuses MCP at Cloudflare's edge, before the app's own check."""
     import yaml
 
@@ -66,7 +66,7 @@ def test_tunnel_publishes_the_server_without_mcp() -> None:
     rules = cfg["ingress"]
     assert rules[0]["service"] == "http_status:404" and "mcp" in rules[0]["path"]
     assert rules[1]["hostname"] == "marketcase.kanumadhok.com"
-    assert rules[1]["service"] == "http://100.115.94.44:8710"
+    assert rules[1]["service"] == "http://100.125.186.6:8710"
     assert rules[-1] == {"service": "http_status:404"}  # anything else: nothing
     text = (DEPLOY / "install.sh").read_text()
     assert "cert.pem" in text and "enable --now gridcase-tunnel.service" in text
@@ -86,9 +86,9 @@ def test_airflow_schedules_the_warehouse_and_binds_tailscale_only() -> None:
     assert env["AIRFLOW__CORE__DAGS_FOLDER"] == f"{root}/orchestration/airflow/dags"
     assert env["AIRFLOW__CORE__LOAD_EXAMPLES"] == "False"
     assert env["AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION"] == "False"  # else nothing ever runs
-    assert env["AIRFLOW__API__HOST"] == "100.115.94.44"
+    assert env["AIRFLOW__API__HOST"] == "100.125.186.6"
     assert env["AIRFLOW__API__PORT"] == "8711"
-    assert env["AIRFLOW__CORE__EXECUTION_API_SERVER_URL"] == "http://100.115.94.44:8711/execution/"
+    assert env["AIRFLOW__CORE__EXECUTION_API_SERVER_URL"] == "http://100.125.186.6:8711/execution/"
     assert env["GRIDCASE_ROOT"] == root
     assert env["UV"] == "%h/.local/bin/uv"
     # standalone starts its scheduler, API server and DAG processor as `airflow ...` children.

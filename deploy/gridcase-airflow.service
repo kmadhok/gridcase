@@ -15,13 +15,13 @@ Environment=AIRFLOW_HOME=%h/.local/share/marketcase-airflow
 Environment=AIRFLOW__CORE__DAGS_FOLDER=%h/Documents/Claude/Projects/gridcase/orchestration/airflow/dags
 Environment=AIRFLOW__CORE__LOAD_EXAMPLES=False
 Environment=AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
-Environment=AIRFLOW__API__HOST=100.115.94.44
+Environment=AIRFLOW__API__HOST=100.125.186.6
 Environment=AIRFLOW__API__PORT=8711
 Environment=AIRFLOW__API__WORKERS=1
 # The DAG is one chain; the default 32 lets LocalExecutor fork up to 32 idle ~130 MB workers,
 # which crept past MemoryMax every ~5 hours (OOM kills 2026-10-03).
 Environment=AIRFLOW__CORE__PARALLELISM=2
-Environment=AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://100.115.94.44:8711/execution/
+Environment=AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://100.125.186.6:8711/execution/
 Environment=GRIDCASE_ROOT=%h/Documents/Claude/Projects/gridcase
 Environment=UV=%h/.local/bin/uv
 # standalone starts its scheduler, API server and DAG processor as `airflow ...` subprocesses.
