@@ -28,7 +28,7 @@ def test_server_service_is_the_single_writer_and_binds_tailscale_only() -> None:
     assert "--no-ingest" not in execs  # the server owns ingest; no second writer process
     assert s["Restart"] == ["on-failure"]
     assert s["WorkingDirectory"][0].endswith("/gridcase")
-    assert "Environment" not in s
+    assert s["Environment"] == ["TZ=UTC"]  # DuckDB uses the host's zone; times are shown as UTC
     assert not any("KEY" in v or "TOKEN" in v for vals in s.values() for v in vals)
 
 
@@ -44,7 +44,7 @@ def test_collector_runs_forever_and_restarts_on_failure() -> None:
     assert "gridcase collect" in " ; ".join(s["ExecStart"])
     assert s["Restart"] == ["always"]
     assert s["WorkingDirectory"][0].endswith("/gridcase")
-    assert "Environment" not in s
+    assert s["Environment"] == ["TZ=UTC"]
 
 
 def test_install_script_enables_the_collector_in_every_mode() -> None:
@@ -94,6 +94,7 @@ def test_airflow_schedules_the_warehouse_and_binds_tailscale_only() -> None:
     assert env["AIRFLOW__API__PORT"] == "8711"
     assert env["AIRFLOW__CORE__EXECUTION_API_SERVER_URL"] == "http://100.125.186.6:8711/execution/"
     assert env["GRIDCASE_ROOT"] == root
+    assert env["TZ"] == "UTC"
     assert env["UV"] == "%h/.local/bin/uv"
     # standalone starts its scheduler, API server and DAG processor as `airflow ...` children.
     assert env["PATH"].startswith(f"{root}/orchestration/airflow/.venv/bin:")

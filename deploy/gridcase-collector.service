@@ -9,6 +9,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/Documents/Claude/Projects/gridcase
+# DuckDB shows times in the host zone; the app labels them UTC.
+Environment=TZ=UTC
 ExecStart=%h/.local/bin/uv run gridcase collect --interval 240
 Restart=always
 RestartSec=15

@@ -12,6 +12,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/Documents/Claude/Projects/gridcase
+# DuckDB shows times in the host zone; the app labels them UTC.
+Environment=TZ=UTC
 ExecStart=%h/.local/bin/uv run gridcase serve --host 100.125.186.6 --port 8710
 Restart=on-failure
 RestartSec=10

@@ -23,6 +23,7 @@ Environment=AIRFLOW__API__WORKERS=1
 Environment=AIRFLOW__CORE__PARALLELISM=2
 Environment=AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://100.125.186.6:8711/execution/
 Environment=GRIDCASE_ROOT=%h/Documents/Claude/Projects/gridcase
+Environment=TZ=UTC
 Environment=UV=%h/.local/bin/uv
 # standalone starts its scheduler, API server and DAG processor as `airflow ...` subprocesses.
 Environment=PATH=%h/Documents/Claude/Projects/gridcase/orchestration/airflow/.venv/bin:/usr/local/bin:/usr/bin:/bin
