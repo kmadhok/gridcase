@@ -803,3 +803,12 @@ Validation spike tasks (n ≈ 150), with tools, charged to `reserve` ($6.82; tot
   - Resolve Brier vs the price, reported.
 - **Stretch (information beyond q):** the blend's 95% upper bound vs q is < 0.
 - **Cost:** ≈ $11. The small_eval allowance has $2.24 left and reserve $8.18, so it needs the user to move allowance (e.g. $15 from the unused train allowance to small_eval); the global cap is unchanged.
+
+## 2026-10-15 — spend guard counts outstanding reservations (offline; nothing spent)
+
+- **Resolves the Codex `REVIEW:` item** from the 2026-10-12 step 2 entry: `Spend.reserve` checked recorded spend only, so concurrent workers could each pass the same remaining allowance.
+- `Spend.reserve` now returns a `Reservation` that counts against the phase allowance and the $150 cap until `record(..., reservation=r)` or `release(r)` settles it. A `threading.Lock` makes check-and-hold and record-and-settle atomic; `reserved(phase, usd)` is a context manager that releases on exit. Releasing twice is a no-op.
+- Call sites settle on success and on failure: `run_episode` per turn (try/finally), the KL reference and train step in `train.py` (`with spend.reserved(...)`), and the P1 framing probe.
+- Unchanged: the JSONL row format, `spent()` and `remaining()` (recorded spend only), and `record` called without a reservation (tests and old experiments).
+- The guard is per-process. Separate processes still see each other's recorded rows only, so do not run two paid jobs against the same phase at once.
+- Exit tests added to `tests/exit/test_m15.py`: two reservations that fit alone but not together; record settles; release and a failed model call free the hold; 16 threads where exactly 3 fit; the cap counts outstanding amounts across phases.

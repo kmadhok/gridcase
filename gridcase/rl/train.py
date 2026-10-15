@@ -493,24 +493,23 @@ def train_main(args: Any) -> int:  # pragma: no cover - needs Tinker and a key
             elif data and ref is not None:
                 n_sampled = [sum(1 for w in d.weights if w > 0) for d in data]
                 n_ref = sum(len(d.input_tokens) + 1 for d in data)
-                spend.reserve("train", n_ref * prefill_price / 1e6)
-                futures = [
-                    ref.compute_logprobs(
-                        types.ModelInput.from_ints(d.input_tokens + [d.target_tokens[-1]]),
-                        prompt_logprobs_last_n=n,
-                    )
-                    for d, n in zip(data, n_sampled, strict=True)
-                ]
-                # entry j scores token j given the prefix, so targets align with [1:]
-                refs = [list(f.result())[1:] for f in futures]
+                with spend.reserved("train", n_ref * prefill_price / 1e6) as held:
+                    futures = [
+                        ref.compute_logprobs(
+                            types.ModelInput.from_ints(d.input_tokens + [d.target_tokens[-1]]),
+                            prompt_logprobs_last_n=n,
+                        )
+                        for d, n in zip(data, n_sampled, strict=True)
+                    ]
+                    # entry j scores token j given the prefix, so targets align with [1:]
+                    refs = [list(f.result())[1:] for f in futures]
+                    spend.record(
+                        "train", f"{config.RL_BASE_MODEL}:kl_ref", n_ref, 0,
+                        n_ref * prefill_price / 1e6, reservation=held,
+                    )  # fmt: skip
                 kl = apply_kl(data, refs, cfg.kl_coef)
-                spend.record(
-                    "train", f"{config.RL_BASE_MODEL}:kl_ref", n_ref, 0,
-                    n_ref * prefill_price / 1e6,
-                )  # fmt: skip
             if data:
                 n_tok = sum(len(d.input_tokens) for d in data)
-                spend.reserve("train", n_tok * train_price / 1e6)
                 # Datum.__post_init__ converts raw lists to TensorData (int64 / float32)
                 datums = []
                 for d in data:
@@ -525,11 +524,13 @@ def train_main(args: Any) -> int:  # pragma: no cover - needs Tinker and a key
                             loss_fn_inputs=inputs,
                         )
                     )
-                tc.forward_backward(datums, "importance_sampling").result()
-                tc.optim_step(types.AdamParams(learning_rate=cfg.learning_rate)).result()
-                spend.record(
-                    "train", f"{config.RL_BASE_MODEL}:train", n_tok, 0, n_tok * train_price / 1e6
-                )
+                with spend.reserved("train", n_tok * train_price / 1e6) as held:
+                    tc.forward_backward(datums, "importance_sampling").result()
+                    tc.optim_step(types.AdamParams(learning_rate=cfg.learning_rate)).result()
+                    spend.record(
+                        "train", f"{config.RL_BASE_MODEL}:train", n_tok, 0,
+                        n_tok * train_price / 1e6, reservation=held,
+                    )  # fmt: skip
             step += 1
             if step >= cfg.pilot_steps:
                 max_steps = plan_steps(

@@ -119,6 +119,94 @@ def test_unknown_phase_is_refused(tmp_path: Path) -> None:
         s.reserve("party", 1.0)
 
 
+def test_outstanding_reservations_count_against_the_allowance(tmp_path: Path) -> None:
+    s = Spend(tmp_path / "spend.jsonl")
+    s.record("small_eval", "qwen", 0, 0, ALLOWANCES["small_eval"] - 1.0)
+    s.reserve("small_eval", 0.6)  # fits alone
+    with pytest.raises(OverBudget):
+        s.reserve("small_eval", 0.6)  # also fits alone, but not with the first outstanding
+    assert s.outstanding("small_eval") == pytest.approx(0.6)
+
+
+def test_record_settles_its_reservation(tmp_path: Path) -> None:
+    path = tmp_path / "spend.jsonl"
+    s = Spend(path)
+    s.record("small_eval", "qwen", 0, 0, ALLOWANCES["small_eval"] - 1.0)
+    r = s.reserve("small_eval", 0.6)
+    s.record("small_eval", "qwen", 10, 2, 0.1, reservation=r)
+    assert s.outstanding() == 0.0
+    s.reserve("small_eval", 0.6)  # 0.9 left after the actual 0.1, nothing outstanding
+    s.release(r)  # settling twice is a no-op
+    assert s.outstanding("small_eval") == pytest.approx(0.6)
+    # the ledger format is unchanged: no reservation fields in the row
+    assert set(json.loads(path.read_text().splitlines()[-1])) == {
+        "at", "phase", "model", "input_tokens", "output_tokens", "usd"
+    }  # fmt: skip
+
+
+def test_release_frees_a_reservation_without_recording(tmp_path: Path) -> None:
+    s = Spend(tmp_path / "spend.jsonl")
+    s.record("small_eval", "qwen", 0, 0, ALLOWANCES["small_eval"] - 1.0)
+    with s.reserved("small_eval", 0.6), pytest.raises(OverBudget):
+        s.reserve("small_eval", 0.6)
+    assert s.outstanding() == 0.0
+    r = s.reserve("small_eval", 0.6)
+    s.release(r)
+    assert s.outstanding() == 0.0 and s.spent("small_eval") == ALLOWANCES["small_eval"] - 1.0
+
+
+def test_global_cap_counts_outstanding_across_phases(tmp_path: Path) -> None:
+    s = Spend(tmp_path / "spend.jsonl", cap=10.0)
+    s.record("train", "qwen", 0, 0, 8.0)
+    s.reserve("train", 1.5)  # 2.0 under the cap
+    with pytest.raises(OverBudget):
+        s.reserve("frontier_eval", 1.0)  # its phase has room; the cap does not
+    s.reserve("frontier_eval", 0.5)
+
+
+def test_concurrent_reservations_cannot_overshoot(tmp_path: Path) -> None:
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    s = Spend(tmp_path / "spend.jsonl")
+    s.record("small_eval", "qwen", 0, 0, ALLOWANCES["small_eval"] - 1.0)
+    gate = threading.Barrier(16)
+
+    def one(_: int) -> bool:
+        gate.wait()
+        try:
+            s.reserve("small_eval", 0.3)  # 1.0 left: exactly three fit
+        except OverBudget:
+            return False
+        return True
+
+    with ThreadPoolExecutor(16) as ex:
+        ok = list(ex.map(one, range(16)))
+    assert sum(ok) == 3
+    assert s.outstanding("small_eval") == pytest.approx(0.9)
+
+
+def test_a_failed_paid_call_releases_its_reservation(tmp_path: Path) -> None:
+    db = _hist_db(tmp_path, seed=15)
+    con = gc_connect(db, read_only=True)
+    task = _resolve_task(T0 + 6 * 86400, 0.5)
+    spend = Spend(tmp_path / "spend.jsonl")
+
+    def boom(h: list[dict[str, Any]]) -> Turn:
+        raise RuntimeError("529 overloaded")
+
+    ep = run_episode(ScriptedAgent(boom, phase="small_eval", estimate=1.0), con, task, spend=spend)
+    assert ep.error is not None and "529" in ep.error
+    assert spend.outstanding() == 0.0 and spend.spent() == 0.0
+
+    def ok(h: list[dict[str, Any]]) -> Turn:
+        return _turn([("submit_answer", {"probability": 0.5})], usd=0.2)
+
+    run_episode(ScriptedAgent(ok, phase="small_eval", estimate=1.0), con, task, spend=spend)
+    assert spend.outstanding() == 0.0 and spend.spent() == pytest.approx(0.2)
+    con.close()
+
+
 # ---------- phase B: backfill ----------
 #
 # The client caches every answer (a 400 included) and retries 429s; prices are fetched in

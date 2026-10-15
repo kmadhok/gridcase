@@ -148,14 +148,18 @@ class Sampler:
             prompt = self.renderer.build_generation_prompt(msgs)
             stop = self.renderer.get_stop_sequences()
         est = (prompt.length * self.prefill + self.samples * max_tokens * self.sample_price) / 1e6
-        self.spend.reserve("small_eval", est)
         params = types.SamplingParams(
             max_tokens=max_tokens, temperature=self.temperature,
             stop=stop,
         )  # fmt: skip
-        res = self.client.sample(
-            prompt=prompt, num_samples=self.samples, sampling_params=params
-        ).result()
+        held = self.spend.reserve("small_eval", est)
+        try:
+            res = self.client.sample(
+                prompt=prompt, num_samples=self.samples, sampling_params=params
+            ).result()
+        except BaseException:
+            self.spend.release(held)
+            raise
         texts, n_out = [], 0
         for seq in res.sequences:
             with self.lock:
@@ -164,7 +168,9 @@ class Sampler:
             texts.append(c if isinstance(c, str) else "".join(str(x.get("text", "")) for x in c))
             n_out += len(seq.tokens)
         usd = (prompt.length * self.prefill + n_out * self.sample_price) / 1e6
-        self.spend.record("small_eval", f"p1:{self.base}", prompt.length, n_out, usd)
+        self.spend.record(
+            "small_eval", f"p1:{self.base}", prompt.length, n_out, usd, reservation=held
+        )
         return texts, usd
 
 

@@ -383,19 +383,23 @@ def run_episode(
     nudged = False
     try:
         while ep.turns < MAX_TURNS:
-            if spend is not None:
-                spend.reserve(model.phase, model.estimate)
-            turn = sess.send(user, results)
+            held = spend.reserve(model.phase, model.estimate) if spend is not None else None
+            try:
+                turn = sess.send(user, results)
+                if spend is not None:
+                    spend.record(
+                        model.phase, model.name, turn.input_tokens, turn.output_tokens, turn.usd,
+                        reservation=held,
+                    )  # fmt: skip
+            finally:  # a failed call must not leave its reservation held
+                if spend is not None and held is not None:
+                    spend.release(held)
             user, results = None, []
             ep.turns += 1
             ep.usd += turn.usd
             ep.input_tokens += turn.input_tokens
             ep.output_tokens += turn.output_tokens
             ep.raw_turns.append(turn.raw)
-            if spend is not None:
-                spend.record(
-                    model.phase, model.name, turn.input_tokens, turn.output_tokens, turn.usd
-                )
             said = _said(turn)
             submit = next((c for c in turn.calls if c.name == "submit_answer"), None)
             args = submit.arguments if submit is not None else None
