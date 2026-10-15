@@ -119,18 +119,18 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
   }
 
   const lineInput = (which: "ceiling" | "floor") => (
-    <label className="min-w-0 text-xs muted">
+    <label className="min-w-0 text-xs text-ink-muted">
       {which === "ceiling" ? "Ceiling" : "Floor"}
-      <div className="mt-1 flex gap-1">
+      <div className="mt-1.5 flex gap-2">
         <input
           type="number"
           min={0}
           value={state[which] ?? ""}
           onChange={(e) => update({ [which]: e.target.value === "" ? null : Number(e.target.value) })}
-          className="panel w-full min-w-0 p-2 text-sm"
+          className="field w-full min-w-0 px-3 py-2 text-sm"
         />
         {state[which] === null && points.length > 0 && (
-          <button type="button" onClick={() => update({ [which]: suggestLine(points, which), mode: "lines" })} className="shrink-0 rounded border border-[var(--gc-line)] px-2 text-xs hover:border-amber-600">
+          <button type="button" onClick={() => update({ [which]: suggestLine(points, which), mode: "lines" })} className="btn btn-sm shrink-0 px-3">
             Add
           </button>
         )}
@@ -140,28 +140,28 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-xl font-semibold">Explore</h1>
-        <p className="muted text-sm">
+      <header className="pb-4">
+        <h1 className="display text-[40px] leading-[1.05] md:text-6xl">Explore</h1>
+        <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-ink-soft md:text-base">
           Pick a number and a slice of the market, draw your own lines, and ask why any hour moved. The chart is free and instant; “Why did this happen?” runs a full investigation of that hour.
         </p>
       </header>
 
-      <section className="panel p-4" aria-label="What to look at">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.4fr)]">
+      <section className="panel rounded-3xl p-5 md:p-6" aria-label="What to look at">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.4fr)]">
           <div className="min-w-0">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide muted">Number</h2>
-            <select aria-label="Number" value={state.kpi} onChange={(e) => update({ kpi: e.target.value, floor: null, ceiling: null, mode: "usual" })} className="panel w-full p-2 text-sm">
+            <h2 className="label mb-2">Number</h2>
+            <select aria-label="Number" value={state.kpi} onChange={(e) => update({ kpi: e.target.value, floor: null, ceiling: null, mode: "usual" })} className="field w-full cursor-pointer px-3 py-2 text-sm">
               {Object.entries(KPIS).map(([id, k]) => <option key={id} value={id}>{k.label}</option>)}
             </select>
-            {catalog && <p className="muted mt-1 text-xs">{catalog.kpis.find((k) => k.id === state.kpi)?.description}</p>}
+            {catalog && <p className="mt-2.5 text-xs leading-snug text-ink-muted">{catalog.kpis.find((k) => k.id === state.kpi)?.description}</p>}
           </div>
           <div className="min-w-0">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide muted">Slice</h2>
-            {!catalog && <p className="muted text-sm">Loading…</p>}
+            <h2 className="label mb-2">Slice</h2>
+            {!catalog && <p className="text-sm text-ink-muted">Loading…</p>}
             <div className="grid grid-cols-3 gap-2">
               {dims.map((d) => (
-                <label key={d.id} className="min-w-0 text-xs muted">
+                <label key={d.id} className="min-w-0 text-xs text-ink-muted">
                   {DIM_LABELS[d.id] ?? d.label}
                   <select
                     value={state.filters[d.id] ?? ""}
@@ -171,7 +171,7 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
                       else delete filters[d.id];
                       update({ filters, floor: null, ceiling: null, mode: "usual" });
                     }}
-                    className="panel mt-1 w-full p-2 text-sm"
+                    className="field mt-1.5 w-full cursor-pointer px-3 py-2 text-sm"
                   >
                     <option value="">{ANY[d.id] ?? "Any"}</option>
                     {(d.values ?? []).map((v) => <option key={v} value={v}>{VALUE_LABELS[v] ?? v}</option>)}
@@ -181,34 +181,34 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
             </div>
           </div>
           <div className="min-w-0">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide muted">Your lines</h2>
+            <h2 className="label mb-2">Your lines</h2>
             <div className="grid grid-cols-2 gap-2">
               {lineInput("ceiling")}
               {lineInput("floor")}
             </div>
-            <p className="muted mt-1 text-xs">Or drag them on the chart. They're kept in this page's link, so you can share it.</p>
+            <p className="mt-2.5 text-xs leading-snug text-ink-muted">Or drag them on the chart. They're kept in this page's link, so you can share it.</p>
           </div>
         </div>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-4">
-          <section className="panel p-4" aria-label="Chart">
-            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-              <h2 className="min-w-0 text-base font-semibold">{kpiLabel(state.kpi)} · {sliceName(state.filters)}</h2>
+          <section className="panel rounded-3xl p-5 md:p-6" aria-label="Chart">
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h2 className="display min-w-0 text-2xl leading-tight">{kpiLabel(state.kpi)} · {sliceName(state.filters)}</h2>
               <Toggle label="Time range" className="ml-auto" options={RANGES.map((r) => ({ value: String(r.hours), label: r.label }))} value={String(state.hours)} onChange={(v) => update({ hours: Number(v) as ExploreState["hours"] })} />
             </div>
             {error && <p className="accent text-sm">{error}</p>}
-            {!chart && !error && <p className="muted text-sm">Loading…</p>}
+            {!chart && !error && <p className="text-sm text-ink-muted">Loading…</p>}
             {chart && (
               <ExploreChart view={chart} state={state} flagged={flaggedSet} selected={selected} onSelect={setSelected} onLine={(which, v) => update({ [which]: v, mode: "lines" })} />
             )}
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs muted">
-              <span><span className="mr-1 inline-block h-2.5 w-4 rounded-sm bg-zinc-300/70 align-middle dark:bg-zinc-600/50" />usual range for that hour of the day</span>
-              <span><span className="mr-1 inline-block w-4 border-t-2 border-dashed border-amber-600 align-middle" />your lines</span>
-              <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-amber-600 align-middle" />flagged hour</span>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-muted">
+              <span><span className="mr-1.5 inline-block h-2.5 w-4 rounded-sm bg-[var(--gc-band)] align-middle" />usual range for that hour of the day</span>
+              <span><span className="mr-1.5 inline-block w-4 border-t-2 border-dashed border-accent align-middle" />your lines</span>
+              <span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-accent align-middle" />flagged hour</span>
               {points.some((p) => p.value === null) && (
-                <span><span className="mr-1 inline-block h-2.5 w-2 bg-zinc-300 align-middle dark:bg-zinc-600" />no data (before our record began, or a collector gap)</span>
+                <span><span className="mr-1.5 inline-block h-2.5 w-2 bg-[var(--gc-mark)] align-middle" />no data (before our record began, or a collector gap)</span>
               )}
               <span>click any hour to look closer</span>
               <span className="ml-auto"><HowCalculatedButton open={how} onToggle={() => setHow((o) => !o)} /></span>
@@ -226,38 +226,38 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
               />
             )}
             {selectedPoint && chart && (
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded border border-[var(--gc-line)] p-3 text-sm">
-                <div className="min-w-0"><span className="font-medium">{fmtTime(selectedPoint.t)}</span> <span className="muted">· {describeHour(selectedPoint, unit)}</span></div>
+              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-3 rounded-xl border border-ink bg-blush p-3.5 text-sm">
+                <div className="min-w-0"><span className="font-medium">{fmtTime(selectedPoint.t)}</span> <span className="text-ink-soft">· {describeHour(selectedPoint, unit)}</span></div>
                 {judged(selectedPoint)
-                  ? <button type="button" onClick={() => void investigate(selectedPoint.t)} className="ml-auto rounded bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800">Why did this happen?</button>
-                  : <span className="muted ml-auto text-xs">This hour can't be judged.</span>}
+                  ? <button type="button" onClick={() => void investigate(selectedPoint.t)} className="btn btn-sm btn-accent ml-auto">Why did this happen?</button>
+                  : <span className="ml-auto text-xs text-ink-soft">This hour can't be judged.</span>}
               </div>
             )}
           </section>
 
-          <section className="panel p-4" aria-label="Flagged hours">
+          <section className="panel rounded-3xl p-5 md:p-6" aria-label="Flagged hours">
             <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide muted">Flagged hours</h2>
+              <h2 className="label">Flagged hours</h2>
               <Toggle label="Flag hours that" className="ml-auto" options={[{ value: "lines", label: "Cross my lines" }, { value: "usual", label: "Leave the usual range" }]} value={state.mode} onChange={(v) => update({ mode: v as Mode })} />
             </div>
-            <ul data-testid="flagged" className="divide-y divide-[var(--gc-line)]">
+            <ul data-testid="flagged" className="divide-y divide-dashed divide-rule">
               {[...flagged].reverse().slice(0, 8).map((p) => (
-                <li key={p.t} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-                  <button type="button" className="min-w-0 text-left" onClick={() => setSelected(p.t)}>
-                    <span className="text-sm font-medium">{fmtTime(p.t)}</span>
-                    <span className="muted block text-xs">{reason(p, state, unit)}</span>
+                <li key={p.t} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+                  <button type="button" className="group min-w-0 cursor-pointer text-left" onClick={() => setSelected(p.t)}>
+                    <span className="text-sm font-medium transition-colors duration-150 group-hover:text-accent">{fmtTime(p.t)}</span>
+                    <span className="tabular block text-xs text-ink-muted">{reason(p, state, unit)}</span>
                   </button>
                   <span className="ml-auto">
                     {judged(p)
-                      ? <button type="button" onClick={() => void investigate(p.t)} className="rounded border border-[var(--gc-line)] px-3 py-1 text-xs font-medium hover:border-amber-600">Why did this happen?</button>
-                      : <span className="muted text-xs">too early to judge</span>}
+                      ? <button type="button" onClick={() => void investigate(p.t)} className="btn btn-sm">Why did this happen?</button>
+                      : <span className="text-xs text-ink-muted">too early to judge</span>}
                   </span>
                 </li>
               ))}
             </ul>
-            {flagged.length === 0 && chart && <p className="muted py-2 text-sm">{emptyText(state)}</p>}
-            {flagged.length > 8 && <p className="muted text-xs">and {flagged.length - 8} more</p>}
-            <p className="muted mt-3 text-xs">An investigation takes about 40 seconds. Visitors can start 10 model-written ones a day; after that the standard playbook answers for free.</p>
+            {flagged.length === 0 && chart && <p className="py-2 text-sm text-ink-muted">{emptyText(state)}</p>}
+            {flagged.length > 8 && <p className="text-xs text-ink-muted">and {flagged.length - 8} more</p>}
+            <p className="mt-4 border-t border-dashed border-rule pt-3 text-xs leading-snug text-ink-muted">An investigation takes about 40 seconds. Visitors can start 10 model-written ones a day; after that the standard playbook answers for free.</p>
           </section>
         </div>
 
@@ -289,14 +289,14 @@ function emptyText(s: ExploreState): string {
 
 function Toggle({ label, options, value, onChange, className = "" }: { label: string; options: { value: string; label: string }[]; value: string; onChange: (v: string) => void; className?: string }) {
   return (
-    <div role="group" aria-label={label} className={`flex overflow-hidden rounded border border-[var(--gc-line)] text-xs ${className}`}>
+    <div role="group" aria-label={label} className={`flex flex-wrap gap-x-4 gap-y-1 text-[13px] ${className}`}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           aria-pressed={o.value === value}
           onClick={() => onChange(o.value)}
-          className={`px-2.5 py-1 ${o.value === value ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+          className={`cursor-pointer whitespace-nowrap border-b-2 py-1 transition-colors duration-150 ${o.value === value ? "border-accent font-medium text-ink" : "border-transparent text-ink-muted hover:text-accent"}`}
         >
           {o.label}
         </button>
@@ -306,7 +306,7 @@ function Toggle({ label, options, value, onChange, className = "" }: { label: st
 }
 
 function InvestigationPanel({ inv, label }: { inv: Investigation; label: string }) {
-  const heading = <h2 className="mb-3 text-base font-semibold">Why did {label} move at {fmtTime(inv.hour)}?</h2>;
+  const heading = <h2 className="display mb-3 text-2xl leading-tight">Why did {label} move at {fmtTime(inv.hour)}?</h2>;
   if (inv.phase === "refused" || inv.phase === "failed") {
     return <Panel>{heading}<p className="text-sm">{inv.message}</p></Panel>;
   }
@@ -315,11 +315,11 @@ function InvestigationPanel({ inv, label }: { inv: Investigation; label: string 
     return (
       <Panel>
         {heading}
-        <p className="muted mb-3 text-xs">Investigating… this usually takes about 40 seconds.</p>
+        <p className="mb-4 text-xs text-ink-muted">Investigating… this usually takes about 40 seconds.</p>
         <ol className="space-y-1.5 text-sm">
           {STEPS.map((s, i) => (
-            <li key={s.state} className={`flex items-center gap-2 ${i > at ? "muted" : ""}`}>
-              <span className="w-4 text-center" aria-hidden="true">{i < at ? "✓" : i === at ? "…" : "○"}</span>
+            <li key={s.state} className={`flex items-center gap-2 ${i > at ? "text-ink-muted" : "text-ink-soft"}`}>
+              <span className={`w-4 text-center ${i < at ? "text-ok" : ""}`} aria-hidden="true">{i < at ? "✓" : i === at ? "…" : "○"}</span>
               {s.label}
             </li>
           ))}
@@ -334,17 +334,17 @@ function InvestigationPanel({ inv, label }: { inv: Investigation; label: string 
       {heading}
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="min-w-0">
-          <p className="muted text-xs uppercase tracking-wide">Best explanation</p>
-          <p className="mb-2 text-lg font-semibold">{c.top_hypothesis ? <HypothesisName id={c.top_hypothesis} /> : "Nothing stood out"}</p>
-          <p className="muted text-xs">{CASE_STATES[c.state] ?? c.state}{inv.paid === false ? " · answered by the standard playbook (today's model-written investigations are used up)" : ""}</p>
+          <p className="label">Best explanation</p>
+          <p className="display mb-2 mt-1 text-2xl leading-tight">{c.top_hypothesis ? <HypothesisName id={c.top_hypothesis} /> : "Nothing stood out"}</p>
+          <p className="text-xs text-ink-muted">{CASE_STATES[c.state] ?? c.state}{inv.paid === false ? " · answered by the standard playbook (today's model-written investigations are used up)" : ""}</p>
         </div>
         <ul className="min-w-0 space-y-1">
           {claims.map((cl, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm"><TierBadge tier={cl.tier} /><span className="min-w-0 flex-1">{cl.text}</span></li>
+            <li key={i} className="flex items-start gap-2 text-sm"><TierBadge tier={cl.tier} /><span className="min-w-0 flex-1 leading-relaxed text-ink-soft">{cl.text}</span></li>
           ))}
         </ul>
       </div>
-      <a href={href({ view: "case", id: c.case_id })} className="mt-3 inline-block text-xs font-medium text-amber-700 underline dark:text-amber-400">
+      <a href={href({ view: "case", id: c.case_id })} className="link-ink mt-4 inline-block text-sm font-medium text-ink">
         Open the full case, with its evidence and step-by-step trace →
       </a>
     </Panel>

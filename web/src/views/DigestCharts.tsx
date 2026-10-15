@@ -1,5 +1,5 @@
 // The morning read's charts: hand-drawn SVG, one per standing question. Everything is grey
-// except the thing the card's sentence names, which is amber, so the chart points at the
+// except the thing the card's sentence names, which is the accent red, so the chart points at the
 // answer rather than at a legend. Text takes its colour from the theme tokens.
 import type { ReactNode } from "react";
 

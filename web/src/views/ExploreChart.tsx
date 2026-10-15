@@ -38,7 +38,7 @@ export function ExploreChart({
   const PL = narrow ? 48 : 60;
   const PR = narrow ? 88 : 104;
   const pts = view.points;
-  if (!pts.length) return <p className="muted text-sm">No complete hours in this window yet.</p>;
+  if (!pts.length) return <p className="text-sm text-ink-muted">No complete hours in this window yet.</p>;
 
   const vals = pts.flatMap((p) => [p.value, p.high]).filter((v): v is number => v !== null);
   const ymax = Math.max(...vals, state.ceiling ?? 0, state.floor ?? 0, 1e-9) * 1.1;
@@ -126,7 +126,7 @@ export function ExploreChart({
             <text x={x(learnFrom)} y={PT - 8} fontSize="11" fill="var(--gc-muted)">Not enough history yet for a usual range</text>
           </g>
         )}
-        {bands.map((d, k) => <path key={k} d={d} className="fill-zinc-300/60 dark:fill-zinc-600/40" />)}
+        {bands.map((d, k) => <path key={k} d={d} fill="var(--gc-band)" />)}
         {pts.map((p, i) => (p.value === null ? <rect key={p.t} x={x(i) - Math.max(step / 2, 2)} y={PT} width={Math.max(step, 4)} height={H - PT - PB} fill="var(--gc-mark)" opacity="0.5" /> : null))}
         {ticks.map(({ i, d }) => (
           <g key={i}>
@@ -134,7 +134,7 @@ export function ExploreChart({
             <text x={x(i)} y={H - 8} textAnchor="middle" fontSize="11" fill="var(--gc-muted)">{tickLabel(d)}</text>
           </g>
         ))}
-        <path d={line} fill="none" strokeWidth={1.8} className="stroke-zinc-800 dark:stroke-zinc-200" />
+        <path d={line} fill="none" strokeWidth={1.8} stroke="var(--gc-ink)" strokeLinejoin="round" />
         {(["ceiling", "floor"] as const).map((which) => {
           const v = state[which];
           if (v === null) return null;
@@ -150,7 +150,7 @@ export function ExploreChart({
                 }}
               >
                 <rect x={W - PR + 6} y={y(v) - 11} width={PR - 8} height={22} rx={11} fill="var(--gc-accent)" />
-                <text x={W - PR + 6 + (PR - 8) / 2} y={y(v) + 4} textAnchor="middle" fontSize="11" fontWeight="600" fill="#fff">
+                <text x={W - PR + 6 + (PR - 8) / 2} y={y(v) + 4} textAnchor="middle" fontSize="11" fontWeight="600" fill="white">
                   {which === "ceiling" ? "Ceiling" : "Floor"} {fmtValue(view.unit, v)}
                 </text>
               </g>
@@ -179,11 +179,11 @@ export function ExploreChart({
       {hovered && hover !== null && (
         <div
           aria-hidden="true"
-          className="panel pointer-events-none absolute max-w-[260px] px-2 py-1 text-xs shadow-sm"
+          className="pointer-events-none absolute max-w-[260px] rounded-xl border border-ink bg-sheet px-3 py-2 text-xs"
           style={{ left: `${Math.min((x(hover) / W) * 100, 62)}%`, top: 8 }}
         >
           <div className="font-medium">{fmtTime(hovered.t)}</div>
-          <div className="muted">{describeHour(hovered, view.unit)}</div>
+          <div className="text-ink-muted">{describeHour(hovered, view.unit)}</div>
         </div>
       )}
     </div>

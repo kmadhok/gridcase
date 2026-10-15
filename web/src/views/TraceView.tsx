@@ -52,33 +52,33 @@ export function TraceView({ caseId }: { caseId: string }) {
 
   return (
     <Panel title="Step by step" hint="What the investigation did, in order, how long each step took and what it cost." className="min-w-0">
-      <button className="muted text-sm underline" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <button className="btn btn-sm" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         {open ? "Hide the timeline" : "Show the timeline"}
       </button>
       {open && (
-        <div className="mt-3 min-w-0">
+        <div className="mt-5 min-w-0">
           {error ? <p className="accent text-sm">The timeline couldn't load. Please try again.</p>
-            : !trace ? <p className="muted text-sm">Loading the timeline…</p>
-            : !trace.recorded ? <p className="muted text-sm">Step-by-step timing is recorded for investigations from 3 October 2026 on.</p>
+            : !trace ? <p className="text-sm text-ink-muted">Loading the timeline…</p>
+            : !trace.recorded ? <p className="text-sm text-ink-muted">Step-by-step timing is recorded for investigations from 3 October 2026 on.</p>
             : totals && <>
-              <p className="mb-3 text-sm">
+              <p className="tabular mb-4 text-sm text-ink-soft">
                 Took {(totals.wall_ms / 1000).toFixed(1)} s · {totals.model_calls ? `${totals.model_calls} model call${totals.model_calls === 1 ? "" : "s"} · $${totals.cost_usd.toFixed(2)}` : "standard playbook, no model calls"} · {totals.checks_run} check{totals.checks_run === 1 ? "" : "s"}{totals.checks_failed > 0 ? `, ${totals.checks_failed} couldn't run` : ""}
               </p>
-              <ol className="min-w-0 space-y-2" data-testid="trace-timeline">
+              <ol className="min-w-0 divide-y divide-dashed divide-rule" data-testid="trace-timeline">
                 {rows.map((span) => {
                   const left = Math.min(100, Math.max(0, 100 * span.offset_ms / (totals.wall_ms || 1)));
                   const width = Math.min(100 - left, Math.max(0, 100 * span.ms / (totals.wall_ms || 1)));
                   return (
-                    <li key={span.seq} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.5rem] items-center gap-2 text-xs" title={[span.name, span.detail.step_id, span.detail.receipt_id, span.detail.model, span.detail.error].filter(Boolean).join(" · ")}>
-                      <div className={`min-w-0 break-words ${span.parent_seq !== null ? "pl-3" : "font-medium"}`}>
+                    <li key={span.seq} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.5rem] items-center gap-3 py-2 text-xs text-ink-soft" title={[span.name, span.detail.step_id, span.detail.receipt_id, span.detail.model, span.detail.error].filter(Boolean).join(" · ")}>
+                      <div className={`min-w-0 break-words ${span.parent_seq !== null ? "pl-3" : "font-medium text-ink"}`}>
                         {label(span)}
                         {span.status === "error" && <span className="accent"> · couldn't run</span>}
-                        {span.name === "verify" && <span className="muted block">kept {span.detail.kept ?? 0}, removed {span.detail.dropped ?? 0}</span>}
+                        {span.name === "verify" && <span className="block font-normal text-ink-muted">kept {span.detail.kept ?? 0}, removed {span.detail.dropped ?? 0}</span>}
                       </div>
                       <div className="relative h-3 min-w-0 overflow-hidden" aria-hidden="true">
-                        <div data-testid="trace-bar" className={`absolute h-3 rounded ${usedModel(span) ? "bg-[var(--gc-accent)]" : "bg-[var(--gc-mark)]"}`} style={{ left: `${left}%`, width: `${width}%`, minWidth: "2px" }} />
+                        <div data-testid="trace-bar" className={`absolute h-3 rounded-full ${usedModel(span) ? "bg-accent" : "bg-[var(--gc-mark)]"}`} style={{ left: `${left}%`, width: `${width}%`, minWidth: "2px" }} />
                       </div>
-                      <div className="muted min-w-0 break-words text-right">
+                      <div className="tabular min-w-0 break-words text-right text-ink-muted">
                         {duration(span.ms)}
                         {usedModel(span) && <span className="accent block">${(span.detail.cost_usd ?? 0).toFixed(2)}</span>}
                       </div>

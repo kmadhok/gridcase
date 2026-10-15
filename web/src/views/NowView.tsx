@@ -27,8 +27,8 @@ export function Sparkline({ s }: { s: SeriesView }) {
     .join(" L ");
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="h-14 w-full" role="img" aria-label={`${s.label} over the last 48 hours against its usual range`}>
-      {bandPath && <path d={bandPath} className="fill-zinc-300/60 dark:fill-zinc-600/40" />}
-      {line && <path d={`M ${line}`} fill="none" strokeWidth={1.8} className={s.status === "alarm" ? "stroke-amber-600" : "stroke-zinc-800 dark:stroke-zinc-200"} />}
+      {bandPath && <path d={bandPath} fill="var(--gc-band)" />}
+      {line && <path d={`M ${line}`} fill="none" strokeWidth={1.8} stroke={s.status === "alarm" ? "var(--gc-accent)" : "var(--gc-ink)"} />}
     </svg>
   );
 }
@@ -36,30 +36,30 @@ export function Sparkline({ s }: { s: SeriesView }) {
 function statusText(s: SeriesView): { text: string; cls: string } {
   if (s.status === "alarm") {
     const times = s.ratio ? `${s.ratio.toFixed(1)}×` : "";
-    return { text: `Unusual ${s.direction === "down" ? "↓" : "↑"} ${times} usual`, cls: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200" };
+    return { text: `Unusual ${s.direction === "down" ? "↓" : "↑"} ${times} usual`, cls: "border-current text-accent-hi" }; // on the blush alarm tile, accent-hi keeps 4.5:1
   }
-  if (s.status === "learning") return { text: `Learning normal · day ${s.history_days} of 3`, cls: "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200" };
-  return { text: "Normal", cls: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200" };
+  if (s.status === "learning") return { text: `Learning normal · day ${s.history_days} of 3`, cls: "border-ink/25 text-ink-muted" };
+  return { text: "Normal", cls: "border-current text-ok" };
 }
 
 function Tile({ s, caseId }: { s: SeriesView; caseId?: string }) {
   const st = statusText(s);
   const title = s.segment === "all" ? s.label : `${segmentName(s.segment)} volume`;
   return (
-    <div className={`panel p-3 ${s.status === "alarm" ? "border-amber-600" : ""}`} data-testid={`tile-${s.series}`} title={s.series}>
-      <div className="text-sm font-medium">{title}</div>
-      <span className={`mt-1 inline-block rounded px-2 py-0.5 text-xs ${st.cls}`}>{st.text}</span>
+    <div className={`panel flex flex-col p-4 ${s.status === "alarm" ? "bg-blush" : ""}`} data-testid={`tile-${s.series}`} title={s.series}>
+      <div className="text-[15px] font-medium leading-snug tracking-[-0.01em]">{title}</div>
+      <span className={`pill mt-2 self-start ${st.cls}`}>{st.text}</span>
       {s.latest ? (
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
-          <span className="text-xl font-semibold">{fmtValue(s.unit, s.latest.value)}</span>
-          <span className="muted text-xs">last hour{s.latest.usual !== null ? ` · usually ${fmtValue(s.unit, s.latest.usual)}` : ""}</span>
+        <div className="mt-3 flex flex-wrap items-baseline gap-x-2">
+          <span className="display tabular text-[28px] leading-none">{fmtValue(s.unit, s.latest.value)}</span>
+          <span className={`text-xs ${s.status === "alarm" ? "text-ink-soft" : "text-ink-muted"}`}>last hour{s.latest.usual !== null ? ` · usually ${fmtValue(s.unit, s.latest.usual)}` : ""}</span>
         </div>
       ) : (
-        <p className="muted mt-1 text-xs">Waiting for the first complete hour.</p>
+        <p className="mt-3 text-xs text-ink-muted">Waiting for the first complete hour.</p>
       )}
-      <Sparkline s={s} />
+      <div className="mt-auto pt-3"><Sparkline s={s} /></div>
       {caseId && (
-        <button data-testid="open-case" onClick={() => navigate({ view: "case", id: caseId })} className="mt-1 text-xs font-medium text-amber-700 underline dark:text-amber-400">
+        <button data-testid="open-case" onClick={() => navigate({ view: "case", id: caseId })} className="link-ink mt-2 self-start text-[13px] font-medium text-accent-hi">
           See why →
         </button>
       )}
@@ -86,10 +86,10 @@ export function NowView({ initial }: { initial?: NowResponse }) {
   const behaviour = now.series.filter((s) => groupOf(s) === "behaviour");
   const categories = now.series.filter((s) => groupOf(s) === "category");
   return (
-    <div className="space-y-4">
-      <header>
-        <h1 className="text-xl font-semibold">Polymarket, right now</h1>
-        <p className="muted text-sm">
+    <div className="space-y-6">
+      <header className="pb-2">
+        <h1 className="display text-[40px] leading-[1.05] md:text-6xl">Polymarket, right now</h1>
+        <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-ink-soft md:text-base">
           Each hour is compared with the same hour on previous days; when a number leaves its usual range, an investigation opens automatically and explains why.
           {" "}Newest trade {fmtTime(now.freshness.newest_trade)}{now.freshness.record_starts ? ` · collecting since ${fmtTime(now.freshness.record_starts)}` : ""}.
         </p>
@@ -99,28 +99,28 @@ export function NowView({ initial }: { initial?: NowResponse }) {
       </section>
       {behaviour.length > 0 && (
         <>
-          <h2 className="text-sm font-semibold uppercase tracking-wide muted">How the market behaves</h2>
+          <h2 className="display pt-6 text-[28px] leading-tight md:text-[32px]">How the market behaves</h2>
           <section aria-label="How the market behaves" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {behaviour.map((s) => <Tile key={s.series} s={s} caseId={caseFor(s)} />)}
           </section>
         </>
       )}
-      <h2 className="text-sm font-semibold uppercase tracking-wide muted">Volume by category</h2>
+      <h2 className="display pt-6 text-[28px] leading-tight md:text-[32px]">Volume by category</h2>
       <section aria-label="Volume by category" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {categories.map((s) => <Tile key={s.series} s={s} caseId={caseFor(s)} />)}
       </section>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 pt-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Panel title="Latest investigations" hint="Opened automatically when a KPI leaves its usual range, or by asking.">
           {now.cases.length === 0 ? (
-            <p className="muted text-sm">None yet. The first can open once three days of history exist.</p>
+            <p className="text-sm text-ink-muted">None yet. The first can open once three days of history exist.</p>
           ) : (
-            <ul className="space-y-2" data-testid="cases">
+            <ul className="divide-y divide-dashed divide-rule" data-testid="cases">
               {now.cases.map((c) => (
                 <li key={c.case_id}>
-                  <button className="w-full text-left hover:underline" onClick={() => navigate({ view: "case", id: c.case_id })}>
-                    <span className="font-medium">{kpiLabel(c.metric)}</span>{" "}
-                    <span className="muted">· {segmentName(c.segment)} · {fmtTime(c.as_of)}</span>
-                    <span className="block text-sm">{c.top_hypothesis ? `Best explanation: ${hypothesisName(c.top_hypothesis).toLowerCase()}` : "investigating…"}</span>
+                  <button className="group w-full cursor-pointer py-3 text-left" onClick={() => navigate({ view: "case", id: c.case_id })}>
+                    <span className="font-medium transition-colors duration-150 group-hover:text-accent">{kpiLabel(c.metric)}</span>{" "}
+                    <span className="text-ink-muted">· {segmentName(c.segment)} · {fmtTime(c.as_of)}</span>
+                    <span className="mt-0.5 block text-sm text-ink-soft">{c.top_hypothesis ? `Best explanation: ${hypothesisName(c.top_hypothesis).toLowerCase()}` : "investigating…"}</span>
                   </button>
                 </li>
               ))}

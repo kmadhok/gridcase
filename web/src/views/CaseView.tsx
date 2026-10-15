@@ -10,13 +10,13 @@ function ClaimRow({ claim, i, receipts }: { claim: Claim; i: number; receipts: R
   const [open, setOpen] = useState(false);
   const cited = claim.receipt_ids.map((id) => receipts[id]).filter(Boolean);
   return (
-    <li className="border-b border-[var(--gc-line)] py-2 last:border-0">
-      <button data-testid={`claim-${i}`} onClick={() => setOpen((o) => !o)} className="flex w-full items-start gap-2 text-left" aria-expanded={open}>
+    <li className="border-b border-dashed border-rule py-3 last:border-0">
+      <button data-testid={`claim-${i}`} onClick={() => setOpen((o) => !o)} className="group flex w-full cursor-pointer flex-wrap items-start gap-x-3 gap-y-1 text-left sm:flex-nowrap" aria-expanded={open}>
         <TierBadge tier={claim.tier} />
-        <span className="flex-1 text-sm">{claim.text}</span>
-        <span className="muted text-xs">{cited.length ? `${open ? "hide" : "show"} evidence (${cited.length})` : "no evidence link"}</span>
+        <span className="min-w-0 flex-1 basis-full text-[15px] leading-relaxed text-ink-soft sm:basis-auto">{claim.text}</span>
+        <span className="whitespace-nowrap text-xs text-ink-muted underline decoration-rule underline-offset-4 transition-colors duration-150 group-hover:text-accent">{cited.length ? `${open ? "hide" : "show"} evidence (${cited.length})` : "no evidence link"}</span>
       </button>
-      {open && (cited.length ? cited.map((r) => <ReceiptCard key={r.receipt_id} r={r} />) : <p className="muted mt-1 text-xs">An interpretation: nothing in the data backs this sentence directly.</p>)}
+      {open && (cited.length ? cited.map((r) => <ReceiptCard key={r.receipt_id} r={r} />) : <p className="mt-2 text-xs text-ink-muted">An interpretation: nothing in the data backs this sentence directly.</p>)}
     </li>
   );
 }
@@ -38,27 +38,27 @@ function DriverCard({ v, isTop, c }: { v: Verdict; isTop: boolean; c: CaseFull }
   const cited = new Set(steps.map((s) => ranFor(s)?.receipt_id));
   const claims = (c.conclusion?.claims ?? []).filter((cl) => cl.receipt_ids.some((id) => cited.has(id)));
   return (
-    <li className={`rounded border p-2 ${isTop ? "border-amber-600" : "border-[var(--gc-line)]"}`}>
-      <button data-testid={`driver-${v.id}`} onClick={() => setOpen((o) => !o)} className="w-full text-left" aria-expanded={open}>
-        <div className="flex items-center justify-between gap-2"><HypothesisName id={v.id} /><StatusBadge status={v.status} /></div>
-        <div className="muted mt-1 text-xs">{HYPOTHESES[v.id]?.blurb}</div>
-        <div className="mt-1 text-xs">
+    <li className={`rounded-xl border p-3 ${isTop ? "border-accent" : "border-rule"}`}>
+      <button data-testid={`driver-${v.id}`} onClick={() => setOpen((o) => !o)} className="group w-full cursor-pointer text-left" aria-expanded={open}>
+        <div className="flex items-start justify-between gap-2"><span className="text-[15px] leading-snug"><HypothesisName id={v.id} /></span><StatusBadge status={v.status} /></div>
+        <div className="mt-1 text-xs leading-snug text-ink-muted">{HYPOTHESES[v.id]?.blurb}</div>
+        <div className="tabular mt-2 text-xs font-medium text-ink-soft">
           {pct(v.confidence)} likely{v.coverage !== null && v.status !== "refuted" ? ` · explains ${pct(v.coverage)} of the gap` : ""}
         </div>
-        <div className="muted mt-1 text-xs underline">{open ? "hide" : "show"} how it was tested ({steps.length})</div>
+        <div className="mt-1.5 text-xs text-ink-muted underline decoration-rule underline-offset-4 transition-colors duration-150 group-hover:text-accent">{open ? "hide" : "show"} how it was tested ({steps.length})</div>
       </button>
       {open && (
         <div data-testid={`driver-evidence-${v.id}`}>
           {claims.map((cl, i) => (
-            <p key={i} className="mt-2 flex items-start gap-2 text-xs"><TierBadge tier={cl.tier} /><span>{cl.text}</span></p>
+            <p key={i} className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-ink-soft"><TierBadge tier={cl.tier} /><span className="min-w-0">{cl.text}</span></p>
           ))}
           {steps.map((s) => {
             const r = ranFor(s);
             if (r) return <ReceiptCard key={s.step_id} r={r} />;
             const why = c.step_errors?.[s.step_id];
-            return <p key={s.step_id} className="muted mt-2 text-xs">{stepQuestion(s.tool, s.inputs)}: {why ? `couldn't run (${why})` : "no evidence recorded"}.</p>;
+            return <p key={s.step_id} className="mt-2 text-xs text-ink-muted">{stepQuestion(s.tool, s.inputs)}: {why ? `couldn't run (${why})` : "no evidence recorded"}.</p>;
           })}
-          {!steps.length && <p className="muted mt-2 text-xs">No check in this investigation tested this driver.</p>}
+          {!steps.length && <p className="mt-2 text-xs text-ink-muted">No check in this investigation tested this driver.</p>}
         </div>
       )}
     </li>
@@ -74,10 +74,10 @@ function TriggerNote({ r }: { r: Receipt }) {
   const where = Object.values(filters).join(", ");
   const hours = Number(o.run_hours);
   return (
-    <div className="panel p-3 text-sm" data-testid="trigger">
-      <span className="font-medium">Opened automatically.</span>{" "}
+    <div className="panel bg-blush px-5 py-4 text-[15px] leading-relaxed text-ink-soft" data-testid="trigger">
+      <span className="font-medium text-ink">Opened automatically.</span>{" "}
       {kpiLabel(kpi)}{where ? ` in ${where}` : ""} was {Number(o.ratio).toFixed(1)} times its usual level for that hour of the day ({fmtValue(unit, Number(o.value))} against about {fmtValue(unit, Number(o.expected))}), {hours} hour{hours === 1 ? "" : "s"} in a row.{" "}
-      <button className="muted text-xs underline" onClick={() => setOpen((x) => !x)} aria-expanded={open}>{open ? "hide" : "show"} evidence</button>
+      <button className="link-ink text-xs text-ink-soft" onClick={() => setOpen((x) => !x)} aria-expanded={open}>{open ? "hide" : "show"} evidence</button>
       {open && <ReceiptCard r={r} />}
     </div>
   );
@@ -91,7 +91,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
     api.case(id).then(setCase).catch((e) => setError(String(e)));
   }, [id, initial]);
   if (error) return <p className="accent">{error}</p>;
-  if (!c) return <p className="muted">Loading the investigation…</p>;
+  if (!c) return <p className="text-ink-muted">Loading the investigation…</p>;
   const receipts = Object.fromEntries(c.receipts.map((r) => [r.receipt_id, r]));
   const ranked = c.conclusion?.ranked ?? [];
   const top = c.conclusion?.top_hypothesis;
@@ -100,11 +100,11 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-xl font-semibold">
+      <header className="flex flex-col gap-3 pb-2">
+        <h1 className="display max-w-4xl text-[34px] leading-[1.05] md:text-5xl">
           Why did {kpiLabel(c.metric).toLowerCase()} move? · {segmentName(c.entity)} · {fmtTime(c.as_of)}
         </h1>
-        <div className="muted text-sm" title={`case ${c.case_id} · state ${c.state}`}>
+        <div className="label" title={`case ${c.case_id} · state ${c.state}`}>
           {CASE_STATES[c.state] ?? c.state} · {c.cost_usd > 0 ? `${c.llm_calls} model call${c.llm_calls === 1 ? "" : "s"} · $${c.cost_usd.toFixed(2)}` : "standard playbook, no model"}
         </div>
       </header>
@@ -121,38 +121,40 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           hint={`Every sentence is tagged: ${TIERS.governed.label} = ${TIERS.governed.blurb}; ${TIERS.derived.label} = ${TIERS.derived.blurb}; ${TIERS.inferred.label} = ${TIERS.inferred.blurb}.`}
           className="min-w-0"
         >
-          {top && <p className="mb-2 text-base">Best-supported cause: <HypothesisName id={top} /></p>}
+          {top && <p className="display mb-2 text-2xl leading-tight">Best-supported cause: <HypothesisName id={top} /></p>}
           <ul data-testid="claims">
             {(c.conclusion?.claims ?? []).map((cl, i) => <ClaimRow key={i} claim={cl} i={i} receipts={receipts} />)}
           </ul>
           {(c.conclusion?.caveats ?? []).map((cv, i) => (
-            <p key={i} className="accent mt-3 text-sm">Note: {cv}</p>
+            <p key={i} className="warn mt-3 text-sm">Note: {cv}</p>
           ))}
         </Panel>
         <div className="min-w-0 space-y-4">
           <Panel title="How it was investigated" hint={c.plan?.source === "llm" ? `The model chose these checks (accepted on attempt ${c.plan_attempts}).` : "The standard set of checks."}>
-            <ol className="space-y-1 text-sm" data-testid="plan-dag">
+            <ol className="space-y-2 text-sm text-ink-soft" data-testid="plan-dag">
               {(c.plan?.steps ?? []).map((s, i) => (
                 <li key={s.step_id} title={`${s.step_id} ${s.tool} → ${s.hypothesis_ids.join(", ")}${c.step_errors?.[s.step_id] ? ` · ${c.step_errors[s.step_id]}` : ""}`}>
-                  <span className="muted">{i + 1}.</span> {stepQuestion(s.tool, s.inputs)}
+                  <span className="tabular text-ink-muted">{i + 1}.</span> {stepQuestion(s.tool, s.inputs)}
                   {c.step_errors?.[s.step_id] && <span className="accent"> · couldn't run</span>}
                 </li>
               ))}
             </ol>
-            {failed > 0 && <p className="muted mt-2 text-xs">{failed} check{failed === 1 ? "" : "s"} couldn't run (usually data not published yet); the conclusion says so.</p>}
+            {failed > 0 && <p className="mt-3 text-xs text-ink-muted">{failed} check{failed === 1 ? "" : "s"} couldn't run (usually data not published yet); the conclusion says so.</p>}
           </Panel>
           <Panel title="Follow-up check" hint="Every investigation is re-run a day later: did the change hold, and does the answer still stand?">
             {c.recheck ? (
-              <table className="w-full text-xs" data-testid="verify-diff">
-                <thead><tr className="muted text-left"><th>driver</th><th>at first</th><th>on {fmtTime(c.recheck.as_of)}</th></tr></thead>
+              <div className="overflow-x-auto rounded-xl border border-rule">
+              <table className="w-full border-collapse text-xs text-ink-soft" data-testid="verify-diff">
+                <thead><tr className="bg-shade text-left [&>th]:px-2.5 [&>th]:py-2 [&>th]:font-medium"><th>driver</th><th>at first</th><th>on {fmtTime(c.recheck.as_of)}</th></tr></thead>
                 <tbody>
                   {Object.entries(c.recheck.diffs).map(([h, d]) => (
-                    <tr key={h}><td><HypothesisName id={h} /></td><td>{d.before ? <StatusBadge status={d.before} /> : "–"}</td><td><StatusBadge status={d.after} /></td></tr>
+                    <tr key={h} className="border-t border-rule [&>td]:px-2.5 [&>td]:py-2"><td><HypothesisName id={h} /></td><td>{d.before ? <StatusBadge status={d.before} /> : "–"}</td><td><StatusBadge status={d.after} /></td></tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             ) : (
-              <p className="muted text-sm">Not yet: the follow-up runs automatically a day later.</p>
+              <p className="text-sm text-ink-muted">Not yet: the follow-up runs automatically a day later.</p>
             )}
           </Panel>
         </div>

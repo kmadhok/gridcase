@@ -59,25 +59,25 @@ export function ExploreChat({
 
   return (
     <Panel title="Ask about this chart" hint="Answers use only Polymarket data for what the chart shows, and follow-ups work (try “and Politics?”). Every sentence is checked against the numbers." className="flex min-w-0 flex-col">
-      <p className="mb-3 text-xs"><span className="muted">Looking at:</span> <span className="font-medium">{context}</span></p>
+      <p className="mb-3 text-xs"><span className="text-ink-muted">Looking at:</span> <span className="font-medium">{context}</span></p>
       <ol className="max-h-[560px] space-y-3 overflow-y-auto" data-testid="chat">
         {items.map((it, i) =>
           it.kind === "divider" ? (
-            <li key={i} className="muted text-center text-xs">— {it.text} —</li>
+            <li key={i} className="text-center text-xs text-ink-muted">— {it.text} —</li>
           ) : (
-            <li key={i} className="rounded border border-[var(--gc-line)] p-3">
+            <li key={i} className="inner p-3.5">
               <p className="mb-1 text-sm font-medium">{it.question}</p>
               <TurnAnswer item={it} onInvestigate={onInvestigate} />
             </li>
           ),
         )}
       </ol>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {suggestions.map((s) => (
-          <button key={s} type="button" onClick={() => setQuestion(s)} className="rounded-full border border-[var(--gc-line)] px-3 py-1 text-xs hover:border-amber-600">{s}</button>
+          <button key={s} type="button" onClick={() => setQuestion(s)} className="chip text-left">{s}</button>
         ))}
       </div>
-      <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+      <form className="mt-4 flex items-end gap-3" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <textarea
           aria-label="Your question"
           value={question}
@@ -86,9 +86,9 @@ export function ExploreChat({
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
           placeholder="e.g. Which markets traded the most this week?"
-          className="panel min-w-0 flex-1 p-2 text-sm"
+          className="field min-w-0 flex-1 resize-y px-4 py-3 text-sm"
         />
-        <button type="submit" disabled={busy || !question.trim()} className="rounded bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800 disabled:opacity-50">
+        <button type="submit" disabled={busy || !question.trim()} className="btn btn-dark">
           {busy ? "Thinking…" : "Ask"}
         </button>
       </form>
@@ -105,8 +105,8 @@ function TurnAnswer({ item, onInvestigate }: { item: Extract<Item, { kind: "turn
     const hour = a.investigate_hour;
     return (
       <div className="text-sm">
-        <p className="muted">That's a "why" question, so it needs a full investigation of that hour.</p>
-        <button type="button" onClick={() => onInvestigate(hour)} className="mt-2 rounded border border-[var(--gc-line)] px-3 py-1 text-xs font-medium hover:border-amber-600">
+        <p className="text-ink-muted">That's a "why" question, so it needs a full investigation of that hour.</p>
+        <button type="button" onClick={() => onInvestigate(hour)} className="btn btn-sm mt-3">
           Investigate {fmtTime(hour)}
         </button>
       </div>
@@ -115,10 +115,10 @@ function TurnAnswer({ item, onInvestigate }: { item: Extract<Item, { kind: "turn
   const pool: Record<string, Receipt> = Object.fromEntries([...a.new_receipts, ...(a.page_receipt ? [a.page_receipt] : [])].map((r) => [r.receipt_id, r]));
   return (
     <>
-      {a.sentences.length === 0 && <p className="muted text-sm">The numbers here don't answer that.</p>}
+      {a.sentences.length === 0 && <p className="text-sm text-ink-muted">The numbers here don't answer that.</p>}
       <ul>{a.sentences.map((s, j) => <AnswerSentence key={j} s={s} receipts={pool} />)}</ul>
       {a.dropped > 0 && (
-        <p className="muted mt-1 text-xs">{a.dropped} sentence{a.dropped === 1 ? " was" : "s were"} removed because the numbers didn't match the evidence.</p>
+        <p className="mt-1 text-xs text-ink-muted">{a.dropped} sentence{a.dropped === 1 ? " was" : "s were"} removed because the numbers didn't match the evidence.</p>
       )}
     </>
   );
@@ -128,10 +128,10 @@ function TurnAnswer({ item, onInvestigate }: { item: Extract<Item, { kind: "turn
 function CannotAnswer() {
   return (
     <div className="text-sm">
-      <p className="muted">I can't answer that. Here are the KPIs I currently track:</p>
+      <p className="text-ink-muted">I can't answer that. Here are the KPIs I currently track:</p>
       <ul aria-label="KPIs I track" className="mt-2 flex flex-wrap gap-1.5">
         {Object.values(KPIS).map((k) => (
-          <li key={k.label} className="rounded-full border border-[var(--gc-line)] px-2 py-0.5 text-xs">{k.label}</li>
+          <li key={k.label} className="pill border-ink/25 font-normal text-ink-soft">{k.label}</li>
         ))}
       </ul>
     </div>

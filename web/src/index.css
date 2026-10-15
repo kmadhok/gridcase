@@ -1,48 +1,158 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: light dark;
-  --gc-bg: #f7f7f5;
-  --gc-panel: #ffffff;
-  --gc-ink: #1a1a1a;
-  --gc-muted: #6b6b6b;
-  --gc-line: #e4e4e0;
-  --gc-accent: #b45309; /* amber: the miss */
-  --gc-ok: #15803d; /* green: supported */
-  --gc-mark: #cfcfc8; /* grey chart marks: everything the sentence is not about */
+/* kanumadhok.com design system: warm paper, ink, one red accent. Light only. */
+@font-face {
+  font-family: "Uncut Sans";
+  src: url("/fonts/UncutSans-Variable.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --gc-bg: #141413;
-    --gc-panel: #1e1e1c;
-    --gc-ink: #ededea;
-    --gc-muted: #a0a09a;
-    --gc-line: #2e2e2b;
-    --gc-accent: #f59e0b;
-    --gc-ok: #4ade80;
-    --gc-mark: #4a4a45;
-  }
+@theme {
+  --font-sans: "Uncut Sans", ui-sans-serif, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-paper: #f2eee5;
+  --color-sheet: #faf8f3;
+  --color-shade: #e8e2d5;
+  --color-blush: #f4e1d6;
+  --color-rule: #d6cebd;
+  --color-ink: #17140f;
+  --color-ink-soft: #3f3930;
+  --color-ink-muted: #6e665a;
+  --color-accent: #c13a14;
+  --color-accent-hi: #a8310f;
+  --color-ok: #2f6b3a;
+  --color-warn: #8a5a00;
+  --color-slate: #4a6b7c;
+}
+
+/* The app's own names for the tokens; the hand-drawn SVG charts read these. */
+:root {
+  color-scheme: light;
+  --gc-bg: var(--color-paper);
+  --gc-panel: var(--color-sheet);
+  --gc-ink: var(--color-ink);
+  --gc-soft: var(--color-ink-soft);
+  --gc-muted: var(--color-ink-muted);
+  --gc-line: var(--color-rule);
+  --gc-accent: var(--color-accent); /* the miss: alarm, finding, the thing a chart points at */
+  --gc-ok: var(--color-ok);
+  --gc-warn: var(--color-warn);
+  --gc-mark: #cfc6b4; /* chart marks for everything the sentence is not about */
+  --gc-band: rgb(23 20 15 / 0.1); /* usual range: ink at 10% */
 }
 
 html, body, #root {
-  height: 100%;
+  min-height: 100%;
   margin: 0;
+}
+
+body {
   background: var(--gc-bg);
   color: var(--gc-ink);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
-.panel {
-  background: var(--gc-panel);
-  border: 1px solid var(--gc-line);
-  border-radius: 8px;
+/* Paper grain: a fixed noise layer under everything, too faint to read as a pattern. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .3 0 0 0 0 .22 0 0 0 .18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+::selection {
+  background-color: rgb(193 58 20 / 0.2);
+  color: var(--color-ink);
 }
 
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+::placeholder {
+  color: var(--color-ink-muted);
+  opacity: 1;
+}
+
+@layer components {
+  /* Cards: sheet on paper, 1px ink border, no blur. .panel is a small card; Panel adds the big radius. */
+  .panel {
+    background: var(--color-sheet);
+    border: 1px solid var(--color-ink);
+    border-radius: 16px;
+  }
+  .label {
+    @apply text-xs font-medium uppercase tracking-[0.12em] text-ink-muted;
+  }
+  .display {
+    @apply font-medium tracking-[-0.035em];
+  }
+  /* Bordered button on a hard bottom edge that presses down on hover. */
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-ink bg-sheet px-5 py-2.5 text-sm font-medium text-ink shadow-[0_3px_0_var(--color-ink)] transition-[transform,box-shadow,background-color,color] duration-150 hover:translate-y-[2px] hover:shadow-[0_1px_0_var(--color-ink)] active:translate-y-[3px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-[0_3px_0_var(--color-ink)];
+  }
+  .btn-sm {
+    @apply px-3.5 py-1.5 text-[13px];
+  }
+  .btn-accent {
+    @apply bg-accent text-white;
+  }
+  .btn-dark {
+    @apply bg-ink text-paper hover:bg-accent disabled:hover:bg-ink;
+  }
+  /* Inputs, selects and text areas. */
+  .field {
+    @apply rounded-2xl border border-ink bg-sheet text-ink shadow-[0_3px_0_var(--color-ink)] outline-none transition-shadow duration-150 focus-within:shadow-[0_3px_0_var(--color-accent)];
+  }
+  .pill {
+    @apply inline-block whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium;
+  }
+  .chip {
+    @apply cursor-pointer rounded-full border border-ink/25 bg-sheet px-3 py-1 text-[13px] text-ink-soft transition-colors duration-150 hover:border-accent hover:text-accent;
+  }
+  .link-ink {
+    @apply cursor-pointer underline decoration-rule decoration-1 underline-offset-4 transition-colors duration-150 hover:text-accent hover:decoration-accent;
+  }
+  .code-block {
+    @apply rounded-xl border border-ink/10 bg-paper font-mono text-[11px] leading-relaxed text-ink-soft;
+  }
+  .inner {
+    @apply rounded-xl border border-rule;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .outlined {
+    color: transparent;
+    -webkit-text-stroke: 1.5px var(--color-ink);
+  }
+}
+
+.mono { font-family: var(--font-mono); }
 .muted { color: var(--gc-muted); }
 .accent { color: var(--gc-accent); }
 .ok { color: var(--gc-ok); }
+.warn { color: var(--gc-warn); }
+
+/* Motion: restrained, and only for people who have not asked for less. CSS-only, so nothing hides without JS. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+  main > * > * {
+    animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  main > * > :nth-child(2) { animation-delay: 60ms; }
+  main > * > :nth-child(3) { animation-delay: 120ms; }
+  main > * > :nth-child(n + 4) { animation-delay: 180ms; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}

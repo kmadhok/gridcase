@@ -27,7 +27,7 @@ const GRAINS = { hour: "Hour by hour", day: "Day by day", week: "Week by week", 
 /** The button every visual carries. */
 export function HowCalculatedButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
-    <button type="button" aria-expanded={open} onClick={onToggle} className="shrink-0 underline underline-offset-2" style={{ color: "var(--gc-ink)" }}>
+    <button type="button" aria-expanded={open} onClick={onToggle} className="link-ink shrink-0 text-ink">
       How is this calculated?
     </button>
   );
@@ -45,21 +45,21 @@ export function HowCalculatedPanel(c: Calculation) {
   }, []);
 
   if (failed) return <p className="accent mt-2 text-sm">Couldn't load the definitions just now.</p>;
-  if (!defs) return <p className="muted mt-2 text-sm">Loading…</p>;
+  if (!defs) return <p className="mt-2 text-sm text-ink-muted">Loading…</p>;
   const kpis = c.kpis.map((id) => defs.kpis.find((k) => k.id === id)).filter((k): k is Definitions["kpis"][number] => !!k);
   const slice = Object.entries(c.slice ?? {}).filter(([, v]) => v && (!Array.isArray(v) || v.length));
   const rule = defs.usual_range;
   const logScale = c.kpis.some((k) => rule.log_scale.includes(k));
 
   return (
-    <div data-testid="how-calculated" className="mt-3 space-y-4 rounded border border-[var(--gc-line)] p-4 text-sm">
+    <div data-testid="how-calculated" className="inner mt-3 space-y-5 bg-paper p-4 text-sm text-ink-soft">
       <Section title="What it measures">
         {kpis.length === 0 && <p>{c.direct ?? "This check reads trades directly, with the query below, rather than one KPI."}</p>}
         {kpis.map((k) => (
           <div key={k.id} className="space-y-1">
-            <p><span className="font-medium">{k.label}</span>: {k.description}</p>
-            <p className="muted text-xs">Formula: {k.formula}</p>
-            <p className="muted text-xs">Defined once, in <span className="mono">ontology/kpis.yaml</span>, as <code className="mono text-[11px]">{k.definition}</code></p>
+            <p><span className="font-medium text-ink">{k.label}</span>: {k.description}</p>
+            <p className="text-xs text-ink-muted">Formula: {k.formula}</p>
+            <p className="text-xs text-ink-muted">Defined once, in <span className="mono">ontology/kpis.yaml</span>, as <code className="mono text-[11px]">{k.definition}</code></p>
           </div>
         ))}
       </Section>
@@ -72,7 +72,7 @@ export function HowCalculatedPanel(c: Calculation) {
             return (
               <li key={dim}>
                 <span>{d?.label ?? dim}: {Array.isArray(v) ? v.join(" or ") : v}</span>
-                {d && <span className="muted block text-xs">decided by <code className="mono text-[11px]">{d.sql}</code></span>}
+                {d && <span className="block text-xs text-ink-muted">decided by <code className="mono text-[11px]">{d.sql}</code></span>}
               </li>
             );
           })}
@@ -91,22 +91,22 @@ export function HowCalculatedPanel(c: Calculation) {
         <ul className="space-y-1.5">
           {defs.sources.map((s) => (
             <li key={s.name}>
-              <span className="font-medium">{s.name}</span>
-              {s.url && <> (<a href={s.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">{s.url.replace(/^https:\/\//, "")}</a>)</>}: {s.how}
+              <span className="font-medium text-ink">{s.name}</span>
+              {s.url && <> (<a href={s.url} target="_blank" rel="noreferrer" className="link-ink">{s.url.replace(/^https:\/\//, "")}</a>)</>}: {s.how}
             </li>
           ))}
-          {defs.record_start && <li className="muted text-xs">Our record begins {fmtTime(defs.record_start)}.</li>}
+          {defs.record_start && <li className="text-xs text-ink-muted">Our record begins {fmtTime(defs.record_start)}.</li>}
         </ul>
       </Section>
 
       <Section title={c.queries.length === 1 ? "The exact query" : `The exact queries (${c.queries.length})`}>
-        {c.queryNote && <p className="muted mb-2 text-xs">{c.queryNote}</p>}
+        {c.queryNote && <p className="mb-2 text-xs text-ink-muted">{c.queryNote}</p>}
         {c.queries.map((q, i) => <Query key={i} sql={q} />)}
       </Section>
 
-      <p className="muted text-xs">
-        Every KPI on one page: <a href={href({ view: "kpis" })} className="underline underline-offset-2">What each number means</a>
-        {" · "}The warehouse's lineage: <a href={`${BASE_PATH}dbt/`} className="underline underline-offset-2">dbt docs</a>
+      <p className="text-xs text-ink-muted">
+        Every KPI on one page: <a href={href({ view: "kpis" })} className="link-ink text-ink-soft">What each number means</a>
+        {" · "}The warehouse's lineage: <a href={`${BASE_PATH}dbt/`} className="link-ink text-ink-soft">dbt docs</a>
       </p>
     </div>
   );
@@ -115,7 +115,7 @@ export function HowCalculatedPanel(c: Calculation) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="muted mb-1 text-xs font-semibold uppercase tracking-wide">{title}</h3>
+      <h3 className="label mb-1.5">{title}</h3>
       {children}
     </section>
   );
@@ -125,11 +125,11 @@ function Query({ sql }: { sql: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative mt-1">
-      <pre data-testid="how-sql" className="mono max-h-72 overflow-auto rounded bg-zinc-100 p-2 pr-14 text-[11px] leading-snug dark:bg-zinc-900">{sql}</pre>
+      <pre data-testid="how-sql" className="code-block max-h-72 overflow-auto bg-sheet px-3 py-2 pr-16">{sql}</pre>
       <button
         type="button"
         onClick={() => void navigator.clipboard?.writeText(sql).then(() => setCopied(true))}
-        className="absolute right-2 top-2 rounded border border-[var(--gc-line)] bg-[var(--gc-panel)] px-2 py-0.5 text-xs"
+        className="absolute right-2 top-2 cursor-pointer rounded-full border border-ink/25 bg-sheet px-2.5 py-0.5 text-xs text-ink-soft transition-colors duration-150 hover:border-accent hover:text-accent"
       >
         {copied ? "Copied" : "Copy"}
       </button>
