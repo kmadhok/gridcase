@@ -148,7 +148,7 @@ describe("ExploreView", () => {
     expect(within(panel).getByText(/Dollars traded \(shares x price\), summed over trades/)).toBeInTheDocument();
     expect(within(panel).getByText("Category: Sports")).toBeInTheDocument();
     expect(within(panel).getByText(/same hour on up to 28 earlier days/)).toBeInTheDocument();
-    expect(within(panel).getByRole("link", { name: /data-api.polymarket.com\/trades/ })).toHaveAttribute("href", "https://data-api.polymarket.com/trades");
+    expect(within(panel).getByRole("link", { name: /data-api.polymarket.com\/v2\/trades/ })).toHaveAttribute("href", "https://data-api.polymarket.com/v2/trades");
     expect(within(panel).getByTestId("how-sql")).toHaveTextContent(CHART.sql);
     expect(within(panel).getByRole("link", { name: /What each number means/ })).toHaveAttribute("href", "#/kpis");
   });

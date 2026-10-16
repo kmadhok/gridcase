@@ -19,6 +19,10 @@ DBT_DIR = ROOT / "dbt"
 ONTOLOGY_DIR = ROOT / "ontology"
 
 
+# Which Polymarket trades feed the collector polls: "v2" (/v2/trades, cursor paging, the
+# default) or "v1" (/trades, retired by Polymarket on 2026-10-24; kept as a fallback switch).
+TRADES_API = os.environ.get("GRIDCASE_TRADES_API", "v2").strip().lower()
+
 # How often the server loads newly collected trades into the store (seconds).
 POLYMARKET_LOAD_EVERY_S = 300.0
 

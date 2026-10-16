@@ -766,8 +766,8 @@ def test_definitions_explain_every_public_kpi_slice_rule_and_source(synth_store:
     watch = d["usual_range"]
     assert (watch["lookback_days"], watch["min_history_days"], watch["k_sigma"]) == (28, 3, 3.0)
     urls = {s.get("url") for s in d["sources"]}
-    assert {"https://data-api.polymarket.com/trades", "https://gamma-api.polymarket.com"} <= urls
-    assert any("4 minutes" in s["how"] and "10,000" in s["how"] for s in d["sources"])
+    assert {"https://data-api.polymarket.com/v2/trades", "https://gamma-api.polymarket.com"} <= urls
+    assert any("4 minutes" in s["how"] and "20,000" in s["how"] for s in d["sources"])
     assert d["record_start"] == "2026-10-01T00:00:00"  # the synthetic record's first trade hour
 
 

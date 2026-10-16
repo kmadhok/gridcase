@@ -120,7 +120,7 @@ export const DEFINITIONS = {
   ],
   usual_range: { lookback_days: 28, min_history_days: 3, k_sigma: 3, min_run: 2, single_hour_sigma: 5, settle_minutes: 15, log_scale: ["volume_usd"], warmup_days: { new_traders: 7 } },
   sources: [
-    { name: "Trades", url: "https://data-api.polymarket.com/trades", how: "Polymarket's public trades feed. Our collector saves the newest 10,000 trades every 4 minutes." },
+    { name: "Trades", url: "https://data-api.polymarket.com/v2/trades", how: "Polymarket's public trades feed. Every 4 minutes our collector pages back through the newest trades until it reaches the last one it saved." },
     { name: "Markets and categories", url: "https://gamma-api.polymarket.com", how: "Polymarket's public market data gives each market's tags; the tags decide its category." },
     { name: "As of", how: "Every number reads only the trades our collector had saved by its time." },
   ],

@@ -11,7 +11,7 @@ from typing import Any
 
 from gridcase import config
 from gridcase.catalog import _definition, _formula
-from gridcase.ingest.polymarket import BASE_URL, COLLECT_EVERY_S, PAGE
+from gridcase.ingest.polymarket import COLLECT_EVERY_S, MAX_PAGES, PAGE, V2_PAGE, trades_url
 from gridcase.ingest.polymarket_load import GAMMA_URL
 from gridcase.market_alarm import load_watch
 from gridcase.semantic.kpis import is_internal, load_kpis
@@ -20,6 +20,25 @@ from gridcase.semantic.kpis import is_internal, load_kpis
 def _minutes(seconds: float) -> str:
     m = seconds / 60
     return f"{m:g} minute{'' if m == 1 else 's'}"
+
+
+def _trades_source(api: str) -> dict[str, str]:
+    """The live collector's feed, as GRIDCASE_TRADES_API picks it."""
+    if api == "v1":
+        how = (
+            "Polymarket's public trades feed. Our collector saves the newest "
+            f"{PAGE:,} trades every {_minutes(COLLECT_EVERY_S)} (the feed reaches back "
+            "only about that far), as hourly compressed files, and records any gap "
+            "between pages."
+        )
+    else:
+        how = (
+            f"Polymarket's public trades feed. Every {_minutes(COLLECT_EVERY_S)} our "
+            "collector pages back through the newest trades until it reaches the last one "
+            f"it saved (at most {MAX_PAGES * V2_PAGE:,} trades a poll), stores them as hourly "
+            "compressed files, and records a gap if it cannot reach back that far."
+        )
+    return {"name": "Trades", "url": trades_url(api), "how": how}
 
 
 @cache
@@ -54,16 +73,7 @@ def definitions() -> dict[str, Any]:
             "warmup_days": dict(p.warmup_days),
         },
         "sources": [
-            {
-                "name": "Trades",
-                "url": f"{BASE_URL}/trades",
-                "how": (
-                    "Polymarket's public trades feed. Our collector saves the newest "
-                    f"{PAGE:,} trades every {_minutes(COLLECT_EVERY_S)} (the feed reaches back "
-                    "only about that far), as hourly compressed files, and records any gap "
-                    "between pages."
-                ),
-            },
+            _trades_source(config.TRADES_API),
             {
                 "name": "Loading",
                 "how": (
