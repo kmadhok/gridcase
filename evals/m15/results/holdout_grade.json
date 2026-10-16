@@ -1,0 +1,66 @@
+{
+ "results_file": "evals/m15/results/base_holdout.json",
+ "n_spike": 1334,
+ "n_markets": 1020,
+ "malformed_spike": 0.0029985007496251548,
+ "brier_model": 0.22911968065967014,
+ "brier_q": 0.2281669585832084,
+ "primary_gap": [
+  0.0009527220764617697,
+  -0.0030136741172051094,
+  0.005030447061039942
+ ],
+ "primary_gap_answered_only": [
+  0.0006887828947368426,
+  -0.0032186429098966024,
+  0.004632239803625379
+ ],
+ "dir_corr": [
+  0.2616405845367166,
+  0.2036051138903509,
+  0.3179933293663795
+ ],
+ "sd_p": 0.19089823072170373,
+ "ece_model": 0.0613223388305847,
+ "ece_q": 0.07487443778110943,
+ "copy_q_share": 0.5989505247376312,
+ "stretch_blend_gap": [
+  -0.000894074880528485,
+  -0.0019169111567371936,
+  0.00012996556734317473
+ ],
+ "up": {
+  "n": 623,
+  "mean_p": 0.5750706260032102,
+  "hold_rate": 0.6051364365971108,
+  "corr_p_headroom": -0.9293507429275049,
+  "brier": 0.23921503852327447,
+  "brier_q": 0.23760101243980739
+ },
+ "down": {
+  "n": 711,
+  "mean_p": 0.6751821378340366,
+  "hold_rate": 0.6286919831223629,
+  "corr_p_headroom": -0.9202303425238758,
+  "brier": 0.22027381856540085,
+  "brier_q": 0.21990055133614625
+ },
+ "resolve": {
+  "n": 538,
+  "malformed": 0.0,
+  "brier_model": 0.20473737581784385,
+  "brier_price": 0.20473737581784385
+ },
+ "checks": {
+  "PRIMARY non-inferior to q (95% upper bound <= +0.015)": true,
+  "direction corr > 0, CI excludes 0": true,
+  "up mean p within 0.07 of hold rate": true,
+  "down mean p within 0.07 of hold rate": true,
+  "corr(p, headroom) < 0 for rises": true,
+  "corr(p, headroom) < 0 for drops": true,
+  "sd(p) >= 0.12": true,
+  "ECE <= ECE(q) + 0.01": true,
+  "malformed <= 5%": true,
+  "STRETCH blend beats q (95% upper bound < 0)": false
+ }
+}

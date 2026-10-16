@@ -832,3 +832,29 @@ User decisions (2026-10-16): run the holdout, excuse harmless numbers in the ben
   - Not part of this test: the path logistic (report-only, only if run separately later).
   - Any re-run or change after seeing the result is labelled exploratory.
   - On validation (P3, already seen) the same grader gives the primary pass, the stretch pass, and two secondary fails: drop answers 0.071 below the hold rate (0.695 vs 0.766), and ECE 0.090 vs q's 0.074. These are not tuned away.
+
+## 2026-10-16 — M15 holdout result: PASS (matches the market with the right structure); stretch goal missed
+
+The run is exactly as pre-registered (commit b3a5beb, pushed before the run): untuned Qwen3-8B, BD framing, thinking off, all 1,872 holdout tasks, $9.08. Total spend is $95.93 of $150. Results: `evals/m15/results/base_holdout.json`; grade: `evals/m15/results/holdout_grade.md`.
+
+- **Primary: PASS.**
+  - Spike Brier 0.2291 against q's 0.2282.
+  - Gap +0.0010 [−0.0030, +0.0050] over 1,334 spike tasks on 1,020 markets. The bound was ≤ +0.015.
+  - Answered only: +0.0007 [−0.0032, +0.0046].
+- **Every secondary check: PASS.**
+  - Direction corr +0.26 [+0.20, +0.32].
+  - Mean p within 0.07 of the hold rate: rises 0.575 vs 0.605; drops 0.675 vs 0.629.
+  - corr(p, headroom) −0.93 (rises) and −0.92 (drops).
+  - sd(p) 0.191.
+  - ECE 0.061, better than q's 0.075.
+  - Malformed 0.3%.
+- **Stretch: FAIL, narrowly.** The 0.25·p + 0.75·q blend vs q: −0.0009 [−0.0019, +0.0001]. The point estimate favours the blend; the interval just includes 0. "Information beyond q" is suggestive, not shown.
+- **Reported:**
+  - 60% of spike answers copy q to within 0.01.
+  - Resolve Brier 0.2047, equal to the price.
+  - Penalised share (tool budget or verifier drops) 4.8%. For reference, the untuned model under framing A was penalised on about 55% of validation spike answers.
+- **Note:** the holdout period's direction gap is much smaller than in train (hold rate 0.63 after drops vs 0.61 after rises, against 0.72 vs 0.48 in train). That is why q and the model have a higher Brier here than on validation.
+- **What M15 established:**
+  - With inputs framed the way the model can read them, an untuned 8B agent matches the market-implied forecast on unseen data, with correct direction and headroom behaviour and better calibration.
+  - SFT and RL were not needed for the D3 goal. Per the fine-tuning guide, training would have to add information beyond q to be worth its cost, and nothing seen so far suggests it would.
+  - `REVIEW:` close M15 here, or pursue the stretch goal: e.g. add move speed, the one stable path signal found, as a stated fact, and test it on validation first.

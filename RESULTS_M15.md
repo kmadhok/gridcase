@@ -121,6 +121,19 @@ User decisions D1–D3 (docs/DECISIONS.md, 2026-10-14) implemented: a spike that
 
 Thinking on, worked examples, SFT and RL are not needed to match the market. Per docs/M15_FINETUNING_GUIDE.md, the remaining test is a pre-registered one-shot holdout eval (≈ $11, not yet run; draft in DECISIONS.md). Details: docs/M15_DIAGNOSIS.md §8, data/rl/diagnosis/p3/summary.md.
 
+## Holdout result (2026-10-16, pre-registered, $9.08): PASS
+
+On the 1,872 unseen holdout tasks, the untuned Qwen3-8B with the BD framing matches the market-implied forecast on the 1,334 spike tasks: Brier 0.2291 vs q 0.2282, gap +0.0010 [−0.0030, +0.0050], inside the pre-registered +0.015 margin. Every secondary check passes:
+
+- Direction corr +0.26.
+- Per-direction means within 0.07 of the hold rates.
+- Headroom correlations negative in both directions.
+- sd(p) 0.19.
+- ECE 0.061, against q's 0.075.
+- Malformed 0.3%.
+
+The stretch goal (a q blend that beats q) is narrowly missed: −0.0009 [−0.0019, +0.0001]. Resolve tasks equal the price (0.2047). Grade: `evals/m15/results/holdout_grade.md`; total M15 spend $95.93 of $150.
+
 ## How to finish (paid, on a machine with keys)
 
 This container has no `.env`, so no `ANTHROPIC_API_KEY` and no `TINKER_API_KEY`. Everything free ran here. The three paid rows need a machine that has both keys. That's the laptop, not the VPS: the VPS is memory-tight and must not be disturbed.
