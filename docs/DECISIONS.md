@@ -532,3 +532,9 @@ User report: on a case, only "A broad shift" could be explored; "New traders", "
 - **Tests:** 3 new web tests (any card opens and closes, not only the top one; a failed check says so; an untested driver says so). Web 48 tests, tsc, oxlint and the build pass.
 - **Deployed 2026-10-07** (user approval: "make it live"). GitHub was briefly unreachable from the laptop, so the commits went to the VPS as a git bundle (pushed to origin afterwards) (fast-forward `5ebaf26` → `397d61c`), then `npm run build` in `web/`. No restart: the server serves `web/dist` from disk. Python and `package.json` unchanged.
 - **Checked live:** on the Weather case of 7 Oct 15:16, "One market" opens to both market checks and the sentence that ruled it out.
+
+## 2026-10-16 — Now page and catalog served from a snapshot
+
+- With 22.6M trades (after merging the VPS record) `/api/now` took ~11 s and `/api/catalog` ~9 s per request, up to ~70 s while the 5-minute refresh ran; ~34 s (×3.5 on one thread) cold after a restart. Profile: `new_traders` and `returning_share` rescan every wallet's first trade for the unsettled hour; the rest is the 18 series on one thread.
+- `threads = 1` stays (byte-identical receipts). Instead, `serve` sets `snapshot_pages`: the background computes both payloads after each refresh (and its watch/digest) with the same code and stores them in `page_snapshots`; requests return the stored JSON. A restart serves the stored snapshot at once. With no snapshot yet, the first request computes once. Tests and other entry points keep `snapshot_pages=False` (fresh per request). The payload's `as_of` is the refresh time, so freshness stays honest (at most one refresh behind).
+- REVIEW: next step if investigations or Explore's `new_traders` (3 s) need to be faster: an incrementally maintained wallet first-seen table. It changes how KPIs compile (hard rule 1, as_of semantics), so it needs a decision first.

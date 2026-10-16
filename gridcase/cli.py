@@ -187,6 +187,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         drain_interval_s=opts.drain_interval_s,
         watch=opts.watch,
         polymarket_interval_s=config.POLYMARKET_LOAD_EVERY_S,
+        snapshot_pages=True,  # the Now page and catalog are computed once per refresh
     )
     uvicorn.run(app, host=opts.host, port=opts.port, log_level="info")
     return 0

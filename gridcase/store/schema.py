@@ -133,6 +133,14 @@ POLYMARKET_DDL = [
         mtime  DOUBLE NOT NULL
     )
     """,
+    # The Now page and the KPI catalog as last computed, so a restart serves them at once.
+    """
+    CREATE TABLE IF NOT EXISTS page_snapshots (
+        name   VARCHAR PRIMARY KEY,
+        as_of  TIMESTAMP NOT NULL,
+        body   VARCHAR NOT NULL
+    )
+    """,
     """
     CREATE OR REPLACE MACRO trades_as_of(t) AS TABLE
     SELECT * FROM trades WHERE collected_at <= t AND ts <= t

@@ -13,6 +13,7 @@ follow-up checks in a background thread.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -26,6 +27,7 @@ from typing import Any, Literal
 import duckdb
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server import MCPServer
@@ -231,6 +233,34 @@ def _case_window(case: CaseRecord) -> tuple[datetime, datetime] | None:
     return (datetime.fromisoformat(w[0]), datetime.fromisoformat(w[1])) if w else None
 
 
+def now_payload(c: duckdb.DuckDBPyConnection, at: datetime) -> Any:
+    """The Now page's data at `at`: every watched KPI against its usual band, freshness and the
+    latest investigations."""
+    watched, _ = load_watch()
+    series = [series_view(c, w, at) for w in watched]
+    row = c.execute(
+        "SELECT max(ts), max(collected_at), min(ts) FROM trades_as_of(?)", [at]
+    ).fetchone()
+    newest, collected, first = row if row else (None, None, None)
+    cases = [_case_summary(x) for x in list_cases(c)[:10]]
+    for x in cases:
+        x["segment"] = x["entity"]
+    return jsonable_encoder(
+        {
+            "as_of": at.isoformat(),
+            "series": series,
+            "freshness": {
+                "newest_trade": newest.isoformat() if newest else None,
+                "record_starts": first.isoformat() if first else None,
+                "minutes_behind": round((at - collected).total_seconds() / 60, 1)
+                if collected
+                else None,
+            },
+            "cases": cases,
+        }
+    )
+
+
 def create_app(
     db_path: Path | None = None,
     token: str | None = None,
@@ -248,6 +278,7 @@ def create_app(
     free_llm_factory: Callable[[], LLM] | None = None,
     explore_paid_per_day: int | None = None,
     explore_series_per_window: int = 120,
+    snapshot_pages: bool = False,
 ) -> FastAPI:
     db_path = db_path or config.DB_PATH
     token = token if token is not None else config.api_token()
@@ -275,6 +306,42 @@ def create_app(
 
     def cur() -> duckdb.DuckDBPyConnection:
         return conn.cursor()
+
+    # ------------------------------------------------------------------ page snapshots
+    # The Now page and the catalog change only when new trades load, so with snapshot_pages
+    # they are computed after each refresh (same code, same single-threaded store) and every
+    # request in between is served the stored result. The last snapshot is kept in the store,
+    # so a restart serves it at once while the background recomputes.
+    pages: dict[str, Any] = {}
+    pages_lock = threading.Lock()
+    if snapshot_pages:
+        for name, body in conn.execute("SELECT name, body FROM page_snapshots").fetchall():
+            pages[name] = json.loads(body)
+
+    def refresh_pages() -> None:
+        at = now()
+        c = cur()
+        try:
+            fresh = {"now": now_payload(c, at), "catalog": jsonable_encoder(catalog(c, at))}
+            for name, body in fresh.items():
+                c.execute(
+                    "INSERT OR REPLACE INTO page_snapshots VALUES (?, ?, ?)",
+                    [name, at, json.dumps(body, separators=(",", ":"))],
+                )
+        finally:
+            c.close()
+        with pages_lock:
+            pages.update(fresh)
+
+    def page(name: str, build: Callable[[], Any]) -> Any:
+        if not snapshot_pages:
+            return build()
+        with pages_lock:
+            if name in pages:
+                return pages[name]
+        refresh_pages()  # nothing stored yet: compute once, then serve that
+        with pages_lock:
+            return pages[name]
 
     mcp = MCPServer(
         "gridcase",
@@ -408,6 +475,11 @@ def create_app(
                         log.warning("digest failed: %s", e)
                     finally:
                         c.close()
+                if snapshot_pages:
+                    try:
+                        refresh_pages()
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("page snapshot failed: %s", e)
             if drain_interval_s and now >= next_drain:
                 try:
                     drain_scheduled(cur())
@@ -432,6 +504,7 @@ def create_app(
     app.state.tasks = registry
     app.state.token = token
     app.state.conn = conn
+    app.state.refresh_pages = refresh_pages
 
     # ------------------------------------------------------------------ JSON API
 
@@ -469,44 +542,31 @@ def create_app(
             c.close()
 
     @app.get("/api/now")
-    def api_now() -> dict[str, Any]:
+    def api_now() -> Any:
         """The Now page: every watched KPI's last 48 hours against its usual band, how fresh
         our data is, and the latest investigations."""
-        at = now()
-        c = cur()
-        try:
-            watched, _ = load_watch()
-            series = [series_view(c, w, at) for w in watched]
-            row = c.execute(
-                "SELECT max(ts), max(collected_at), min(ts) FROM trades_as_of(?)", [at]
-            ).fetchone()
-            newest, collected, first = row if row else (None, None, None)
-            cases = [_case_summary(x) for x in list_cases(c)[:10]]
-        finally:
-            c.close()
-        for x in cases:
-            x["segment"] = x["entity"]
-        return {
-            "as_of": at.isoformat(),
-            "series": series,
-            "freshness": {
-                "newest_trade": newest.isoformat() if newest else None,
-                "record_starts": first.isoformat() if first else None,
-                "minutes_behind": round((at - collected).total_seconds() / 60, 1)
-                if collected
-                else None,
-            },
-            "cases": cases,
-        }
+
+        def build() -> Any:
+            c = cur()
+            try:
+                return now_payload(c, now())
+            finally:
+                c.close()
+
+        return page("now", build)
 
     @app.get("/api/catalog")
-    def api_catalog() -> dict[str, Any]:
+    def api_catalog() -> Any:
         """Every KPI in plain words, its governed definition and its last complete hour."""
-        c = cur()
-        try:
-            return catalog(c, now())
-        finally:
-            c.close()
+
+        def build() -> Any:
+            c = cur()
+            try:
+                return jsonable_encoder(catalog(c, now()))
+            finally:
+                c.close()
+
+        return page("catalog", build)
 
     @app.get("/api/digests")
     def api_digests() -> list[dict[str, str]]:
