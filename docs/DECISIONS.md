@@ -852,7 +852,7 @@ The run is exactly as pre-registered (commit b3a5beb, pushed before the run): un
 - **Reported:**
   - 60% of spike answers copy q to within 0.01.
   - Resolve Brier 0.2047, equal to the price.
-  - Penalised share (tool budget or verifier drops) 4.8%. For reference, the untuned model under framing A was penalised on about 55% of validation spike answers.
+  - Penalised share (tool budget or verifier drops): 4.9% of all tasks, 6.7% of spike tasks. For reference, the untuned model under framing A was penalised on about 55% of validation spike answers.
 - **Note:** the holdout period's direction gap is much smaller than in train (hold rate 0.63 after drops vs 0.61 after rises, against 0.72 vs 0.48 in train). That is why q and the model have a higher Brier here than on validation.
 - **What M15 established:**
   - With inputs framed the way the model can read them, an untuned 8B agent matches the market-implied forecast on unseen data, with correct direction and headroom behaviour and better calibration.
