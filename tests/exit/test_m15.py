@@ -1639,3 +1639,41 @@ def test_a_submit_written_as_text_is_still_read(tmp_path: Path) -> None:
     silent = run_episode(ScriptedAgent(lambda h: Turn(text="I think 0.3", calls=[])), con, task)
     assert silent.malformed  # no JSON: nudged once, then malformed, as before
     con.close()
+
+
+def test_benchmark_matcher_excuses_windows_and_market_name_numbers() -> None:
+    """User decision 2026-10-16: "over 24 hours" states a window, not a measured fact, and
+    "the $78k strike" quotes a market name the evidence shows; neither is an unsupported number.
+    A wrong measured number is still dropped; the product verifier is unchanged."""
+    from gridcase.explain.schema import Claim, Conclusion
+    from gridcase.explain.verifier import verify
+    from gridcase.ledger.schema import Receipt
+
+    sib = Receipt.build(
+        tool="hist.siblings", inputs={}, as_of=datetime(2026, 8, 1),
+        output={"siblings": [{"question": "Will Bitcoin be above $78,000 on Sept 11?",
+                              "price": 0.905, "change": -0.02},
+                             {"question": "Tweets 100-119?", "price": 0.1005, "change": 0.0}]},
+        data_version=None, effect_size=None, runtime_ms=0, sql=[],
+    )  # fmt: skip
+    move = Receipt.build(
+        tool="hist.move", inputs={}, as_of=datetime(2026, 8, 1),
+        output={"condition_id": "0x04c227bcce5c98b2", "price": 0.57, "change": {"24h": 0.355}},
+        data_version=None, effect_size=None, runtime_ms=0, sql=[],
+    )  # fmt: skip
+    receipts = {sib.receipt_id: sib, move.receipt_id: move}
+    texts = [
+        ("The market price is 0.57 and rose 0.355 over 24 hours.", [move.receipt_id], True),
+        ("The $78k strike is at 0.905.", [sib.receipt_id], True),
+        ("The 100-119 bucket was priced at 0.1005.", [sib.receipt_id], True),
+        ("The price rose 0.42 over 24 hours.", [move.receipt_id], False),  # 0.42 is not in it
+        ("There were 227 trades.", [move.receipt_id], False),  # digits of an id are not a name
+    ]
+    concl = Conclusion(case_id="c", top_hypothesis=None, ranked=[],
+                       claims=[Claim(text=t, receipt_ids=r) for t, r, _ in texts])  # fmt: skip
+    kept, _ = verify(concl, receipts, drop_uncited_numbers=True, strict=True)
+    assert [c.text for c in kept.claims] == [t for t, _, ok in texts if ok]
+    product, _ = verify(concl, receipts, drop_uncited_numbers=True)
+    assert "The market price is 0.57 and rose 0.355 over 24 hours." not in [
+        c.text for c in product.claims
+    ]  # unchanged: the product rule still asks for the window to be in the evidence

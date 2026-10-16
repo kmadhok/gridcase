@@ -803,3 +803,32 @@ Validation spike tasks (n ≈ 150), with tools, charged to `reserve` ($6.82; tot
   - Resolve Brier vs the price, reported.
 - **Stretch (information beyond q):** the blend's 95% upper bound vs q is < 0.
 - **Cost:** ≈ $11. The small_eval allowance has $2.24 left and reserve $8.18, so it needs the user to move allowance (e.g. $15 from the unused train allowance to small_eval); the global cap is unchanged.
+
+## 2026-10-16 — M15: verifier rule, allowance move, holdout pre-registration (registered before the run)
+
+User decisions (2026-10-16): run the holdout, excuse harmless numbers in the benchmark verifier, push.
+
+- **Benchmark verifier** (`verify(strict=True)` only; the product verifier is unchanged, hard rule 3):
+  - A number attached to a time unit ("over 24 hours", "a 6-hour window") is a window, not a measured number, so it is not checked.
+  - A number that appears inside any market name or outcome in the episode's evidence is supported. Example: "the $78k strike" when a sibling asks "above $78,000"; "the 100-119 bucket".
+  - Id-like strings (hex of 12+ characters) do not lend their digit runs.
+  - `REVIEW:` a window stated as a fact ("launched 2 days ago") also passes unchecked.
+  - Test: `test_benchmark_matcher_excuses_windows_and_market_name_numbers`.
+- **Allowance:** $15 moved from `train` (85 → 70) to `small_eval` (15 → 30) for the holdout eval. The global cap is unchanged at $150; spent so far $86.85.
+- **Holdout pre-registration (final; replaces the draft above).** Registered before the run, with the grading code committed alongside (`experiments/m15_diagnosis/holdout_grade.py`):
+  - **Run (once):** `GRIDCASE_RL_FRAMING=bd uv run gridcase rl eval --model base --split holdout`. Untuned Qwen3-8B, thinking off, T 0.7, BD framing, the strict benchmark verifier; all 1,872 tasks (1,334 spike, 538 resolve).
+  - **Grade:** `uv run python experiments/m15_diagnosis/holdout_grade.py --results evals/m15/results/base_holdout.json --manifest evals/m15/holdout/manifest.jsonl`.
+  - **Unanswered spike tasks** are scored at p = 0.5; answered-only figures are reported too. The bootstrap resamples markets (condition_id), 4,000 draws, seed 15.
+  - **Primary (D3 = match):** spike Brier(model) − Brier(q). Pass if the 95% upper bound is ≤ +0.015.
+  - **Secondary:**
+    - Direction corr > 0 with its CI excluding 0.
+    - Per-direction mean p within 0.07 of the holdout hold rate.
+    - corr(p, headroom) < 0 within each direction.
+    - sd(p) ≥ 0.12.
+    - ECE ≤ ECE(q) + 0.01.
+    - Malformed ≤ 5%.
+  - **Stretch:** the 0.25·p + 0.75·q blend's 95% upper bound vs q < 0.
+  - **Reported, not gated:** copy-q share; resolve Brier vs the price.
+  - Not part of this test: the path logistic (report-only, only if run separately later).
+  - Any re-run or change after seeing the result is labelled exploratory.
+  - On validation (P3, already seen) the same grader gives the primary pass, the stretch pass, and two secondary fails: drop answers 0.071 below the hold rate (0.695 vs 0.766), and ECE 0.090 vs q's 0.074. These are not tuned away.

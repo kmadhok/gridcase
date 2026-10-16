@@ -27,6 +27,12 @@ NUMBER = re.compile(
     r"(?:\s?(?P<s>k|K|M|B|bn|thousand|million|billion)\b)?"
 )
 TOLERANCE = 0.01
+ID_LIKE = re.compile(r"^(?:0x)?[0-9a-fA-F]{12,}$")
+# "over 24 hours", "a 6-hour window": a window the claim is stated over, not a measured number
+DURATION = re.compile(
+    r"\b\d+(?:\.\d+)?\s?-?\s?(?:h|hr|hrs|hours?|d|days?|min|mins|minutes?|weeks?)\b",
+    re.IGNORECASE,
+)
 SCALE = {
     "k": 1e3,
     "K": 1e3,
@@ -122,7 +128,17 @@ def verify(
     """drop_uncited_numbers: an uncited sentence that states a figure is dropped instead of
     kept as inferred (the question box: interpretation may explain, not assert numbers).
     strict: a number must equal a cited value to the precision it was written at (the M15
-    benchmark; the product keeps the looser rule)."""
+    benchmark; the product keeps the looser rule). In strict mode a window ("over 24 hours") is
+    not a measured number, and a number inside any market name or outcome the evidence shows
+    ("the $78k strike" for "above $78,000") is supported (user decision 2026-10-16)."""
+    named: list[float] = []
+    if strict:
+        all_labels: set[str] = set()
+        for r in receipts.values():
+            _labels(r.output, all_labels)
+        for label in all_labels:
+            if not ID_LIKE.match(label):  # an id's digit runs are not a name's numbers
+                named.extend(numbers_in(label))
     kept: list[Claim] = []
     dropped: list[str] = []
     for c in conclusion.claims:
@@ -146,6 +162,9 @@ def verify(
         for rid in c.receipt_ids:
             _labels(receipts[rid].output, labels)
         text = _without_labels(c.text, labels)
+        if strict:
+            text = DURATION.sub(" ", text)
+            values.extend(named)
         bad = [
             n
             for n, slack in number_tokens(text, plain_rounding=strict)

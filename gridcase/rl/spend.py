@@ -16,8 +16,8 @@ from typing import Any
 GLOBAL_CAP_USD = 150.0
 ALLOWANCES: dict[str, float] = {
     "frontier_eval": 35.0,
-    "small_eval": 15.0,
-    "train": 85.0,
+    "small_eval": 30.0,  # +15 from train for the holdout eval (user decision 2026-10-16)
+    "train": 70.0,
     "reserve": 15.0,
 }
 
