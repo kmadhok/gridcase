@@ -858,3 +858,36 @@ The run is exactly as pre-registered (commit b3a5beb, pushed before the run): un
   - With inputs framed the way the model can read them, an untuned 8B agent matches the market-implied forecast on unseen data, with correct direction and headroom behaviour and better calibration.
   - SFT and RL were not needed for the D3 goal. Per the fine-tuning guide, training would have to add information beyond q to be worth its cost, and nothing seen so far suggests it would.
   - `REVIEW:` close M15 here, or pursue the stretch goal: e.g. add move speed, the one stable path signal found, as a stated fact, and test it on validation first.
+
+## 2026-10-16 — M15: Sonnet 5.5 on the same holdout, through the Claude Code subscription
+
+User request: compare with Sonnet using the Claude Code subscription (no API key, no ledger spend).
+
+- **Harness** (`experiments/m15_diagnosis/sonnet_cc/`):
+  - One `claude -p --model sonnet` session per task, in an empty directory.
+  - The M15 system prompt replaces Claude Code's; every built-in tool is off (`--tools ""`).
+  - The only tools are the task's own, served over MCP by `server.py`: the same names, descriptions and schemas (`tool_specs()`), the 8-call budget, `run_tool` at as_of, the BD reframing, the task-facts receipt, and `_finish` with the strict benchmark verifier.
+  - The prompt is the same `prompt_for(task, "bd", facts id)`.
+  - Only the agent loop differs (Claude Code's, default effort).
+  - Every session reported `claude-sonnet-5-5` and exactly the 7 task tools.
+  - All 1,872 holdout tasks ran: 1 unanswered, 0 errors, 16.7 s per task. The API-equivalent price Claude Code reports is $42.72; the subscription paid it.
+- **This is a comparison, not a pre-registered test.** The holdout had not been used for Sonnet; it was graded with the same committed grader (`holdout_grade.py`) and a paired script (`compare_holdout.py`). Results: `evals/m15/results/sonnet_cc_holdout.json`, `holdout_qwen_vs_sonnet.md`, `sonnet_cc_holdout_grade.md`.
+
+**Spike tasks** (1,334 on 1,020 markets; gaps are vs q, 95% CIs from resampling markets):
+
+| | Qwen3-8B (BD) | Sonnet 5.5 (BD, Claude Code) | q |
+|---|---|---|---|
+| Brier | 0.2291 | **0.2142** | 0.2282 |
+| Gap to q | +0.0010 [−0.0030, +0.0050] | **−0.0140 [−0.0225, −0.0059]** | |
+| ECE | 0.061 | 0.048 | 0.075 |
+| Copies q | 60% | 4% | |
+| Direction corr | +0.26 | +0.22 | +0.25 |
+| Tool calls per task | 6.2 | 2.4 | |
+
+- **The paired Qwen − Sonnet difference is +0.0150 [+0.0069, +0.0233]:** Sonnet is better, and its interval excludes 0.
+- **Sonnet passes every check, including the stretch.** It beats q outright, by 0.014. That is the edge the literature review expected to be out of reach without news. `REVIEW:` this is one run and one harness; it beats a q that is itself over-confident (calibration slope 0.81 on eval).
+- **Resolve tasks:** Sonnet 0.2069 vs the price 0.2047 (+0.0021 [−0.0002, +0.0045]); Qwen copies the price exactly.
+- **What it means for M15:**
+  - The information beyond q is real, about 0.014 Brier on unseen data, and a strong model reading the same evidence finds it.
+  - Qwen3-8B with the BD framing matches q but does not find it.
+  - Distilling Sonnet into Qwen is still ruled out by the Usage Policy (our reading). Two routes remain: use Sonnet itself for spike forecasts (~$0.023 per task on the API), or train Qwen to find the edge by self-training or RL. The latter is the uncertain, costlier path the guide ranked low.

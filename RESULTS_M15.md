@@ -134,6 +134,12 @@ On the 1,872 unseen holdout tasks, the untuned Qwen3-8B with the BD framing matc
 
 The stretch goal (a q blend that beats q) is narrowly missed: −0.0009 [−0.0019, +0.0001]. Resolve tasks equal the price (0.2047). Grade: `evals/m15/results/holdout_grade.md`; total M15 spend $95.93 of $150.
 
+## Sonnet 5.5 on the same holdout (2026-10-16, Claude Code subscription, comparison)
+
+Same tools, prompt, BD framing and verifier, run through `claude -p` (`experiments/m15_diagnosis/sonnet_cc/`). On the 1,334 spike tasks, Sonnet scores 0.2142, **beating q (0.2282) by 0.014 [0.006, 0.023]**. Against Qwen3-8B (0.2291) the paired difference is 0.015 [0.007, 0.023] in Sonnet's favour.
+
+Sonnet copies q on only 4% of answers, against 60% for Qwen, and uses fewer tool calls (2.4 against 6.2). On resolve tasks both are at the price. Paired table: `evals/m15/results/holdout_qwen_vs_sonnet.md`.
+
 ## How to finish (paid, on a machine with keys)
 
 This container has no `.env`, so no `ANTHROPIC_API_KEY` and no `TINKER_API_KEY`. Everything free ran here. The three paid rows need a machine that has both keys. That's the laptop, not the VPS: the VPS is memory-tight and must not be disturbed.
