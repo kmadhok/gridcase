@@ -10,7 +10,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/cloudflared --no-autoupdate tunnel --config %h/.cloudflared/marketcase.yml run
+ExecStart=%h/.local/bin/cloudflared --no-autoupdate tunnel --protocol http2 --config %h/.cloudflared/marketcase.yml run
 Restart=always
 RestartSec=10
 

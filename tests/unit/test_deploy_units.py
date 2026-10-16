@@ -62,6 +62,9 @@ def test_tunnel_publishes_the_server_without_mcp() -> None:
     execs = " ; ".join(s["ExecStart"])
     assert "cloudflared" in execs and "tunnel" in execs and "run" in execs
     assert "--no-autoupdate" in execs  # updates are a deploy decision, not a surprise
+    # TCP, not QUIC: on kayak (WSL) QUIC's UDP sends fail ("network is unreachable") and drop
+    # connections every few minutes, hanging requests in flight.
+    assert "--protocol http2" in execs
     assert s["Restart"] == ["always"]
     cfg = yaml.safe_load((DEPLOY / "cloudflared-marketcase.yml").read_text())
     rules = cfg["ingress"]
