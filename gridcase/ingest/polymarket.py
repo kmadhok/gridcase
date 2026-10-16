@@ -128,6 +128,16 @@ def _fetch_v2(
     return rows, True, max_pages
 
 
+def v2_since(
+    client: httpx.Client, start_ts: int, max_pages: int
+) -> tuple[list[dict[str, Any]], bool]:
+    """Every /v2/trades row (v1 shape) from `start_ts` to now, walking back until a page goes
+    older than `start_ts`. Returns (rows at or after start_ts, complete). For the v1/v2 count
+    check (deploy/compare_trades_feeds.py); read-only, writes nothing."""
+    rows, capped, _ = _fetch_v2(client, start_ts, max_pages)
+    return [t for t in rows if int(t["timestamp"]) >= start_ts], not capped
+
+
 def poll_once(
     client: httpx.Client,
     root: Path,

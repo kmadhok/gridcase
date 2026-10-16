@@ -320,3 +320,13 @@ def test_a_v2_collected_trade_gets_the_same_trade_id_as_its_v1_copy(tmp_path: Pa
         one["eventSlug"],
         one["transactionHash"],
     )
+
+
+def test_v2_since_returns_every_trade_from_a_start_and_says_if_it_got_there() -> None:
+    from gridcase.ingest.polymarket import v2_since
+
+    feed = V2Feed([trade(1790711100 - 10 * i, f"t{i}") for i in range(10)], page=3)
+    rows, complete = v2_since(feed.client(), 1790711050, max_pages=10)
+    assert [r["transactionHash"] for r in rows] == [f"t{i}" for i in range(6)] and complete
+    rows, complete = v2_since(feed.client(), 1790711000, max_pages=2)
+    assert len(rows) == 6 and not complete
