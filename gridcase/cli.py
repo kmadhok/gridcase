@@ -41,6 +41,22 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fill_gaps(_: argparse.Namespace) -> int:
+    """Fill recorded collector gaps from the trades feed's history (about a month back); the
+    server's next refresh loads the trades and drops the filled gaps."""
+    import httpx
+
+    from gridcase.ingest.polymarket import BASE_URL, fill_gaps
+
+    client = httpx.Client(base_url=BASE_URL, headers={"User-Agent": "gridcase"})
+    r = fill_gaps(client, config.RAW_DIR / "polymarket")
+    print(
+        f"{r.filled} gaps filled ({r.saved} trades over {r.pages} pages); {r.unfilled} left"
+        + (f"; stopped on error: {r.error}" if r.error else "")
+    )
+    return 1 if r.error else 0
+
+
 def cmd_refresh(_: argparse.Namespace) -> int:
     """Load collected trades and categorise new markets once (the server does this every
     5 minutes; this is for a laptop copy)."""
@@ -210,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
         "--interval", type=float, default=COLLECT_EVERY_S, help="seconds between polls"
     )
     col.set_defaults(fn=cmd_collect)
+    fil = sub.add_parser("fill-gaps", help="fill recorded collector gaps from the feed's history")
+    fil.set_defaults(fn=cmd_fill_gaps)
     ref = sub.add_parser("refresh", help="load collected trades and categorise markets once")
     ref.set_defaults(fn=cmd_refresh)
     inv = sub.add_parser("investigate", help="why did a KPI move?")

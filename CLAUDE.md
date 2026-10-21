@@ -28,6 +28,7 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 ## Commands
 - uv run pytest tests/exit/test_mN.py -x
 - uv run gridcase collect            # save live trades (runs as the gridcase-collector service)
+- uv run gridcase fill-gaps          # fill recorded collector gaps from the feed's history (~a month back)
 - uv run gridcase refresh            # load collected trades + categorise markets once
 - uv run gridcase investigate --kpi volume_usd --segment category=Sports [--as-of ...]
 - uv run gridcase digest [--day YYYY-MM-DD]   # build the morning read (the server does it at 00:30 UTC)

@@ -39,6 +39,10 @@ MAX_PAGES = 4_000
 KEEP_SEEN_S = 1800  # remember trade identities this far behind the newest one
 RETRIES = 3  # per page, for 429, 5xx and network errors; the cursor is kept
 STATE_FILE = "collector_state.json"
+FILLED_FILE = (
+    "gaps_filled.jsonl"  # gaps later filled from the feed's history; the loader drops them
+)
+FILL_MAX_PAGES = 45_000  # about the month the feed reaches back
 
 # v2 answers in snake_case; the raw files keep v1's names
 V1_NAMES = {
@@ -213,6 +217,70 @@ def poll_once(
     cutoff = state.last_ts - KEEP_SEEN_S
     state.seen = {k: ts for k, ts in state.seen.items() if ts >= cutoff}
     return PollResult(new, gap=gap, pages=pages)
+
+
+@dataclass
+class FillResult:
+    saved: int
+    filled: int
+    unfilled: int
+    pages: int
+    error: str | None = None
+
+
+def _read_gaps(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def _mark_filled(root: Path, gaps: list[dict[str, Any]]) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    with (root / FILLED_FILE).open("a") as f:
+        for g in gaps:
+            f.write(json.dumps({"from_ts": g["from_ts"], "to_ts": g["to_ts"], "filled_at": now}))
+            f.write("\n")
+
+
+def fill_gaps(
+    client: httpx.Client,
+    root: Path,
+    max_pages: int = FILL_MAX_PAGES,
+    retry_wait: float = 2.0,
+) -> FillResult:
+    """Walk the feed back past the oldest recorded gap not yet filled, save the trades inside
+    each gap, and append each gap to gaps_filled.jsonl as soon as the walk is past it (pages are
+    contiguous, so its trades are all saved by then). gaps.jsonl is left as it is (the collector
+    appends to it). Trades at a gap's edges may be saved twice; the loader keeps each trade once."""
+    done = {(g["from_ts"], g["to_ts"]) for g in _read_gaps(root / FILLED_FILE)}
+    pending = [g for g in _read_gaps(root / "gaps.jsonl") if (g["from_ts"], g["to_ts"]) not in done]
+    total = len(pending)
+    cursor: str | None = None
+    saved = pages = 0
+    error = None
+    while pending and pages < max_pages:
+        try:
+            page, cursor = _fetch(client, cursor, retry_wait)
+        except FeedError as e:
+            error = str(e)
+            break
+        pages += 1
+        if not page:
+            break
+        trades = [{V1_NAMES.get(k, k): v for k, v in t.items()} for t in page]
+        stamps = [int(t["timestamp"]) for t in trades]
+        lo, hi = min(stamps), max(stamps)
+        spans = [
+            (g["from_ts"], g["to_ts"]) for g in pending if g["from_ts"] <= hi and g["to_ts"] >= lo
+        ]
+        inside = [t for t in trades if any(a <= int(t["timestamp"]) <= b for a, b in spans)]
+        _append(root, inside)
+        saved += len(inside)
+        _mark_filled(root, [g for g in pending if lo <= int(g["from_ts"])])
+        pending = [g for g in pending if lo > int(g["from_ts"])]
+        if cursor is None:
+            break
+    return FillResult(saved, total - len(pending), len(pending), pages, error)
 
 
 def run_collector(root: Path, interval_s: float = COLLECT_EVERY_S) -> None:

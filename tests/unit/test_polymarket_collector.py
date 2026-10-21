@@ -14,8 +14,10 @@ from typing import Any
 import httpx
 
 from gridcase.ingest.polymarket import (
+    FILLED_FILE,
     STATE_FILE,
     CollectorState,
+    fill_gaps,
     load_state,
     poll_once,
 )
@@ -336,3 +338,99 @@ def test_v2_trades_load_with_the_same_identity_as_their_v1_copies(tmp_path: Path
     load_raw(conn, tmp_path)
     rows = conn.execute("SELECT tx_hash, wallet, condition_id FROM trades ORDER BY ts").fetchall()
     assert rows == [("t1", "0xw", "0xc"), ("t2", "0xw", "0xc")]
+
+
+# --- filling recorded gaps from the feed's history ---------------------------------------------
+
+
+def write_gaps(root: Path, *spans: tuple[int, int]) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / "gaps.jsonl").open("a") as f:
+        for lo, hi in spans:
+            f.write(
+                json.dumps({"from_ts": lo, "to_ts": hi, "detected_at": "2026-09-30T00:00:00+00:00"})
+                + "\n"
+            )
+
+
+def filled(root: Path) -> list[tuple[int, int]]:
+    path = root / FILLED_FILE
+    if not path.exists():
+        return []
+    return [(g["from_ts"], g["to_ts"]) for g in map(json.loads, path.read_text().splitlines())]
+
+
+def test_filling_saves_only_the_trades_inside_recorded_gaps(tmp_path: Path) -> None:
+    write_gaps(tmp_path, (T0 + 100, T0 + 200), (T0 + 400, T0 + 500))
+    feed = Feed(
+        [
+            [trade(T0 + 600, "after"), trade(T0 + 450, "in second")],
+            [trade(T0 + 300, "between"), trade(T0 + 200, "at an edge")],
+            [trade(T0 + 150, "in first"), trade(T0 + 50, "before")],
+        ]
+    )
+    r = fill_gaps(feed.client(), tmp_path, retry_wait=0)
+    assert r.saved == 3 and r.error is None
+    assert {x["transactionHash"] for x in read_raw(tmp_path)} == {
+        "in second", "at an edge", "in first",
+    }  # fmt: skip
+    assert all("collected_at" in x and "asset" in x for x in read_raw(tmp_path))
+    assert sorted(filled(tmp_path)) == [(T0 + 100, T0 + 200), (T0 + 400, T0 + 500)]
+    assert gaps(tmp_path) == [(T0 + 100, T0 + 200), (T0 + 400, T0 + 500)]  # append-only
+
+
+def test_filling_stops_once_it_is_past_the_oldest_gap(tmp_path: Path) -> None:
+    write_gaps(tmp_path, (T0 + 100, T0 + 200))
+    feed = Feed([[trade(T0 + 300, "a")], [trade(T0 + 90, "b")], [trade(T0, "never asked for")]])
+    r = fill_gaps(feed.client(), tmp_path, retry_wait=0)
+    assert len(feed.requests) == 2 and r.pages == 2
+
+
+def test_a_gap_the_walk_did_not_get_past_is_not_marked_filled(tmp_path: Path) -> None:
+    write_gaps(tmp_path, (T0 + 100, T0 + 200), (T0 + 400, T0 + 500))
+    feed = Feed([[trade(T0 + 450, "x")], [trade(T0 + 150, "y")]])  # the feed ends at T0 + 150
+    r = fill_gaps(feed.client(), tmp_path, retry_wait=0)
+    assert filled(tmp_path) == [(T0 + 400, T0 + 500)] and r.unfilled == 1
+
+
+def test_a_page_limit_leaves_older_gaps_unfilled(tmp_path: Path) -> None:
+    write_gaps(tmp_path, (T0 + 100, T0 + 200), (T0 + 400, T0 + 500))
+    feed = Feed([[trade(T0 + 450, "x")], [trade(T0 + 300, "y")], [trade(T0 + 150, "z")]])
+    fill_gaps(feed.client(), tmp_path, max_pages=2, retry_wait=0)
+    assert filled(tmp_path) == [(T0 + 400, T0 + 500)]
+
+
+def test_a_failure_keeps_the_gaps_walked_past_and_leaves_the_rest(tmp_path: Path) -> None:
+    write_gaps(tmp_path, (T0 + 100, T0 + 200), (T0 + 400, T0 + 500))
+    pages = [[trade(T0 + 450, "x")], [trade(T0 + 350, "y")], [trade(T0 + 150, "z")]]
+    feed = Feed(pages, fail={3: 503, 4: 503, 5: 503, 6: 503})
+    r = fill_gaps(feed.client(), tmp_path, retry_wait=0)
+    assert r.error is not None and filled(tmp_path) == [(T0 + 400, T0 + 500)]
+
+
+def test_a_gap_already_filled_is_not_walked_for_again(tmp_path: Path) -> None:
+    write_gaps(tmp_path, (T0 + 100, T0 + 200))
+    fill_gaps(Feed([[trade(T0 + 150, "y"), trade(T0 + 50, "z")]]).client(), tmp_path, retry_wait=0)
+    feed = Feed()
+    r = fill_gaps(feed.client(), tmp_path, retry_wait=0)
+    assert feed.requests == [] and r.pages == 0 and filled(tmp_path) == [(T0 + 100, T0 + 200)]
+
+
+def test_with_no_gaps_nothing_is_fetched(tmp_path: Path) -> None:
+    feed = Feed()
+    assert fill_gaps(feed.client(), tmp_path, retry_wait=0).pages == 0 and feed.requests == []
+
+
+def test_the_store_drops_a_gap_once_it_is_filled(tmp_path: Path) -> None:
+    write_gaps(tmp_path, (T0 + 100, T0 + 200), (T0 + 400, T0 + 500))
+    conn = connect(tmp_path / "store.duckdb")
+    load_raw(conn, tmp_path)
+    assert conn.execute("SELECT count(*) FROM collector_gaps").fetchone() == (2,)
+    feed = Feed([[trade(T0 + 450, "x")], [trade(T0 + 300, "y")]])
+    fill_gaps(feed.client(), tmp_path, retry_wait=0)  # walks past the newer gap only
+    load_raw(conn, tmp_path)
+    left = conn.execute("SELECT epoch(gap_from)::BIGINT FROM collector_gaps").fetchall()
+    assert left == [(T0 + 100,)]
+    assert conn.execute("SELECT count(*) FROM trades").fetchone() == (1,)
+    load_raw(conn, tmp_path)  # loading again changes nothing
+    assert conn.execute("SELECT count(*) FROM collector_gaps").fetchone() == (1,)

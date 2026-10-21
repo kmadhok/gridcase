@@ -2,9 +2,10 @@
 
 `load_raw` reads the collector's hourly gzip JSONL files (only those that changed since the
 last load), keeps each trade once (trade_id = hash of transactionHash, asset, side, size,
-price) and records collector gaps. `enrich_markets` looks up markets not yet known in
-Polymarket's public metadata API (condition id -> event -> tags) and assigns a category from
-ontology/categories.yaml. Both are safe to run repeatedly.
+price) and records collector gaps, less those later filled from the feed's history.
+`enrich_markets` looks up markets not yet known in Polymarket's public metadata API
+(condition id -> event -> tags) and assigns a category from ontology/categories.yaml. Both are
+safe to run repeatedly.
 """
 
 from __future__ import annotations
@@ -83,16 +84,29 @@ def _load_file(conn: duckdb.DuckDBPyConnection, path: Path) -> int:
     return int(after[0] if after else 0) - int(before[0] if before else 0)
 
 
-def _load_gaps(conn: duckdb.DuckDBPyConnection, path: Path) -> int:
+def _gap_lines(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
-        return 0
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def _span(g: dict[str, Any]) -> tuple[datetime, datetime]:
+    lo = datetime.fromtimestamp(int(g["from_ts"]), UTC).replace(tzinfo=None)
+    hi = datetime.fromtimestamp(int(g["to_ts"]), UTC).replace(tzinfo=None)
+    return lo, hi
+
+
+def _load_gaps(conn: duckdb.DuckDBPyConnection, path: Path, filled_path: Path) -> int:
+    """Record the collector's gaps, except those later filled from the feed's history
+    (gaps_filled.jsonl), which are removed if already recorded."""
+    filled = {_span(g) for g in _gap_lines(filled_path)}
+    for lo, hi in filled:
+        conn.execute("DELETE FROM collector_gaps WHERE gap_from = ? AND gap_to = ?", [lo, hi])
     added = 0
-    for line in path.read_text().splitlines():
-        if not line.strip():
+    for g in _gap_lines(path):
+        lo, hi = _span(g)
+        if (lo, hi) in filled:
             continue
-        g = json.loads(line)
-        lo = datetime.fromtimestamp(int(g["from_ts"]), UTC).replace(tzinfo=None)
-        hi = datetime.fromtimestamp(int(g["to_ts"]), UTC).replace(tzinfo=None)
         exists = conn.execute(
             "SELECT count(*) FROM collector_gaps WHERE gap_from = ? AND gap_to = ?", [lo, hi]
         ).fetchone()
@@ -119,7 +133,7 @@ def load_raw(conn: duckdb.DuckDBPyConnection, root: Path) -> LoadResult:
             [str(path), st.st_size, st.st_mtime],
         )
         files += 1
-    gaps = _load_gaps(conn, root / "gaps.jsonl")
+    gaps = _load_gaps(conn, root / "gaps.jsonl", root / "gaps_filled.jsonl")
     return LoadResult(files, new, gaps)
 
 
