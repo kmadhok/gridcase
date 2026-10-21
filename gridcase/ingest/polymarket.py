@@ -1,11 +1,16 @@
 """Polymarket trades collector.
 
-The public trades feed (data-api.polymarket.com/trades) is newest-first and stops at an offset
-of 10,000 (about 20 minutes of trading), with no date filter: history exists only if it is
-saved as it happens. `poll_once` fetches the newest page, keeps trades not seen before, and
-appends them to an hourly gzip JSONL file under <root>/trades/YYYY/MM/DD/HH.jsonl.gz (the raw,
-append-only record the store is built from). A gap is reported when a page no longer reaches
-back to the newest trade already saved.
+The public trades feed (data-api.polymarket.com/v2/trades) is newest-first, 1,000 trades a page,
+with a cursor that walks back about a month and no date filter. `poll_once` pages back from the
+newest trade until it reaches the newest trade already saved, and appends the trades not saved
+before to an hourly gzip JSONL file under <root>/trades/YYYY/MM/DD/HH.jsonl.gz (the raw,
+append-only record the store is built from). Each line keeps the field names of the retired v1
+feed, so the raw files, the loader and the warehouse read it unchanged.
+
+How far the record is complete is kept in <root>/collector_state.json and moves only once a walk
+reaches it, so a collector that was stopped (a reboot, an outage) fills the time it missed when
+it starts again. A gap is reported only when the feed no longer reaches back that far, or a walk
+hits its page limit.
 """
 
 from __future__ import annotations
@@ -13,6 +18,7 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -24,12 +30,27 @@ import httpx
 log = logging.getLogger("gridcase")
 
 BASE_URL = "https://data-api.polymarket.com"
-# The feed is cached at the CDN for 5 minutes per URL. The largest page (10,000 trades) spans
-# ~11 minutes at current rates, so polling every 4 minutes keeps consecutive pages overlapping
-# without cache-busting; the gap check reports it if trading ever outruns that.
-PAGE = 10_000
-COLLECT_EVERY_S = 240.0  # the 4-minute poll above
+TRADES_PATH = "/v2/trades"
+PAGE = 1_000  # the most v2 serves per page
+# About 55 pages cover an hour of trading, so a 4-minute poll is a few pages; the limit lets one
+# walk fill roughly three days of downtime (~1 page a second) before the rest is written as a gap.
+COLLECT_EVERY_S = 240.0
+MAX_PAGES = 4_000
 KEEP_SEEN_S = 1800  # remember trade identities this far behind the newest one
+RETRIES = 3  # per page, for 429, 5xx and network errors; the cursor is kept
+STATE_FILE = "collector_state.json"
+
+# v2 answers in snake_case; the raw files keep v1's names
+V1_NAMES = {
+    "proxy_wallet": "proxyWallet",
+    "token_id": "asset",
+    "condition_id": "conditionId",
+    "event_slug": "eventSlug",
+    "outcome_index": "outcomeIndex",
+    "profile_image": "profileImage",
+    "profile_image_optimized": "profileImageOptimized",
+    "transaction_hash": "transactionHash",
+}
 
 
 def trade_key(t: dict[str, Any]) -> tuple[Any, ...]:
@@ -39,7 +60,7 @@ def trade_key(t: dict[str, Any]) -> tuple[Any, ...]:
 
 @dataclass
 class CollectorState:
-    last_ts: int | None = None
+    last_ts: int | None = None  # every trade up to this second is saved (or recorded as a gap)
     seen: dict[tuple[Any, ...], int] = field(default_factory=dict)
 
 
@@ -48,6 +69,11 @@ class PollResult:
     new: int
     gap: bool = False
     error: str | None = None
+    pages: int = 0
+
+
+class FeedError(Exception):
+    pass
 
 
 def _hour_file(root: Path, ts: int) -> Path:
@@ -55,20 +81,126 @@ def _hour_file(root: Path, ts: int) -> Path:
     return root / "trades" / f"{d:%Y}" / f"{d:%m}" / f"{d:%d}" / f"{d:%H}.jsonl.gz"
 
 
+def _read_lines(path: Path) -> list[dict[str, Any]]:
+    with gzip.open(path, "rt") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def load_state(root: Path) -> CollectorState:
+    """Where the record is complete to: the state file, else the newest saved trade (a record
+    from before the state file), else nothing (a fresh install takes one page and starts there).
+    Trades saved at that exact second are remembered so a restart does not save them twice."""
+    path = root / STATE_FILE
+    if path.exists():
+        last: int | None = int(json.loads(path.read_text())["complete_to"])
+    else:
+        files = sorted((root / "trades").rglob("*.jsonl.gz"))
+        last = (
+            max((int(t["timestamp"]) for t in _read_lines(files[-1])), default=None)
+            if files
+            else None
+        )
+    if last is None:
+        return CollectorState()
+    hour = _hour_file(root, last)
+    rows = _read_lines(hour) if hour.exists() else []
+    return CollectorState(last, {trade_key(t): last for t in rows if int(t["timestamp"]) == last})
+
+
+def _save_state(root: Path, last_ts: int) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    tmp = root / f"{STATE_FILE}.tmp"
+    tmp.write_text(json.dumps({"complete_to": last_ts}) + "\n")
+    os.replace(tmp, root / STATE_FILE)
+
+
+def _fetch(
+    client: httpx.Client, cursor: str | None, retry_wait: float
+) -> tuple[list[dict[str, Any]], str | None]:
+    params: dict[str, Any] = {"limit": PAGE, "taker_only": "true"}
+    if cursor:
+        params["cursor"] = cursor
+    for attempt in range(RETRIES + 1):
+        try:
+            resp = client.get(TRADES_PATH, params=params, timeout=30)
+        except httpx.TransportError as e:
+            err = str(e)
+        else:
+            if resp.status_code == 429 or resp.status_code >= 500:
+                err = f"HTTP {resp.status_code}"
+            else:
+                try:
+                    resp.raise_for_status()
+                    body = resp.json()
+                    more = body["pagination"]["has_more"]
+                    return body["data"], body["pagination"]["next_cursor"] if more else None
+                except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+                    raise FeedError(str(e)) from e
+        if attempt < RETRIES:
+            time.sleep(retry_wait * 2**attempt)
+    raise FeedError(err)
+
+
+def _append(root: Path, trades: list[dict[str, Any]]) -> None:
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    by_file: dict[Path, list[str]] = {}
+    for t in sorted(trades, key=lambda t: int(t["timestamp"])):
+        line = json.dumps({**t, "collected_at": now}, separators=(",", ":"))
+        by_file.setdefault(_hour_file(root, int(t["timestamp"])), []).append(line)
+    for path, lines in by_file.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(path, "at") as f:
+            f.write("\n".join(lines) + "\n")
+
+
 def poll_once(
-    client: httpx.Client, root: Path, state: CollectorState, limit: int = PAGE
+    client: httpx.Client,
+    root: Path,
+    state: CollectorState,
+    max_pages: int = MAX_PAGES,
+    retry_wait: float = 2.0,
 ) -> PollResult:
-    try:
-        resp = client.get("/trades", params={"limit": limit}, timeout=30)
-        resp.raise_for_status()
-        page: list[dict[str, Any]] = resp.json()
-    except (httpx.HTTPError, ValueError) as e:
-        return PollResult(0, error=str(e))
-    if not page:
-        return PollResult(0)
-    oldest = min(int(t["timestamp"]) for t in page)
-    gap = state.last_ts is not None and oldest > state.last_ts
-    if gap:  # trades between the last saved one and this page's oldest are lost for good
+    """Page back from the newest trade to `state.last_ts`, saving each page as it comes. If a
+    request keeps failing, the trades saved so far stay and the mark does not move, so the next
+    poll walks the same stretch again (the loader keeps each trade once)."""
+    cursor: str | None = None
+    newest = oldest = None
+    new = pages = 0
+    reached = False
+    while pages < max_pages:
+        try:
+            page, cursor = _fetch(client, cursor, retry_wait)
+        except FeedError as e:
+            return PollResult(new, error=str(e), pages=pages)
+        pages += 1
+        if not page:
+            reached = True
+            break
+        trades = [{V1_NAMES.get(k, k): v for k, v in t.items()} for t in page]
+        stamps = [int(t["timestamp"]) for t in trades]
+        newest = max(stamps) if newest is None else newest
+        oldest = min(stamps)
+        keep_from = newest - KEEP_SEEN_S
+        fresh = [
+            t
+            for t in trades
+            if (state.last_ts is None or int(t["timestamp"]) >= state.last_ts)
+            and trade_key(t) not in state.seen
+        ]
+        for t in fresh:
+            if int(t["timestamp"]) >= keep_from:
+                state.seen[trade_key(t)] = int(t["timestamp"])
+        _append(root, fresh)
+        new += len(fresh)
+        if state.last_ts is None or oldest <= state.last_ts:
+            reached = True
+            break
+        if cursor is None:
+            break
+    if newest is None:  # an empty feed: nothing to save, nothing missed
+        return PollResult(new, pages=pages)
+    gap = not reached
+    if gap:  # trades between the last saved one and the oldest reached are lost for good
         root.mkdir(parents=True, exist_ok=True)
         with (root / "gaps.jsonl").open("a") as f:
             detected = datetime.now(UTC).isoformat(timespec="seconds")
@@ -76,28 +208,20 @@ def poll_once(
                 json.dumps({"from_ts": state.last_ts, "to_ts": oldest, "detected_at": detected})
                 + "\n"
             )
-    fresh = [t for t in page if trade_key(t) not in state.seen]
-    fresh.sort(key=lambda t: int(t["timestamp"]))
-    now = datetime.now(UTC).isoformat(timespec="seconds")
-    by_file: dict[Path, list[str]] = {}
-    for t in fresh:
-        state.seen[trade_key(t)] = int(t["timestamp"])
-        line = json.dumps({**t, "collected_at": now}, separators=(",", ":"))
-        by_file.setdefault(_hour_file(root, int(t["timestamp"])), []).append(line)
-    for path, lines in by_file.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with gzip.open(path, "at") as f:
-            f.write("\n".join(lines) + "\n")
-    newest = max(int(t["timestamp"]) for t in page)
     state.last_ts = max(newest, state.last_ts or newest)
+    _save_state(root, state.last_ts)
     cutoff = state.last_ts - KEEP_SEEN_S
     state.seen = {k: ts for k, ts in state.seen.items() if ts >= cutoff}
-    return PollResult(len(fresh), gap=gap)
+    return PollResult(new, gap=gap, pages=pages)
 
 
 def run_collector(root: Path, interval_s: float = COLLECT_EVERY_S) -> None:
-    """Poll forever. Logs a line every 15 polls and every gap or error."""
-    state = CollectorState()
+    """Poll forever, starting from where the record on disk is complete. Logs every catch-up,
+    gap and error, and a line every 3 polls."""
+    state = load_state(root)
+    if state.last_ts is not None:
+        since = datetime.fromtimestamp(state.last_ts, UTC).isoformat(timespec="seconds")
+        log.info("polymarket: record complete to %s; catching up from there", since)
     client = httpx.Client(base_url=BASE_URL, headers={"User-Agent": "gridcase"})
     polls = saved = 0
     while True:
@@ -105,9 +229,11 @@ def run_collector(root: Path, interval_s: float = COLLECT_EVERY_S) -> None:
         polls += 1
         saved += r.new
         if r.error:
-            log.warning("polymarket poll failed: %s", r.error)
+            log.warning("polymarket poll failed after %d pages: %s", r.pages, r.error)
         if r.gap:
-            log.warning("polymarket gap: the newest page no longer reached the last saved trade")
+            log.warning("polymarket gap: the feed no longer reached the last saved trade")
+        if r.pages > 20:
+            log.info("polymarket: caught up %d trades over %d pages", r.new, r.pages)
         if polls % 3 == 0:
             log.info("polymarket: %d trades saved in the last 3 polls", saved)
             saved = 0

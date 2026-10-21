@@ -1,5 +1,5 @@
-# User unit: save every Polymarket trade as it happens (the public feed only reaches back
-# ~20 minutes, so history exists only if collected live). Writes raw gzip JSONL under
+# User unit: save every Polymarket trade (v2 feed; after a restart it pages back to the last
+# saved trade, so downtime up to a few days is filled, not lost). Writes raw gzip JSONL under
 # data/raw/polymarket/; never opens the DuckDB store, so it cannot conflict with the server.
 [Unit]
 Description=GridCase Polymarket trades collector

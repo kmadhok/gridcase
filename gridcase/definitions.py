@@ -11,7 +11,7 @@ from typing import Any
 
 from gridcase import config
 from gridcase.catalog import _definition, _formula
-from gridcase.ingest.polymarket import BASE_URL, COLLECT_EVERY_S, PAGE
+from gridcase.ingest.polymarket import BASE_URL, COLLECT_EVERY_S, PAGE, TRADES_PATH
 from gridcase.ingest.polymarket_load import GAMMA_URL
 from gridcase.market_alarm import load_watch
 from gridcase.semantic.kpis import is_internal, load_kpis
@@ -56,12 +56,14 @@ def definitions() -> dict[str, Any]:
         "sources": [
             {
                 "name": "Trades",
-                "url": f"{BASE_URL}/trades",
+                "url": f"{BASE_URL}{TRADES_PATH}",
                 "how": (
-                    "Polymarket's public trades feed. Our collector saves the newest "
-                    f"{PAGE:,} trades every {_minutes(COLLECT_EVERY_S)} (the feed reaches back "
-                    "only about that far), as hourly compressed files, and records any gap "
-                    "between pages."
+                    "Polymarket's public trades feed. Every "
+                    f"{_minutes(COLLECT_EVERY_S)} our collector pages back from the newest trade "
+                    f"to the last one it saved, {PAGE:,} trades a page, and keeps them as hourly "
+                    "compressed files. After a restart it fills the time it missed (the feed "
+                    "reaches back about a month), and records a gap only when it can't reach "
+                    "back that far."
                 ),
             },
             {

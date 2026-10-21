@@ -40,7 +40,7 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 - orchestration/airflow/.venv/bin/pytest orchestration/airflow/tests -q
 
 ## Data caveats you must respect
-- Polymarket's public trades feed reaches back only ~10,000 trades (~11 minutes) and is CDN-cached for 5 minutes: history exists only because the collector saves it (10,000-trade pages every 4 minutes). Never assume a backfill is possible.
+- The collector reads Polymarket's v2 trades feed (v1 retired 2026-10-24): newest first, 1,000 trades a page, a cursor reaching back about a month, no date filter. Every 4 minutes it pages back to the last saved trade; `collector_state.json` in the raw dir records how far the record is complete, so after a restart or outage it fills the missed time (up to MAX_PAGES, about three days, before writing the rest as a gap). Raw lines keep v1 field names. Older history (a market's whole trade history, prices) is backfillable but lives only in data/backfill/, never in the live store (FEASIBILITY.md, M15).
 - Our record starts 2026-09-29 19:37 UTC. "New trader" means new to our record; alarms on it wait 7 days.
 - Hours overlapping a collector gap are never judged, and never used as history.
 - Markets missing from the metadata API are categorised by title keywords (ontology/categories.yaml), else Other.
