@@ -7,6 +7,7 @@ const STATUS_TEXT: Record<string, string> = {
   normal: "Normal",
   alarm: "Unusual right now",
   learning: "Learning normal",
+  stale: "Waiting for data",
 };
 
 function KpiCard({ k }: { k: CatalogKpi }) {

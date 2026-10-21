@@ -43,7 +43,7 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 ## Data caveats you must respect
 - The collector reads Polymarket's v2 trades feed (v1 retired 2026-10-24): newest first, 1,000 trades a page, a cursor reaching back about a month, no date filter. Every 4 minutes it pages back to the last saved trade; `collector_state.json` in the raw dir records how far the record is complete, so after a restart or outage it fills the missed time (up to MAX_PAGES, about three days, before writing the rest as a gap). Raw lines keep v1 field names. Older history (a market's whole trade history, prices) is backfillable but lives only in data/backfill/, never in the live store (FEASIBILITY.md, M15).
 - Our record starts 2026-09-29 19:37 UTC. "New trader" means new to our record; alarms on it wait 7 days.
-- Hours overlapping a collector gap are never judged, and never used as history.
+- Hours overlapping a collector gap, or past where the record is known complete (the newest trade, or the collector's `complete_to` mark from `collector_marks`, whichever is earlier), are never judged and never used as history: while the collector is down or still catching up, an empty hour is unknown, not zero.
 - Markets missing from the metadata API are categorised by title keywords (ontology/categories.yaml), else Other.
 
 ## Deployment

@@ -91,7 +91,7 @@ export interface SeriesView {
   segment: string;
   group?: "team" | "behaviour" | "category";
   filters: Record<string, string | string[]>;
-  status: "alarm" | "normal" | "learning";
+  status: "alarm" | "normal" | "learning" | "stale";
   direction: "up" | "down" | null;
   ratio: number | null;
   history_days: number;
@@ -153,7 +153,7 @@ export interface CatalogKpi {
   formula: string;
   definition: string;
   watched: boolean;
-  status: "alarm" | "normal" | "learning" | null;
+  status: "alarm" | "normal" | "learning" | "stale" | null;
   value: number | null;
 }
 

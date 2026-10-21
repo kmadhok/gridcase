@@ -152,10 +152,17 @@ def _claim_for(r: Receipt) -> Claim | None:
         hours = o["run_hours"]
         what = _kpi_words(o["kpi"], o.get("filters"))
         now, usual = _amount(o["kpi"], o["value"]), _amount(o["kpi"], o["expected"])
+        ratio = o.get("ratio")
+        # a drop reads as a share of usual ("40% of"), not "0.4 times"; near zero, just the values
+        if ratio and ratio >= 1:
+            level = f"{ratio:.1f} times its usual level"
+        elif ratio and ratio >= 0.01:
+            level = f"{100 * ratio:.0f}% of its usual level"
+        else:
+            level = None
         size = (
-            f"was {o['ratio']:.1f} times its usual level for that hour of the day "
-            f"({now} against about {usual})"
-            if o.get("ratio")
+            f"was {level} for that hour of the day ({now} against about {usual})"
+            if level
             else f"was {now} against a usual level of about {usual} for that hour of the day"
         )
         text = (

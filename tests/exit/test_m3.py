@@ -1,6 +1,7 @@
 """M3 exit: every watched KPI is checked each hour against the same hour on previous days;
 a real jump raises an alarm and opens one case; too little history says "learning"; hours the
-collector missed are never judged."""
+collector missed are never judged, including hours after the newest trade while the collector
+is down (an empty hour then is unknown, not zero)."""
 
 from __future__ import annotations
 
@@ -32,14 +33,21 @@ def db(tmp_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
 
 
 def fill(
-    db: duckdb.DuckDBPyConnection, days: int, spike: dict[datetime, float] | None = None
+    db: duckdb.DuckDBPyConnection,
+    days: int,
+    spike: dict[datetime, float] | None = None,
+    since: datetime | None = None,
+    collected_at: datetime | None = None,
 ) -> None:
     """Hourly trading with a daily shape and a little day-to-day wobble; `spike` multiplies
-    the dollars of chosen hours."""
+    the dollars of chosen hours. `since` and `collected_at` write only the later hours, as
+    collected at one time (a collector catching up after an outage)."""
     spike = spike or {}
     rows = []
     for h in range(days * 24):
         t = START + timedelta(hours=h)
+        if since is not None and t < since:
+            continue
         base = 1000.0 + 400.0 * (t.hour >= 12)  # afternoons trade more
         wobble = 1.0 + 0.04 * ((h // 24) % 3 - 1)  # -4%, 0, +4% by day
         usd = base * wobble * spike.get(t, 1.0)
@@ -51,6 +59,7 @@ def fill(
                     "usd": usd / 10,
                     "condition_id": "c1" if k < 7 else "c2",
                     "trade_id": f"{h}-{k}",
+                    **({"collected_at": collected_at} if collected_at else {}),
                 }
             )
     add_trades(db, rows)
@@ -91,6 +100,38 @@ def test_4_an_hour_the_collector_missed_is_not_judged(db: duckdb.DuckDBPyConnect
     )
     o = check_series(db, VOLUME, jump + timedelta(hours=2, minutes=20)).output
     assert o["status"] != "alarm" and o["gap_hours_skipped"] == 2
+
+
+def test_4b_hours_after_the_newest_trade_are_not_judged_until_the_collector_catches_up(
+    db: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the collector stops at 13:00 and records no gap: its catch-up has not run yet
+    down = START + timedelta(days=5, hours=13)
+    fill(db, 6)
+    db.execute("DELETE FROM trades WHERE ts >= ?", [down])
+    o = check_series(db, VOLUME, down + timedelta(hours=7, minutes=20)).output
+    assert o["status"] == "stale" and o["hours_after_data"] == 6 and o["hours_judged"] == 0
+    assert o["data_through"] == (down - timedelta(minutes=15)).isoformat()
+    # it catches up at 20:30; the hours checked while it was down were not kept as empty
+    monkeypatch.setattr("tests.polymarket_synth.clear_cache", lambda: None)
+    fill(db, 6, since=down, collected_at=down + timedelta(hours=7, minutes=30))
+    o = check_series(db, VOLUME, down + timedelta(hours=8, minutes=20)).output
+    assert o["status"] == "normal" and o["hours_after_data"] == 0 and o["hours_judged"] == 6
+
+
+def test_4c_hours_a_catch_up_has_not_reached_yet_are_not_judged(
+    db: duckdb.DuckDBPyConnection,
+) -> None:
+    # back after a few hours away, the collector walks the feed newest-first: the latest trades
+    # are saved, 13:00-17:00 not yet, and its mark still says complete to 13:00
+    down = START + timedelta(days=5, hours=13)
+    fill(db, 6)
+    db.execute("DELETE FROM trades WHERE ts >= ? AND ts < ?", [down, down + timedelta(hours=5)])
+    as_of = down + timedelta(hours=7, minutes=20)
+    db.execute("INSERT INTO collector_marks VALUES (?, ?)", [down, as_of - timedelta(minutes=5)])
+    o = check_series(db, VOLUME, as_of).output
+    assert o["status"] == "stale" and o["hours_after_data"] == 6
+    assert o["data_through"] == down.isoformat()
 
 
 def test_5_a_single_extreme_hour_is_enough(db: duckdb.DuckDBPyConnection) -> None:

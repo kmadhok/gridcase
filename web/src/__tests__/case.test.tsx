@@ -37,6 +37,20 @@ describe("CaseView", () => {
     expect(within(note).getByTestId("receipt")).toHaveTextContent("Why was this investigation opened?");
   });
 
+  it("writes a drop as a share of usual, and a drop to nothing as the two values", () => {
+    const alarm = (value: number, ratio: number) => ({
+      receipt_id: `t-${ratio}`, tool: "kpi.alarm", inputs: {}, as_of: "2026-10-05T14:20:00", data_version: null,
+      output: { status: "alarm", direction: "down", run_hours: 2, value, expected: 52, ratio, k_sigma: 3, kpi: "odds_flips", filters: {} },
+      effect_size: -6, runtime_ms: 1, sql: [{ sql: "SELECT 1", rows_hash: "x" }],
+    });
+    const { unmount } = render(<CaseView id={CASE.case_id} initial={{ ...CASE, receipts: [...CASE.receipts, alarm(21, 0.4)] }} />);
+    expect(screen.getByTestId("trigger")).toHaveTextContent("40% of its usual level");
+    unmount();
+    render(<CaseView id={CASE.case_id} initial={{ ...CASE, receipts: [...CASE.receipts, alarm(0, 0)] }} />);
+    expect(screen.getByTestId("trigger")).toHaveTextContent("was 0 against a usual level of about 52");
+    expect(screen.getByTestId("trigger")).not.toHaveTextContent("times its usual");
+  });
+
   describe("driver cards", () => {
     // s2's inputs match receipt r1 in a different key order, as the API may return them.
     const steps = [

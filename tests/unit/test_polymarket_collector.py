@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gzip
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -338,6 +339,21 @@ def test_v2_trades_load_with_the_same_identity_as_their_v1_copies(tmp_path: Path
     load_raw(conn, tmp_path)
     rows = conn.execute("SELECT tx_hash, wallet, condition_id FROM trades ORDER BY ts").fetchall()
     assert rows == [("t1", "0xw", "0xc"), ("t2", "0xw", "0xc")]
+
+
+def test_the_store_records_how_far_the_collector_is_complete_each_time_it_moves(
+    tmp_path: Path,
+) -> None:
+    feed = Feed([[trade(T0 + 60, "t2"), trade(T0, "t1")]])
+    poll_once(feed.client(), tmp_path, CollectorState(last_ts=T0), retry_wait=0)
+    conn = connect(tmp_path / "store.duckdb")
+    first, later = datetime(2026, 10, 1, 12), datetime(2026, 10, 1, 12, 5)
+    load_raw(conn, tmp_path, now=first)
+    load_raw(conn, tmp_path, now=later)  # the mark has not moved: nothing new to record
+    marks = conn.execute(
+        "SELECT epoch(complete_to)::BIGINT, loaded_at FROM collector_marks"
+    ).fetchall()
+    assert marks == [(T0 + 60, first)]
 
 
 # --- filling recorded gaps from the feed's history ---------------------------------------------

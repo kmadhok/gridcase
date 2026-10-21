@@ -3,14 +3,18 @@
 Each of the latest complete hours is compared with the same hour of the day on previous days
 (log scale for volumes and counts). An alarm is `min_run` hours in a row beyond `k_sigma` on
 the same side, or one hour beyond `single_hour_sigma`. Hours the collector missed are never
-judged or used as history; with too little history the status is "learning". The result is a
-receipt (tool "kpi.alarm") carrying the compiled KPI query, leak-free at its as_of.
+judged or used as history: recorded gaps, and hours past where the record is known complete (the
+newest trade we hold, or the collector's mark if earlier: it was down, or is still catching up
+newest-first, so an empty hour is unknown, not zero). With too little history the status is
+"learning"; when the latest hours are all unknown, "stale". The result is a receipt (tool
+"kpi.alarm") carrying the compiled KPI query, leak-free at its as_of.
 """
 
 from __future__ import annotations
 
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cache
@@ -87,8 +91,10 @@ def _gap_hours(conn: duckdb.DuckDBPyConnection, lo: datetime, hi: datetime) -> s
 
 
 # Settled hours never change: the collector sees a trade within ~15 minutes and the server
-# loads every 5, so an hour that ended SETTLED_AFTER ago has all its trades. Their values are
-# kept per store and series, and only newer hours are queried. Keys include the store's file.
+# loads every 5, so an hour that ended SETTLED_AFTER ago has all its trades, unless the collector
+# was down then (it fills in later). So only hours our record covers are kept: before where it
+# is known complete and outside recorded gaps. Values are kept per store and series, and only
+# newer hours are queried. Keys include the store's file.
 SETTLED_AFTER = timedelta(hours=1)
 _MAX_CACHED = 200_000
 _cache: dict[tuple[str, str, str, datetime], float | None] = {}
@@ -107,13 +113,17 @@ def _store(conn: duckdb.DuckDBPyConnection) -> str:
 
 
 def _hour_values(
-    conn: duckdb.DuckDBPyConnection, q: KpiQuery, series: WatchedSeries, as_of: datetime
+    conn: duckdb.DuckDBPyConnection,
+    q: KpiQuery,
+    series: WatchedSeries,
+    as_of: datetime,
+    covered: Callable[[datetime], bool],
 ) -> dict[datetime, float]:
     lo, hi = q.window
     key = (_store(conn), series.kpi, series.segment)
 
     def settled(h: datetime) -> bool:
-        return h + HOUR + SETTLED_AFTER <= as_of
+        return h + HOUR + SETTLED_AFTER <= as_of and covered(h)
 
     hours = [lo + i * HOUR for i in range(int((hi - lo) / HOUR))]
     first_missing = next((h for h in hours if not (settled(h) and (*key, h) in _cache)), hi)
@@ -141,6 +151,8 @@ class Hourly:
     raw: list[tuple[Any, ...]]
     history_days: int
     gap_hours_skipped: int
+    hours_after_data: int  # recent hours past where the record is known complete: not judged
+    data_through: datetime | None  # where it is known complete
     judged_from: datetime
     judged_until: datetime
     log_scale: bool
@@ -163,8 +175,15 @@ def hourly(
         minute=0, second=0, microsecond=0
     )
     judged_from = judged_until - timedelta(hours=hours)
-    start_row = conn.execute("SELECT min(ts) FROM trades_as_of(?)", [as_of]).fetchone()
-    first = start_row[0] if start_row else None
+    span = conn.execute("SELECT min(ts), max(ts) FROM trades_as_of(?)", [as_of]).fetchone()
+    first, through = span if span else (None, None)
+    mark = conn.execute(
+        "SELECT complete_to FROM collector_marks WHERE loaded_at <= ? "
+        "ORDER BY loaded_at DESC LIMIT 1",
+        [as_of],
+    ).fetchone()
+    if mark and through is not None:  # no mark yet: a record from before the collector kept one
+        through = min(through, mark[0])
     record_start = (
         (
             first
@@ -178,12 +197,20 @@ def hourly(
     hi = max(judged_until, lo + HOUR)
     q = KpiQuery(kpi=series.kpi, grain="hour", window=(lo, hi), as_of=as_of, filters=series.filters)
     compiled = compile_kpi(q)  # the audit query: re-running it reproduces every hour below
-    values = _hour_values(conn, q, series, as_of)
-    raw = sorted(values.items())
     gaps = _gap_hours(conn, lo, judged_until)
 
+    def after_data(h: datetime) -> bool:
+        """The record is not known complete past this hour's end: the collector is behind."""
+        return through is None or through < h + HOUR
+
+    def covered(h: datetime) -> bool:
+        return h not in gaps and not after_data(h)
+
+    values = _hour_values(conn, q, series, as_of, covered)
+    raw = sorted(values.items())
+
     def value_at(h: datetime) -> float | None:
-        if h in gaps or h < record_start:
+        if h < record_start or not covered(h):
             return None
         v = values.get(h)
         return 0.0 if v is None and zero_fill else v
@@ -199,11 +226,14 @@ def hourly(
     rows: list[dict[str, Any]] = []
     history_days = 0
     skipped = 0
+    unseen = 0
     h = judged_from
     while h < judged_until:
         v = value_at(h)
         if h in gaps:
             skipped += 1
+        elif h >= record_start and after_data(h):
+            unseen += 1
         past = [value_at(h - timedelta(days=d)) for d in range(1, p.lookback_days + 1)]
         hist = [scale(x) for x in past if x is not None]
         if h >= record_start:
@@ -229,7 +259,16 @@ def hourly(
         rows.append(row)
         h += HOUR
     return Hourly(
-        rows, compiled.sql, raw, history_days, skipped, judged_from, judged_until, log_scale
+        rows,
+        compiled.sql,
+        raw,
+        history_days,
+        skipped,
+        unseen,
+        through,
+        judged_from,
+        judged_until,
+        log_scale,
     )
 
 
@@ -257,7 +296,12 @@ def check_series(
         run = [*run, j] if continues else ([j] if extreme else [])
         if run and (len(run) >= p.min_run or any(abs(x["z"]) > p.single_hour_sigma for x in run)):
             best = list(run)
-    status = "alarm" if best else ("normal" if judged else "learning")
+    if best:
+        status = "alarm"
+    elif judged:
+        status = "normal"
+    else:
+        status = "stale" if hv.hours_after_data else "learning"
     focus = best or judged
     worst = max(focus, key=lambda j: abs(j["z"]), default=None)
 
@@ -282,6 +326,8 @@ def check_series(
         "history_days": history_days,
         "hours_judged": len(judged),
         "gap_hours_skipped": skipped,
+        "hours_after_data": hv.hours_after_data,
+        "data_through": hv.data_through.isoformat() if hv.data_through else None,
         "judged_from": judged_from.isoformat(),
         "judged_until": judged_until.isoformat(),
         "log_scale": log_scale,

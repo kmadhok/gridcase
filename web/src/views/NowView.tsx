@@ -38,6 +38,7 @@ function statusText(s: SeriesView): { text: string; cls: string } {
     const times = s.ratio ? `${s.ratio.toFixed(1)}×` : "";
     return { text: `Unusual ${s.direction === "down" ? "↓" : "↑"} ${times} usual`, cls: "border-current text-accent-hi" }; // on the blush alarm tile, accent-hi keeps 4.5:1
   }
+  if (s.status === "stale") return { text: "Waiting for data", cls: "border-ink/25 text-ink-muted" };
   if (s.status === "learning") return { text: `Learning normal · day ${s.history_days} of 3`, cls: "border-ink/25 text-ink-muted" };
   return { text: "Normal", cls: "border-current text-ok" };
 }

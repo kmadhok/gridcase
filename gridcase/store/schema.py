@@ -127,6 +127,14 @@ POLYMARKET_DDL = [
     )
     """,
     """
+    -- how far the collector's record was complete (collector_state.json), as the store learned
+    -- it: the alarm leaves later hours unjudged while a catch-up is still filling them
+    CREATE TABLE IF NOT EXISTS collector_marks (
+        complete_to  TIMESTAMP NOT NULL,
+        loaded_at    TIMESTAMP NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS raw_files (
         path   VARCHAR PRIMARY KEY,
         size   BIGINT NOT NULL,

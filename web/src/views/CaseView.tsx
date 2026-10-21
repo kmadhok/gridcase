@@ -73,10 +73,17 @@ function TriggerNote({ r }: { r: Receipt }) {
   const filters = (o.filters as Record<string, string>) ?? {};
   const where = Object.values(filters).join(", ");
   const hours = Number(o.run_hours);
+  const ratio = o.ratio == null ? null : Number(o.ratio);
+  const now = fmtValue(unit, Number(o.value));
+  const usual = fmtValue(unit, Number(o.expected));
+  const size =
+    ratio !== null && ratio >= 1 ? `was ${ratio.toFixed(1)} times its usual level for that hour of the day (${now} against about ${usual})`
+    : ratio !== null && ratio >= 0.01 ? `was ${(100 * ratio).toFixed(0)}% of its usual level for that hour of the day (${now} against about ${usual})`
+    : `was ${now} against a usual level of about ${usual} for that hour of the day`;
   return (
     <div className="panel bg-blush px-5 py-4 text-[15px] leading-relaxed text-ink-soft" data-testid="trigger">
       <span className="font-medium text-ink">Opened automatically.</span>{" "}
-      {kpiLabel(kpi)}{where ? ` in ${where}` : ""} was {Number(o.ratio).toFixed(1)} times its usual level for that hour of the day ({fmtValue(unit, Number(o.value))} against about {fmtValue(unit, Number(o.expected))}), {hours} hour{hours === 1 ? "" : "s"} in a row.{" "}
+      {kpiLabel(kpi)}{where ? ` in ${where}` : ""} {size}, {hours} hour{hours === 1 ? "" : "s"} in a row.{" "}
       <button className="link-ink text-xs text-ink-soft" onClick={() => setOpen((x) => !x)} aria-expanded={open}>{open ? "hide" : "show"} evidence</button>
       {open && <ReceiptCard r={r} />}
     </div>

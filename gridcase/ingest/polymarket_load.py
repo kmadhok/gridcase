@@ -2,7 +2,8 @@
 
 `load_raw` reads the collector's hourly gzip JSONL files (only those that changed since the
 last load), keeps each trade once (trade_id = hash of transactionHash, asset, side, size,
-price) and records collector gaps, less those later filled from the feed's history.
+price), records collector gaps, less those later filled from the feed's history, and records how
+far the collector's record is complete.
 `enrich_markets` looks up markets not yet known in Polymarket's public metadata API
 (condition id -> event -> tags) and assigns a category from ontology/categories.yaml. Both are
 safe to run repeatedly.
@@ -118,7 +119,19 @@ def _load_gaps(conn: duckdb.DuckDBPyConnection, path: Path, filled_path: Path) -
     return added
 
 
-def load_raw(conn: duckdb.DuckDBPyConnection, root: Path) -> LoadResult:
+def _complete_to(root: Path) -> datetime | None:
+    path = root / "collector_state.json"
+    if not path.exists():
+        return None
+    ts = json.loads(path.read_text()).get("complete_to")
+    return None if ts is None else datetime.fromtimestamp(int(ts), UTC).replace(tzinfo=None)
+
+
+def load_raw(
+    conn: duckdb.DuckDBPyConnection, root: Path, now: datetime | None = None
+) -> LoadResult:
+    # read the collector's mark before its files: every trade up to the mark is then loaded
+    mark = _complete_to(root)
     files = new = 0
     for path in sorted((root / "trades").rglob("*.jsonl.gz")):
         st = path.stat()
@@ -134,6 +147,12 @@ def load_raw(conn: duckdb.DuckDBPyConnection, root: Path) -> LoadResult:
         )
         files += 1
     gaps = _load_gaps(conn, root / "gaps.jsonl", root / "gaps_filled.jsonl")
+    last = conn.execute(
+        "SELECT complete_to FROM collector_marks ORDER BY loaded_at DESC LIMIT 1"
+    ).fetchone()
+    if mark is not None and (last is None or last[0] != mark):
+        loaded_at = now or datetime.now(UTC).replace(tzinfo=None)
+        conn.execute("INSERT INTO collector_marks VALUES (?, ?)", [mark, loaded_at])
     return LoadResult(files, new, gaps)
 
 
