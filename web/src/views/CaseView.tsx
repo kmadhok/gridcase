@@ -31,6 +31,13 @@ function canonical(v: unknown): string {
   return JSON.stringify(v);
 }
 
+/** The first driver sits above a non-refuted one with a higher score. The ranking's tiers and
+ * causal precedence (rank_hypotheses), not the score, put it there; say so. */
+function outranks(ranked: Verdict[], top: string): boolean {
+  const first = ranked[0];
+  return first?.id === top && ranked.some((v) => v.status !== "refuted" && v.confidence > first.confidence);
+}
+
 function DriverCard({ v, isTop, c }: { v: Verdict; isTop: boolean; c: CaseFull }) {
   const [open, setOpen] = useState(false);
   const steps = (c.plan?.steps ?? []).filter((s) => s.hypothesis_ids.includes(v.id));
@@ -115,6 +122,11 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           {CASE_STATES[c.state] ?? c.state} · {c.cost_usd > 0 ? `${c.llm_calls} model call${c.llm_calls === 1 ? "" : "s"} · $${c.cost_usd.toFixed(2)}` : "standard playbook, no model"}
         </div>
       </header>
+      {c.judged_without_data && (
+        <p data-testid="judged-without-data" className="warn rounded-xl border border-rule p-3 text-sm">
+          Opened while our collector was down: the missing hours read as a drop, so this alarm was judged on missing data. Kept as it was judged; the hours have since been filled.
+        </p>
+      )}
       {trigger && <TriggerNote r={trigger} />}
       {/* minmax(0,1fr): the query <pre> must scroll inside its column, not widen the page */}
       <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
@@ -122,6 +134,11 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           <ol className="space-y-2" data-testid="hypothesis-tree">
             {ranked.map((v) => <DriverCard key={v.id} v={v} isTop={v.id === top} c={c} />)}
           </ol>
+          {top && outranks(ranked, top) && (
+            <p data-testid="rank-note" className="mt-3 text-xs leading-snug text-ink-muted">
+              Listed by cause, not by score: a data problem comes first, then supported causes that explain most of the gap, then what follows from them.
+            </p>
+          )}
         </Panel>
         <Panel
           title="What happened"

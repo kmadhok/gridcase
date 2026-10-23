@@ -58,6 +58,7 @@ export interface CaseSummary {
   top_hypothesis: string | null;
   llm_calls: number;
   cost_usd: number;
+  judged_without_data?: boolean;
 }
 
 export interface CaseFull extends CaseSummary {

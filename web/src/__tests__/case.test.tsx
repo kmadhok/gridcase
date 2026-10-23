@@ -89,4 +89,25 @@ describe("CaseView", () => {
       expect(screen.getByTestId("driver-evidence-D5_LONGSHOTS")).toHaveTextContent("No check in this investigation tested this driver.");
     });
   });
+  it("flags a case opened while the collector was down, and only that one", () => {
+    const { unmount } = render(<CaseView id={CASE.case_id} initial={{ ...CASE, judged_without_data: true }} />);
+    expect(screen.getByTestId("judged-without-data")).toHaveTextContent("Opened while our collector was down");
+    unmount();
+    render(<CaseView id={CASE.case_id} initial={CASE} />);
+    expect(screen.queryByTestId("judged-without-data")).not.toBeInTheDocument();
+  });
+
+  it("explains the order when the first driver scores lower than one below it", () => {
+    const conclusion = CASE.conclusion!;
+    const ranked = [
+      { id: "D2_ONE_CATEGORY", status: "supported" as const, confidence: 0.38, margin: 1, coverage: 0.89 },
+      { id: "D6_BROAD_BASED", status: "supported" as const, confidence: 0.52, margin: 1, coverage: 1 },
+    ];
+    const { unmount } = render(<CaseView id={CASE.case_id} initial={{ ...CASE, conclusion: { ...conclusion, top_hypothesis: "D2_ONE_CATEGORY", ranked } }} />);
+    expect(screen.getByTestId("rank-note")).toHaveTextContent("Listed by cause, not by score");
+    unmount();
+    render(<CaseView id={CASE.case_id} initial={CASE} />);
+    expect(screen.queryByTestId("rank-note")).not.toBeInTheDocument();
+  });
 });
+

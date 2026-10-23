@@ -81,6 +81,28 @@ def _parse(t: str) -> datetime:
     )
 
 
+# A case whose opening data check found the record this far behind was judged on missing data:
+# the collector was down, so the empty hours read as a drop (the 2026-10-21 01:45 alarms).
+STALE_AT_OPENING_MIN = 60.0
+NOW_PAGE_CASES = 10
+
+
+def judged_without_data(c: CaseRecord) -> bool:
+    """True when the case's own data.coverage, run when it opened, found the record stale."""
+    return any(
+        r.tool == "data.coverage"
+        and r.as_of == c.as_of
+        and (r.output.get("freshness_minutes") or 0) > STALE_AT_OPENING_MIN
+        for r in c.receipts
+    )
+
+
+def now_cases(cases: list[CaseRecord]) -> list[dict[str, Any]]:
+    """The Now page's latest investigations: cases judged on missing data stay on their own page
+    but are left out of the list (user decision 2026-10-23)."""
+    return [_case_summary(x) for x in cases if not judged_without_data(x)][:NOW_PAGE_CASES]
+
+
 def _case_summary(c: CaseRecord) -> dict[str, Any]:
     return {
         "case_id": c.case_id,
@@ -93,6 +115,7 @@ def _case_summary(c: CaseRecord) -> dict[str, Any]:
         "top_hypothesis": c.top_hypothesis,
         "llm_calls": c.llm_calls,
         "cost_usd": c.llm_usage.cost_usd,
+        "judged_without_data": judged_without_data(c),
     }
 
 
@@ -251,7 +274,7 @@ def now_payload(c: duckdb.DuckDBPyConnection, at: datetime) -> Any:
         "SELECT max(ts), max(collected_at), min(ts) FROM trades_as_of(?)", [at]
     ).fetchone()
     newest, collected, first = row if row else (None, None, None)
-    cases = [_case_summary(x) for x in list_cases(c)[:10]]
+    cases = now_cases(list_cases(c))
     for x in cases:
         x["segment"] = x["entity"]
     return jsonable_encoder(
