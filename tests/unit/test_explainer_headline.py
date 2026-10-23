@@ -67,6 +67,48 @@ def test_a_model_disagreeing_is_overruled_and_reported() -> None:
     assert "Check the market's news next." in texts  # other model claims are kept
 
 
+class ParaphrasingLLM(FakeLLM):
+    """Names its pick as the answer in its own words, not the driver's plain words or id."""
+
+    def __init__(self, pick: str, headline: str) -> None:
+        super().__init__()
+        self.pick, self.headline = pick, headline
+
+    def explain(
+        self,
+        case_id: str,
+        ranked: list[HypothesisVerdict],
+        receipts: list[Receipt],
+        context: dict[str, Any],
+    ) -> tuple[Conclusion | None, LLMUsage]:
+        self.calls += 1
+        claims = [
+            Claim(text=self.headline, tier="inferred"),
+            Claim(text="Check the market's news next.", tier="inferred"),
+        ]
+        return Conclusion(
+            case_id=case_id, top_hypothesis=self.pick, ranked=ranked, claims=claims
+        ), LLMUsage()
+
+
+@pytest.mark.parametrize(
+    ("pick", "headline"),
+    [
+        ("D4_WHALES", "Whale activity is the best-supported explanation."),
+        ("D1_ONE_MARKET", "A single hot market is most likely behind the rise."),
+        ("D1_ONE_MARKET", "The main driver here was the England vs Czechia market."),
+    ],
+)
+def test_a_paraphrased_model_headline_is_replaced_too(pick: str, headline: str) -> None:
+    conclusion, _, _, overruled = explain(ParaphrasingLLM(pick, headline), "c1", RANKED, [], {})
+    assert conclusion.top_hypothesis == "D0_DATA_PROBLEM" and overruled == pick
+    texts = [c.text for c in conclusion.claims]
+    assert headline not in texts
+    assert texts[0].startswith("The best-supported explanation is a problem with our data")
+    assert sum("best-supported" in t for t in texts) == 1
+    assert "Check the market's news next." in texts
+
+
 def test_b_a_model_agreeing_or_naming_none_records_nothing() -> None:
     for pick in ("D0_DATA_PROBLEM", None):
         conclusion, _, _, overruled = explain(PickingLLM(pick), "c1", RANKED, [], {})

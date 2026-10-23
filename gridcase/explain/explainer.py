@@ -245,10 +245,9 @@ HEADLINE_WORDS = (
 )
 
 
-def _names_as_headline(text: str, driver: str) -> bool:
+def _is_headline(text: str) -> bool:
     t = text.lower()
-    words = DRIVER_WORDS.get(driver, driver).lower()
-    return (words in t or driver.lower() in t) and any(w in t for w in HEADLINE_WORDS)
+    return any(w in t for w in HEADLINE_WORDS)
 
 
 def explain(
@@ -261,7 +260,8 @@ def explain(
     """The ranker, not the model, picks the headline cause: `top_hypothesis` is always the first
     non-refuted entry of `ranked`. The fourth value is the model's own pick when it named a
     different one (None when it agreed or named none), for the case trace. On a disagreement,
-    claims presenting the model's pick as the answer are dropped and the ranker's headline leads."""
+    every model claim worded as a headline is dropped, whatever driver name it uses, and the
+    ranker's headline leads."""
     conclusion, usage = llm.explain(case_id, ranked, receipts, context)
     if conclusion is None:
         conclusion = template_conclusion(case_id, ranked, receipts, context)
@@ -270,8 +270,8 @@ def explain(
     overruled = model_top if model_top is not None and model_top != top else None
     claims = conclusion.claims
     if overruled is not None:
-        claims = [c for c in claims if not _names_as_headline(c.text, overruled)]
-        if top is not None and not any(_names_as_headline(c.text, top) for c in claims):
+        claims = [c for c in claims if not _is_headline(c.text)]
+        if top is not None:
             claims = [_headline(top), *claims]
     conclusion = conclusion.model_copy(
         update={"case_id": case_id, "ranked": ranked, "top_hypothesis": top, "claims": claims}
