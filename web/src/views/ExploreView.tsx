@@ -1,3 +1,4 @@
+import { bandSegments } from "../chart";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type CaseFull, type CatalogResponse, type SeriesView } from "../api";
 import { HypothesisName, Panel, TierBadge } from "../components";
@@ -204,7 +205,7 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
               <ExploreChart view={chart} state={state} flagged={flaggedSet} selected={selected} onSelect={setSelected} onLine={(which, v) => update({ [which]: v, mode: "lines" })} />
             )}
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-muted">
-              <span><span className="mr-1.5 inline-block h-2.5 w-4 rounded-sm bg-[var(--gc-band)] align-middle" />usual range for that hour of the day</span>
+              {bandSegments(points).some((run) => run.length > 1) && <span><span className="mr-1.5 inline-block h-2.5 w-4 rounded-sm bg-[var(--gc-band)] align-middle" />usual range for that hour of the day</span>}
               <span><span className="mr-1.5 inline-block w-4 border-t-2 border-dashed border-accent align-middle" />your lines</span>
               <span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-accent align-middle" />flagged hour</span>
               {points.some((p) => p.value === null) && (
@@ -255,7 +256,7 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
                 </li>
               ))}
             </ul>
-            {flagged.length === 0 && chart && <p className="py-2 text-sm text-ink-muted">{emptyText(state)}</p>}
+            {flagged.length === 0 && chart && <p className="py-2 text-sm text-ink-muted">{emptyText(state, points.some((p) => p.value !== null && p.low !== null && p.high !== null))}</p>}
             {flagged.length > 8 && <p className="text-xs text-ink-muted">and {flagged.length - 8} more</p>}
             <p className="mt-4 border-t border-dashed border-rule pt-3 text-xs leading-snug text-ink-muted">An investigation takes about 40 seconds. Visitors can start 10 model-written ones a day; after that the standard playbook answers for free.</p>
           </section>
@@ -281,8 +282,8 @@ function reason(p: { value: number | null; low: number | null; high: number | nu
   return `${fmtValue(unit, v)} · below its usual ${fmtValue(unit, p.usual)}`;
 }
 
-function emptyText(s: ExploreState): string {
-  if (s.mode === "usual") return "No hour in this window left its usual range.";
+function emptyText(s: ExploreState, hasRange: boolean): string {
+  if (s.mode === "usual") return hasRange ? "No hour in this window left its usual range." : "No hour in this window has a usual range yet.";
   if (s.ceiling === null && s.floor === null) return "Add a ceiling or a floor above to see which hours cross it.";
   return "No hour in this window crossed your lines. Drag them closer to see what would have been flagged.";
 }

@@ -1,50 +1,51 @@
 import { useEffect, useState } from "react";
 import { api, type NowResponse, type SeriesView } from "../api";
+import { bandSegments, chartSegments, formatChartTicks } from "../chart";
 import { Panel } from "../components";
 import { fmtTime, fmtValue, hypothesisName, kpiLabel, segmentName } from "../labels";
+import { statusText } from "../nowStatus";
 import { navigate } from "../router";
 import { AskPanel } from "./AskPanel";
 
 /** 48 hours of a KPI (line) against its usual range for each hour of the day (band). */
 export function Sparkline({ s }: { s: SeriesView }) {
-  const w = 240;
-  const h = 56;
-  const vals = s.points.flatMap((p) => [p.value, p.high, p.low]).filter((v): v is number => v !== null);
-  if (vals.length < 2) return null;
+  const [active, setActive] = useState<number | null>(null);
+  const first = s.points.findIndex((p) => p.value !== null);
+  const pts = first < 0 ? [] : s.points.slice(first);
+  const vals = pts.flatMap((p) => [p.value, p.high, p.low]).filter((v): v is number => v !== null);
+  if (!vals.length) return null;
   const lo = Math.min(...vals);
   const hi = Math.max(...vals);
-  const x = (i: number) => (i / (s.points.length - 1)) * w;
-  const y = (v: number) => h - 4 - ((v - lo) / (hi - lo || 1)) * (h - 8);
-  const band = s.points
-    .map((p, i) => (p.low !== null && p.high !== null ? { i, low: p.low, high: p.high } : null))
-    .filter((b): b is { i: number; low: number; high: number } => b !== null);
-  const bandPath = band.length > 1
-    ? `M ${band.map((b) => `${x(b.i)},${y(b.high)}`).join(" L ")} L ${[...band].reverse().map((b) => `${x(b.i)},${y(b.low)}`).join(" L ")} Z`
-    : "";
-  const line = s.points
-    .map((p, i) => (p.value === null ? null : `${x(i)},${y(p.value)}`))
-    .filter(Boolean)
-    .join(" L ");
+  const x = (i: number) => pts.length > 1 ? 4 + i / (pts.length - 1) * 232 : 120;
+  const y = (v: number) => 52 - (v - lo) / (hi - lo || 1) * 32;
+  const runs = chartSegments(pts, (p) => p.value !== null);
+  const color = s.status === "alarm" ? "var(--gc-accent)" : "var(--gc-ink)";
+  const hovered = active === null ? null : pts[active];
+  const bounds = lo === hi ? [fmtValue(s.unit, lo), fmtValue(s.unit, hi)] : formatChartTicks(s.unit, [lo, hi]);
+  const readout = (i: number) => {
+    const p = pts[i];
+    return `${fmtTime(p.t)} · ${fmtValue(s.unit, p.value)} · ${p.low !== null && p.high !== null ? `usual range ${fmtValue(s.unit, p.low)}–${fmtValue(s.unit, p.high)}` : "No usual range yet"}`;
+  };
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-14 w-full" role="img" aria-label={`${s.label} over the last 48 hours against its usual range`}>
-      {bandPath && <path d={bandPath} fill="var(--gc-band)" />}
-      {line && <path d={`M ${line}`} fill="none" strokeWidth={1.8} stroke={s.status === "alarm" ? "var(--gc-accent)" : "var(--gc-ink)"} />}
-    </svg>
+    <div className="relative">
+      <svg viewBox="0 0 240 60" className="h-[60px] w-full" role="img" aria-label={`${s.label} over the last 48 hours against its usual range`}>
+        <text x="4" y="10" fontSize="10" fill="var(--gc-muted)">Min {bounds[0]}</text>
+        <text x="236" y="10" textAnchor="end" fontSize="10" fill="var(--gc-muted)">Max {bounds[1]}</text>
+        {bandSegments(pts).filter((run) => run.length > 1).map((run) => <path key={run[0]} d={`M ${run.map((i) => `${x(i)},${y(pts[i].high!)}`).join(" L ")} L ${[...run].reverse().map((i) => `${x(i)},${y(pts[i].low!)}`).join(" L ")} Z`} fill="var(--gc-band)" />)}
+        {runs.map((run) => run.length === 1
+          ? <circle data-testid="isolated-point" key={run[0]} cx={x(run[0])} cy={y(pts[run[0]].value!)} r="2.5" fill={color} />
+          : <path data-testid="value-segment" key={run[0]} d={`M ${run.map((i) => `${x(i)},${y(pts[i].value!)}`).join(" L ")}`} fill="none" strokeWidth="1.8" stroke={color} />)}
+        {pts.map((p, i) => <rect key={p.t} x={x(i) - (pts.length > 1 ? 116 / (pts.length - 1) : 116)} y="16" width={pts.length > 1 ? 232 / (pts.length - 1) : 232} height="42" fill="transparent" tabIndex={0} role="button" aria-label={readout(i)} onFocus={() => setActive(i)} onBlur={() => setActive(null)} onPointerEnter={() => setActive(i)} onPointerLeave={() => setActive(null)}><title>{readout(i)}</title></rect>)}
+      </svg>
+      <div className="flex justify-between gap-2 text-[9px] text-ink-muted"><span>{fmtTime(pts[0].t)}</span><span>{fmtTime(pts[pts.length - 1].t)}</span></div>
+      {hovered && active !== null && <div className="pointer-events-none absolute bottom-full left-0 z-10 rounded-lg border border-rule bg-sheet p-2 text-xs" role="status">{readout(active)}</div>}
+    </div>
   );
 }
 
-function statusText(s: SeriesView): { text: string; cls: string } {
-  if (s.status === "alarm") {
-    const times = s.ratio ? `${s.ratio.toFixed(1)}×` : "";
-    return { text: `Unusual ${s.direction === "down" ? "↓" : "↑"} ${times} usual`, cls: "border-current text-accent-hi" }; // on the blush alarm tile, accent-hi keeps 4.5:1
-  }
-  if (s.status === "stale") return { text: "Waiting for data", cls: "border-ink/25 text-ink-muted" };
-  if (s.status === "learning") return { text: `Learning normal · day ${s.history_days} of 3`, cls: "border-ink/25 text-ink-muted" };
-  return { text: "Normal", cls: "border-current text-ok" };
-}
 
-function Tile({ s, caseId }: { s: SeriesView; caseId?: string }) {
-  const st = statusText(s);
+function Tile({ s, caseId, minimum }: { s: SeriesView; caseId?: string; minimum: number | null }) {
+  const st = statusText(s, minimum);
   const title = s.segment === "all" ? s.label : `${segmentName(s.segment)} volume`;
   return (
     <div className={`panel flex flex-col p-4 ${s.status === "alarm" ? "bg-blush" : ""}`} data-testid={`tile-${s.series}`} title={s.series}>
@@ -69,6 +70,12 @@ function Tile({ s, caseId }: { s: SeriesView; caseId?: string }) {
 }
 
 export function NowView({ initial }: { initial?: NowResponse }) {
+  const [minimum, setMinimum] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.definitions().then((d) => { if (live) setMinimum(d.usual_range.min_history_days); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
   const [now, setNow] = useState<NowResponse | null>(initial ?? null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -96,19 +103,19 @@ export function NowView({ initial }: { initial?: NowResponse }) {
         </p>
       </header>
       <section aria-label="Team KPIs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {team.map((s) => <Tile key={s.series} s={s} caseId={caseFor(s)} />)}
+        {team.map((s) => <Tile key={s.series} minimum={minimum} s={s} caseId={caseFor(s)} />)}
       </section>
       {behaviour.length > 0 && (
         <>
           <h2 className="display pt-6 text-[28px] leading-tight md:text-[32px]">How the market behaves</h2>
           <section aria-label="How the market behaves" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {behaviour.map((s) => <Tile key={s.series} s={s} caseId={caseFor(s)} />)}
+            {behaviour.map((s) => <Tile key={s.series} minimum={minimum} s={s} caseId={caseFor(s)} />)}
           </section>
         </>
       )}
       <h2 className="display pt-6 text-[28px] leading-tight md:text-[32px]">Volume by category</h2>
       <section aria-label="Volume by category" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {categories.map((s) => <Tile key={s.series} s={s} caseId={caseFor(s)} />)}
+        {categories.map((s) => <Tile key={s.series} minimum={minimum} s={s} caseId={caseFor(s)} />)}
       </section>
       <div className="grid gap-4 pt-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Panel title="Latest investigations" hint="Opened automatically when a KPI leaves its usual range, or by asking.">

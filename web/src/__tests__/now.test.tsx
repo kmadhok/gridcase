@@ -1,17 +1,21 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NowView } from "../views/NowView";
-import { NOW } from "./fixtures";
+import { api } from "../api";
+import { DEFINITIONS, NOW } from "./fixtures";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("NowView", () => {
-  it("shows every watched KPI with its status against the usual level", () => {
+  it("shows every watched KPI with its status against the usual level", async () => {
+    vi.spyOn(api, "definitions").mockResolvedValue(DEFINITIONS);
     render(<NowView initial={NOW} />);
     const volume = screen.getByTestId("tile-volume_usd");
     expect(volume).toHaveTextContent("Trading volume");
     expect(volume).toHaveTextContent("Normal");
     expect(volume).toHaveTextContent("$1.2M");
-    expect(screen.getByTestId("tile-new_traders")).toHaveTextContent("Learning normal · day 1 of 3");
+    expect(await screen.findByText("Learning normal · day 1 of 3")).toBeInTheDocument();
     const sports = screen.getByTestId("tile-volume_usd · category=Sports");
     expect(sports).toHaveTextContent("Sports volume");
     expect(sports).toHaveTextContent("Unusual ↑ 3.1× usual");

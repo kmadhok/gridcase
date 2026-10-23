@@ -56,6 +56,20 @@ describe("Explore state", () => {
 });
 
 describe("ExploreView", () => {
+  it("hides the band legend and explains when no range exists", async () => {
+    mockApi({ ...BASE, "/api/explore/series": () => ({ body: { ...CHART, points: CHART.points.map((p) => ({ ...p, usual: null, low: null, high: null })) } }) });
+    render(<ExploreView query="kpi=volume_usd" />);
+    expect(await screen.findByText("No hour in this window has a usual range yet.")).toBeInTheDocument();
+    expect(screen.queryByText("usual range for that hour of the day")).toBeNull();
+  });
+
+  it("hides the band legend for isolated ranges but still evaluates that hour", async () => {
+    mockApi({ ...BASE, "/api/explore/series": () => ({ body: { ...CHART, points: CHART.points.map((p, i) => i === 10 ? p : { ...p, usual: null, low: null, high: null }) } }) });
+    render(<ExploreView query="kpi=volume_usd" />);
+    expect(await screen.findByText("No hour in this window left its usual range.")).toBeInTheDocument();
+    expect(screen.queryByText("usual range for that hour of the day")).toBeNull();
+  });
+
   it("draws the chosen slice and lists its unusual hours; the visitor's lines change the list and the link", async () => {
     const calls = mockApi(BASE);
     render(<ExploreView query="kpi=volume_usd&seg=category%3DSports" />);
