@@ -323,7 +323,7 @@ def _alarm_cases(
 ) -> list[dict[str, Any]]:
     kpis, _ = load_kpis()
     rows = conn.execute(
-        "SELECT case_id FROM cases WHERE as_of >= ? AND as_of <= ? ORDER BY as_of, case_id",
+        "SELECT case_id FROM cases WHERE as_of >= ? AND as_of < ? ORDER BY as_of, case_id",
         [lo, hi],
     ).fetchall()
     out = []
@@ -390,7 +390,7 @@ def build_digest(conn: duckdb.DuckDBPyConnection, day: date, as_of: datetime) ->
     for cid, section, question, note in CARDS:
         card: dict[str, Any] = {"id": cid, "section": section, "question": question, "note": note}
         if cid == "alarms":
-            cases = _alarm_cases(conn, yesterday[0], as_of)
+            cases = _alarm_cases(conn, *yesterday)
             card |= {
                 "data": {"cases": cases},
                 "insufficient": False,
@@ -414,11 +414,24 @@ def build_digest(conn: duckdb.DuckDBPyConnection, day: date, as_of: datetime) ->
         cards[cid] = card
 
     tr = check("digest.totals", {"kpis": TOTAL_KPIS, "current": current, "previous": previous})
+    cov = check("data.coverage", {"window": ((previous or current)[0], current[1])})
     totals: dict[str, Any] = {
         "items": tr.output["items"] if tr else [],
         "sentence": _claim(totals_sentence(tr.output, cur, prev), tr) if tr else None,
     }
-    cov = check("data.coverage", {"window": ((previous or current)[0], current[1])})
+    if tr and cov and (cov.output["empty_hours"] or cov.output["gaps"]):
+        o = cov.output
+        missing = f"{_plural(o['empty_hours'], 'hour')} with no data"
+        gaps = _plural(o["gaps"], "collector gap")
+        totals["sentence"] = _claim(
+            f"Our record has {missing} and {gaps} across {o['hours_checked']:,} hours checked "
+            f"over both periods, so we don't compare {cur} with {prev}.",
+            cov,
+        )
+    elif tr and cov is None:
+        totals["sentence"] = _claim(
+            "We could not check data coverage, so we don't compare these periods.", None
+        )
     head = headline(cards, cur, totals["sentence"] or _claim("", None)) if tr else None
 
     _verify_all(cards, totals, head, receipts)

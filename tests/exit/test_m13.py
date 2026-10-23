@@ -631,7 +631,7 @@ def wait_for(client: TestClient, task_id: str) -> dict[str, Any]:
     for _ in range(200):
         t = client.get(f"/api/explore/investigations/{task_id}").json()
         if t["status"] in ("done", "failed"):
-            return t
+            return dict(t)
         time.sleep(0.05)
     raise AssertionError("investigation did not finish")
 
@@ -741,7 +741,7 @@ def test_one_visitor_cannot_flood_the_chart(synth_store: Path) -> None:
         explore_series_per_window=3,
     )
     client = TestClient(app)
-    params = {"kpi": "volume_usd", "segment": "all", "hours": 6}
+    params: dict[str, str | int] = {"kpi": "volume_usd", "segment": "all", "hours": 6}
     assert [client.get("/api/explore/series", params=params).status_code for _ in range(4)] == [
         200,
         200,

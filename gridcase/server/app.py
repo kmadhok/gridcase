@@ -64,6 +64,15 @@ WEB_DIST = config.ROOT / "web" / "dist"
 DIGEST_SETTLE = timedelta(minutes=30)  # the last trades of the day are collected by then
 
 
+class DbtDocsFiles(StaticFiles):
+    """Docs may be generated after startup, including their target directory."""
+
+    async def check_config(self) -> None:
+        # Missing docs are a normal 404; StaticFiles still resolves every request safely.
+        if self.directory is not None and Path(self.directory).exists():
+            await super().check_config()
+
+
 def _parse(t: str) -> datetime:
     return (
         datetime.fromisoformat(t.replace("Z", "+00:00")).astimezone(UTC).replace(tzinfo=None)
@@ -791,8 +800,9 @@ def create_app(
 
     app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"]))
     docs = dbt_docs_dir or config.DBT_DIR / "target"
-    if (docs / "index.html").exists():  # `gridcase dbt docs generate` writes it
-        app.mount("/dbt", StaticFiles(directory=str(docs), html=True), name="dbt-docs")
+    app.mount(
+        "/dbt", DbtDocsFiles(directory=str(docs), check_dir=False, html=True), name="dbt-docs"
+    )
     if WEB_DIST.exists():
         app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="ui")
     app.add_middleware(PublicEdge)
