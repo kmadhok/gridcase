@@ -43,6 +43,7 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
+files = ["gridcase", "tests"]
 strict = true
 python_version = "3.12"
 

@@ -144,3 +144,25 @@ def test_mcp_is_served_over_http_at_slash_mcp(market_store: Path) -> None:
     names = {t["name"] for t in r.json()["result"]["tools"]}
     assert {"investigate", "get_task", "get_case", "list_open_cases", "tool_by_market"} <= names
     assert "bench_summary" not in names
+
+
+@pytest.mark.parametrize("directory_exists", [True, False])
+def test_dbt_docs_generated_after_startup(
+    market_store: Path, tmp_path: Path, directory_exists: bool
+) -> None:
+    docs = tmp_path / "docs"
+    if directory_exists:
+        docs.mkdir()
+    (tmp_path / "secret.txt").write_text("outside docs")
+    app = create_app(db_path=market_store, drain_interval_s=None, dbt_docs_dir=docs)
+    with TestClient(app) as client:
+        assert client.get("/dbt/").status_code == 404
+        docs.mkdir(exist_ok=True)
+        (docs / "index.html").write_text("<h1>dbt docs</h1>")
+        (docs / "manifest.json").write_text('{"ready": true}')
+        assert client.get("/dbt/").text == "<h1>dbt docs</h1>"
+        assert client.get("/dbt/").status_code == 200
+        assert client.get("/dbt/manifest.json").json() == {"ready": True}
+        assert client.get("/dbt/%2e%2e/secret.txt").status_code == 404
+        (docs / "escape.txt").symlink_to(tmp_path / "secret.txt")
+        assert client.get("/dbt/escape.txt").status_code == 404
