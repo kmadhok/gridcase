@@ -117,10 +117,15 @@ def investigate(
 
         ranked = rank_hypotheses(result, priors, change_size(compare.output))
         with tracer.span("llm", "explain") as detail:
-            conclusion, dropped, u2 = explain(
+            conclusion, dropped, u2, overruled = explain(
                 llm, case.case_id, ranked, case.receipts, ctx.model_dump(mode="json")
             )
             detail.update(u2.model_dump())
+            if overruled is not None:  # the ranker's pick stands; keep what the model said
+                detail.update(
+                    model_top_hypothesis=overruled,
+                    top_hypothesis=conclusion.top_hypothesis,
+                )
         # explain already verified the claims; record only its returned counts here.
         with tracer.span("stage", "verify") as detail:
             detail.update(
