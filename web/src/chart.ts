@@ -12,6 +12,14 @@ export function chartSegments<T>(points: T[], present: (point: T) => boolean): n
   return runs;
 }
 
+/** The usual band is mean ± k·sigma, which can leave the values a KPI can take (a share above
+ * 100%, a count below zero). Clip it to what the unit allows before drawing or labelling it. */
+export function clipBand(unit: string, points: SeriesView["points"]): SeriesView["points"] {
+  const top = unit === "share" ? 1 : Infinity;
+  const clip = (v: number | null) => (v === null ? null : Math.min(Math.max(v, 0), top));
+  return points.map((p) => ({ ...p, low: clip(p.low), high: clip(p.high) }));
+}
+
 export const bandSegments = (points: SeriesView["points"]) =>
   chartSegments(points, (p) => p.low !== null && p.high !== null);
 

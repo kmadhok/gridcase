@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { chartSegments, formatChartTicks } from "../chart";
+import { chartSegments, clipBand, formatChartTicks } from "../chart";
 import { statusText } from "../nowStatus";
 import { Sparkline } from "../views/NowView";
 import { ExploreChart } from "../views/ExploreChart";
@@ -58,5 +58,23 @@ describe("chart frames", () => {
       expect(statusText(series({ status: "learning", history_days }), 5).text).toBe("Learning normal · warming up");
     }
     expect(statusText(series({ status: "learning" }), null).text).toBe("Learning normal · warming up");
+  });
+});
+
+describe("usual band", () => {
+  const band = (unit: string, low: number, high: number) =>
+    series({ unit, points: [0.8, 0.9].map((value, i) => ({ t: `2026-10-05T0${i}:00:00`, value, low, high, usual: value })) });
+
+  it("never labels a share above 100% or any KPI below zero", () => {
+    render(<Sparkline s={band("share", -0.2, 1.49)} />);
+    expect(screen.getByText("Min 0%")).toBeInTheDocument();
+    expect(screen.getByText("Max 100%")).toBeInTheDocument();
+  });
+
+  it("clips only what the unit cannot take", () => {
+    const [p] = clipBand("count", band("count", -5, 40).points);
+    expect([p.low, p.high]).toEqual([0, 40]);
+    const [s] = clipBand("share", band("share", 0.2, 0.7).points);
+    expect([s.low, s.high]).toEqual([0.2, 0.7]);
   });
 });

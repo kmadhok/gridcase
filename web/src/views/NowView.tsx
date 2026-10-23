@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type NowResponse, type SeriesView } from "../api";
-import { bandSegments, chartSegments, formatChartTicks } from "../chart";
+import { bandSegments, chartSegments, clipBand, formatChartTicks } from "../chart";
 import { Panel } from "../components";
 import { fmtTime, fmtValue, hypothesisName, kpiLabel, segmentName } from "../labels";
 import { statusText } from "../nowStatus";
@@ -11,7 +11,7 @@ import { AskPanel } from "./AskPanel";
 export function Sparkline({ s }: { s: SeriesView }) {
   const [active, setActive] = useState<number | null>(null);
   const first = s.points.findIndex((p) => p.value !== null);
-  const pts = first < 0 ? [] : s.points.slice(first);
+  const pts = first < 0 ? [] : clipBand(s.unit, s.points.slice(first));
   const vals = pts.flatMap((p) => [p.value, p.high, p.low]).filter((v): v is number => v !== null);
   if (!vals.length) return null;
   const lo = Math.min(...vals);

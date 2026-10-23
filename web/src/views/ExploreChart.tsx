@@ -3,7 +3,7 @@ import type { SeriesView } from "../api";
 import { describeHour, roundNice, type ExploreState } from "../explore";
 import { fmtTime, fmtValue } from "../labels";
 
-import { bandSegments, chartSegments, formatChartTicks } from "../chart";
+import { bandSegments, chartSegments, clipBand, formatChartTicks } from "../chart";
 
 const PT = 24;
 const PB = 28;
@@ -39,7 +39,7 @@ export function ExploreChart({
   const H = narrow ? 240 : 300;
   const PL = narrow ? 48 : 60;
   const PR = narrow ? 88 : 104;
-  const pts = view.points;
+  const pts = clipBand(view.unit, view.points);
   if (!pts.length) return <p className="text-sm text-ink-muted">No complete hours in this window yet.</p>;
 
   const vals = pts.flatMap((p) => [p.value, p.high]).filter((v): v is number => v !== null);
