@@ -3,6 +3,8 @@ import type { SeriesView } from "../api";
 import { describeHour, roundNice, type ExploreState } from "../explore";
 import { fmtTime, fmtValue } from "../labels";
 
+import { bandSegments, chartSegments, formatChartTicks } from "../chart";
+
 const PT = 24;
 const PB = 28;
 
@@ -53,25 +55,11 @@ export function ExploreChart({
   };
   const idxAt = (sx: number) => Math.max(0, Math.min(pts.length - 1, Math.round((sx - PL) / step)));
 
-  // the usual band, in runs of hours that have one
-  const bands: string[] = [];
-  let run: number[] = [];
-  const flush = () => {
-    if (run.length > 1) {
-      const top = run.map((i) => `${x(i)},${y(pts[i].high as number)}`).join(" L ");
-      const bottom = [...run].reverse().map((i) => `${x(i)},${y(pts[i].low as number)}`).join(" L ");
-      bands.push(`M ${top} L ${bottom} Z`);
-    }
-    run = [];
-  };
-  pts.forEach((p, i) => (p.low !== null && p.high !== null ? run.push(i) : flush()));
-  flush();
-
-  let line = "";
-  pts.forEach((p, i) => {
-    if (p.value === null) return;
-    line += `${line && pts[i - 1]?.value !== null ? " L" : " M"} ${x(i)},${y(p.value)}`;
-  });
+  const bands = bandSegments(pts).filter((run) => run.length > 1).map((run) =>
+    `M ${run.map((i) => `${x(i)},${y(pts[i].high!)}`).join(" L ")} L ${[...run].reverse().map((i) => `${x(i)},${y(pts[i].low!)}`).join(" L ")} Z`);
+  const runs = chartSegments(pts, (p) => p.value !== null);
+  const tickValues = [0, 1, 2, 3, 4].map((k) => (ymax / 1.1) * (k / 4));
+  const tickLabels = formatChartTicks(view.unit, tickValues);
 
   const ticks = pts
     .map((p, i) => ({ i, d: new Date(p.t + "Z") }))
@@ -116,7 +104,7 @@ export function ExploreChart({
           return (
             <g key={k}>
               <line x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} stroke="var(--gc-line)" />
-              <text x={PL - 8} y={y(v) + 4} textAnchor="end" fontSize="11" fill="var(--gc-muted)">{fmtValue(view.unit, v)}</text>
+              <text x={PL - 8} y={y(v) + 4} textAnchor="end" fontSize="11" fill="var(--gc-muted)">{tickLabels[k]}</text>
             </g>
           );
         })}
@@ -134,7 +122,9 @@ export function ExploreChart({
             <text x={x(i)} y={H - 8} textAnchor="middle" fontSize="11" fill="var(--gc-muted)">{tickLabel(d)}</text>
           </g>
         ))}
-        <path d={line} fill="none" strokeWidth={1.8} stroke="var(--gc-ink)" strokeLinejoin="round" />
+        {runs.map((run) => run.length === 1
+          ? <circle data-testid="isolated-point" key={run[0]} cx={x(run[0])} cy={y(pts[run[0]].value!)} r={3} fill="var(--gc-ink)" />
+          : <path data-testid="value-segment" key={run[0]} d={`M ${run.map((i) => `${x(i)},${y(pts[i].value!)}`).join(" L ")}`} fill="none" strokeWidth={1.8} stroke="var(--gc-ink)" strokeLinejoin="round" />)}
         {(["ceiling", "floor"] as const).map((which) => {
           const v = state[which];
           if (v === null) return null;
