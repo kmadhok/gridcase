@@ -2,7 +2,8 @@
 
 `template_conclusion` writes one claim per receipt from fixed sentence templates whose
 numbers come straight from the receipt, so it always passes the verifier; it is the FakeLLM's
-explainer and the fallback when the model call fails. `explain` asks the LLM, then verifies.
+explainer and the fallback when the model call fails. `explain` asks the LLM, then verifies;
+the headline cause is always the ranker's, never the model's.
 """
 
 from __future__ import annotations
@@ -210,6 +211,15 @@ def _claim_for(r: Receipt) -> Claim | None:
     return Claim(text=text, receipt_ids=[r.receipt_id], tier="governed")
 
 
+def _headline(top: str) -> Claim:
+    return Claim(
+        text=f"The best-supported explanation is {DRIVER_WORDS.get(top, top)}; the "
+        "other possible drivers are listed in order.",
+        receipt_ids=[],
+        tier="inferred",
+    )
+
+
 def template_conclusion(
     case_id: str,
     ranked: list[HypothesisVerdict],
@@ -219,15 +229,26 @@ def template_conclusion(
     claims = [c for c in (_claim_for(r) for r in receipts) if c is not None]
     top = next((v.id for v in ranked if v.status != "refuted"), None)
     if top is not None:
-        claims.append(
-            Claim(
-                text=f"The best-supported explanation is {DRIVER_WORDS.get(top, top)}; the "
-                "other possible drivers are listed in order.",
-                receipt_ids=[],
-                tier="inferred",
-            )
-        )
+        claims.append(_headline(top))
     return Conclusion(case_id=case_id, top_hypothesis=top, ranked=ranked, claims=claims)
+
+
+# Wording that presents a driver as the answer rather than as evidence.
+HEADLINE_WORDS = (
+    "best-supported",
+    "best supported",
+    "most likely",
+    "main driver",
+    "main cause",
+    "main explanation",
+    "explanation is",
+)
+
+
+def _names_as_headline(text: str, driver: str) -> bool:
+    t = text.lower()
+    words = DRIVER_WORDS.get(driver, driver).lower()
+    return (words in t or driver.lower() in t) and any(w in t for w in HEADLINE_WORDS)
 
 
 def explain(
@@ -236,12 +257,24 @@ def explain(
     ranked: list[HypothesisVerdict],
     receipts: list[Receipt],
     context: dict[str, Any],
-) -> tuple[Conclusion, list[str], LLMUsage]:
+) -> tuple[Conclusion, list[str], LLMUsage, str | None]:
+    """The ranker, not the model, picks the headline cause: `top_hypothesis` is always the first
+    non-refuted entry of `ranked`. The fourth value is the model's own pick when it named a
+    different one (None when it agreed or named none), for the case trace. On a disagreement,
+    claims presenting the model's pick as the answer are dropped and the ranker's headline leads."""
     conclusion, usage = llm.explain(case_id, ranked, receipts, context)
     if conclusion is None:
         conclusion = template_conclusion(case_id, ranked, receipts, context)
-    conclusion = conclusion.model_copy(update={"case_id": case_id, "ranked": ranked})
-    if conclusion.top_hypothesis is None:
-        conclusion.top_hypothesis = next((v.id for v in ranked if v.status != "refuted"), None)
+    top = next((v.id for v in ranked if v.status != "refuted"), None)
+    model_top = conclusion.top_hypothesis
+    overruled = model_top if model_top is not None and model_top != top else None
+    claims = conclusion.claims
+    if overruled is not None:
+        claims = [c for c in claims if not _names_as_headline(c.text, overruled)]
+        if top is not None and not any(_names_as_headline(c.text, top) for c in claims):
+            claims = [_headline(top), *claims]
+    conclusion = conclusion.model_copy(
+        update={"case_id": case_id, "ranked": ranked, "top_hypothesis": top, "claims": claims}
+    )
     verified, dropped = verify(conclusion, {r.receipt_id: r for r in receipts})
-    return verified, dropped, usage
+    return verified, dropped, usage, overruled
