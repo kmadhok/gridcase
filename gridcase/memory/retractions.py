@@ -79,11 +79,15 @@ def retractions(
             return {}
         sql += f" WHERE case_id IN ({', '.join('?' * len(case_ids))})"
         params = list(case_ids)
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except duckdb.CatalogException:  # a store opened read-only from before this table
+        return {}
     return {
         row[0]: Retraction(
             case_id=row[0], retracted_at=row[1], reason=row[2], span_from=row[3], span_to=row[4]
         )
-        for row in conn.execute(sql, params).fetchall()
+        for row in rows
     }
 
 

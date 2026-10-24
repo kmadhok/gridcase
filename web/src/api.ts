@@ -73,6 +73,8 @@ export interface CaseFull extends CaseSummary {
     diffs: Record<string, { before: string | null; after: string }>;
     new_top: string | null;
   } | null;
+  /** Set when the case was retracted (e.g. judged during a data outage); absent on older servers. */
+  retracted?: { at: string; reason: string; span: [string, string] | null } | null;
 }
 
 export interface SeriesPoint {

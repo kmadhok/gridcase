@@ -115,6 +115,11 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           {CASE_STATES[c.state] ?? c.state} · {c.cost_usd > 0 ? `${c.llm_calls} model call${c.llm_calls === 1 ? "" : "s"} · $${c.cost_usd.toFixed(2)}` : "standard playbook, no model"}
         </div>
       </header>
+      {c.retracted && (
+        <p className="accent text-sm" data-testid="retracted" title={`retracted ${fmtTime(c.retracted.at)}`}>
+          <span className="font-medium">Retracted:</span> {c.retracted.reason}
+        </p>
+      )}
       {trigger && <TriggerNote r={trigger} />}
       {/* minmax(0,1fr): the query <pre> must scroll inside its column, not widen the page */}
       <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
