@@ -117,6 +117,61 @@ def cmd_digest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cases(args: argparse.Namespace) -> int:
+    """Retract cases judged on hours our record did not have, or undo that. The server is the
+    store's only writer, so stop gridcase-server first; the Now page drops retracted cases at
+    its next refresh."""
+    from gridcase.memory.retractions import outage_cases, retract_case, unretract_case
+
+    conn = connect(config.DB_PATH)
+    try:
+        if args.cases_cmd == "retract":
+            span = _span(args.span_from, args.span_to)
+            for cid in args.case_ids:
+                try:
+                    retract_case(conn, cid, args.reason, span)
+                except KeyError:
+                    print(f"unknown case {cid}", file=sys.stderr)
+                    return 1
+                print(f"retracted {cid}: {args.reason}")
+            return 0
+        if args.cases_cmd == "unretract":
+            for cid in args.case_ids:
+                print(
+                    f"unretracted {cid}"
+                    if unretract_case(conn, cid)
+                    else f"{cid} was not retracted"
+                )
+            return 0
+        matches = outage_cases(conn, _parse_date(args.since), _parse_date(args.until))
+        for m in matches:
+            print(
+                f"{'(already retracted) ' if m.retracted else ''}{m.case_id}  {m.metric} "
+                f"{m.entity}  hours {m.window[0]:%Y-%m-%d %H:%M}-{m.window[1]:%H:%M}  "
+                f"opened {m.opened_at:%Y-%m-%d %H:%M}  {m.why} "
+                f"{m.span[0]:%Y-%m-%d %H:%M}-{m.span[1]:%Y-%m-%d %H:%M}"
+            )
+        todo = [m for m in matches if not m.retracted]
+        if args.dry_run:
+            print(f"{len(matches)} cases match; dry run, nothing written")
+            return 0
+        for m in todo:
+            retract_case(conn, m.case_id, args.reason, m.span)
+        print(f"{len(todo)} cases retracted ({len(matches) - len(todo)} already were)")
+        return 0
+    finally:
+        conn.close()
+
+
+def _span(lo: str | None, hi: str | None) -> tuple[datetime, datetime] | None:
+    if (lo is None) != (hi is None):
+        raise SystemExit("give both --span-from and --span-to, or neither")
+    return (_parse_date(lo), _parse_date(hi)) if lo and hi else None
+
+
+OUTAGE_REASON = "Data outage: the hours it judged had no data then and were filled later."
+
+
 def run_dbt(args: list[str]) -> int:
     from dbt.cli.main import dbtRunner
 
@@ -239,6 +294,24 @@ def main(argv: list[str] | None = None) -> int:
     dig = sub.add_parser("digest", help="build the morning read for a day (default today)")
     dig.add_argument("--day", help="YYYY-MM-DD; covers up to that day's 00:00 UTC")
     dig.set_defaults(fn=cmd_digest)
+    cases = sub.add_parser("cases", help="retract cases judged on missing data, or undo that")
+    cases.set_defaults(fn=cmd_cases)
+    cases_sub = cases.add_subparsers(dest="cases_cmd", required=True)
+    ret = cases_sub.add_parser("retract", help="hide cases from the public lists, with a reason")
+    ret.add_argument("case_ids", nargs="+", metavar="CASE_ID")
+    ret.add_argument("--reason", required=True, help="shown on the case page")
+    ret.add_argument("--span-from", help="UTC start of the outage that justifies it (optional)")
+    ret.add_argument("--span-to", help="UTC end of that outage")
+    unr = cases_sub.add_parser("unretract", help="list retracted cases publicly again")
+    unr.add_argument("case_ids", nargs="+", metavar="CASE_ID")
+    out = cases_sub.add_parser(
+        "retract-outage",
+        help="retract cases whose hours overlap a collector gap or were empty then, filled since",
+    )
+    out.add_argument("--since", required=True, help="UTC; cases whose hours end after this")
+    out.add_argument("--until", required=True, help="UTC; cases whose hours start before this")
+    out.add_argument("--reason", default=OUTAGE_REASON)
+    out.add_argument("--dry-run", action="store_true", help="list the matches, write nothing")
     dbt = sub.add_parser("dbt", help="run dbt on the warehouse (e.g. `gridcase dbt build`)")
     dbt.add_argument("dbt_args", nargs=argparse.REMAINDER, help="passed to dbt")
     dbt.set_defaults(fn=cmd_dbt)
