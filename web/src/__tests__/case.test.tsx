@@ -17,6 +17,15 @@ describe("CaseView", () => {
     expect(screen.getByTestId("receipt-sql")).toHaveTextContent("WITH win AS");
   });
 
+  it("says a retracted case was retracted and why, and nothing for a case that stands", () => {
+    const retracted = { at: "2026-10-23T09:00:00", reason: "Data outage: filled later.", span: null };
+    const { unmount } = render(<CaseView id={CASE.case_id} initial={{ ...CASE, retracted }} />);
+    expect(screen.getByTestId("retracted")).toHaveTextContent("Retracted: Data outage: filled later.");
+    unmount();
+    render(<CaseView id={CASE.case_id} initial={CASE} />);
+    expect(screen.queryByTestId("retracted")).not.toBeInTheDocument();
+  });
+
   it("marks uncited sentences as interpretation with no evidence", async () => {
     render(<CaseView id={CASE.case_id} initial={CASE} />);
     await userEvent.click(screen.getByTestId("claim-1"));

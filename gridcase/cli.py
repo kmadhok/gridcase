@@ -123,7 +123,8 @@ def cmd_cases(args: argparse.Namespace) -> int:
     its next refresh."""
     from gridcase.memory.retractions import outage_cases, retract_case, unretract_case
 
-    conn = connect(config.DB_PATH)
+    dry_run = args.cases_cmd == "retract-outage" and args.dry_run
+    conn = connect(config.DB_PATH, read_only=dry_run)
     try:
         if args.cases_cmd == "retract":
             span = _span(args.span_from, args.span_to)
