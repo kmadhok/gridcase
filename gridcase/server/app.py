@@ -50,6 +50,7 @@ from gridcase.investigate import investigate
 from gridcase.market_alarm import WatchedSeries, hourly, load_watch, series_view
 from gridcase.market_watch import watch_markets
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
+from gridcase.memory.retractions import get_retraction, public_cases
 from gridcase.planner.llm import LLM, AnthropicLLM, FakeLLM
 from gridcase.semantic.kpis import load_kpis, parse_segment
 from gridcase.server.scheduler import drain_scheduled
@@ -85,6 +86,15 @@ def _case_summary(c: CaseRecord) -> dict[str, Any]:
         "llm_calls": c.llm_calls,
         "cost_usd": c.llm_usage.cost_usd,
     }
+
+
+def _retracted(conn: duckdb.DuckDBPyConnection, case_id: str) -> dict[str, Any] | None:
+    """A retracted case's {at, reason, span}; None when it stands."""
+    r = get_retraction(conn, case_id)
+    if r is None:
+        return None
+    span = [r.span_from.isoformat(), r.span_to.isoformat()] if r.span_from and r.span_to else None
+    return {"at": r.retracted_at.isoformat(), "reason": r.reason, "span": span}
 
 
 def _case_full(c: CaseRecord) -> dict[str, Any]:
@@ -242,7 +252,7 @@ def now_payload(c: duckdb.DuckDBPyConnection, at: datetime) -> Any:
         "SELECT max(ts), max(collected_at), min(ts) FROM trades_as_of(?)", [at]
     ).fetchone()
     newest, collected, first = row if row else (None, None, None)
-    cases = [_case_summary(x) for x in list_cases(c)[:10]]
+    cases = [_case_summary(x) for x in public_cases(c)[:10]]  # retracted cases left out
     for x in cases:
         x["segment"] = x["entity"]
     return jsonable_encoder(
@@ -353,10 +363,10 @@ def create_app(
 
     @mcp.tool()
     def list_open_cases() -> dict[str, Any]:
-        """Cases that are not closed, newest first."""
+        """Cases that are not closed or retracted, newest first."""
         c = cur()
         try:
-            return {"cases": [_case_summary(x) for x in list_cases(c) if x.state != "closed"]}
+            return {"cases": [_case_summary(x) for x in public_cases(c) if x.state != "closed"]}
         finally:
             c.close()
 
@@ -365,7 +375,7 @@ def create_app(
         """A case with its plan, conclusion, receipts (with SQL) and re-check."""
         c = cur()
         try:
-            return _case_full(get_case(c, case_id))
+            return {**_case_full(get_case(c, case_id)), "retracted": _retracted(c, case_id)}
         except KeyError as e:
             raise ValueError(f"unknown case {case_id}") from e
         finally:
@@ -513,10 +523,15 @@ def create_app(
         return {"ok": True, "time": datetime.now(UTC).isoformat(timespec="seconds")}
 
     @app.get("/api/cases")
-    def api_cases() -> list[dict[str, Any]]:
+    def api_cases(include_retracted: bool = False) -> list[dict[str, Any]]:
+        """Every case, newest first; retracted cases only with ?include_retracted=1."""
         c = cur()
         try:
-            return [_case_summary(x) for x in list_cases(c)]
+            if not include_retracted:
+                return [_case_summary(x) for x in public_cases(c)]
+            return [
+                {**_case_summary(x), "retracted": _retracted(c, x.case_id)} for x in list_cases(c)
+            ]
         finally:
             c.close()
 
@@ -524,7 +539,7 @@ def create_app(
     def api_case(case_id: str) -> dict[str, Any]:
         c = cur()
         try:
-            return _case_full(get_case(c, case_id))
+            return {**_case_full(get_case(c, case_id)), "retracted": _retracted(c, case_id)}
         except KeyError as e:
             raise HTTPException(404, f"unknown case {case_id}") from e
         finally:
