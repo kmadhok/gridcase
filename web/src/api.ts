@@ -264,6 +264,8 @@ export interface TraceSpan {
     kept?: number;
     dropped?: number;
     interpretation?: number;
+    model_top_hypothesis?: string;
+    top_hypothesis?: string | null;
   };
 }
 

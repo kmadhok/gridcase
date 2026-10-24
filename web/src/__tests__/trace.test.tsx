@@ -41,6 +41,32 @@ describe("Step by step", () => {
     expect(screen.queryByTestId("trace-timeline")).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["known drivers", "D1_ONE_MARKET", "D6_BROAD_BASED", "One market", "A broad shift"],
+    ["unknown drivers", "D99_UNKNOWN", "D98_OTHER", "D99_UNKNOWN", "D98_OTHER"],
+  ])("shows the headline disagreement under explain with %s", async (_name, model, ranked, modelLabel, rankedLabel) => {
+    vi.spyOn(api, "trace").mockResolvedValue({
+      ...trace,
+      spans: trace.spans.map((span) => span.name === "explain"
+        ? { ...span, detail: { ...span.detail, model_top_hypothesis: model, top_hypothesis: ranked } }
+        : span),
+    });
+    render(<TraceView caseId={CASE.case_id} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show the timeline" }));
+    const timeline = await screen.findByTestId("trace-timeline");
+    const row = within(timeline).getAllByRole("listitem").find((item) => item.textContent?.includes("Wrote the explanation"))!;
+    expect(within(row).getByText(`The model preferred ${modelLabel}; the ranker's pick, ${rankedLabel}, was used.`)).toBeInTheDocument();
+  });
+
+  it("shows no disagreement note when the model pick is absent", async () => {
+    vi.spyOn(api, "trace").mockResolvedValue(trace);
+    render(<TraceView caseId={CASE.case_id} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show the timeline" }));
+    const timeline = await screen.findByTestId("trace-timeline");
+    expect(timeline).toHaveTextContent("Wrote the explanation");
+    expect(within(timeline).queryByText(/The model preferred/)).not.toBeInTheDocument();
+  });
+
   it("explains when timing was not recorded", async () => {
     vi.spyOn(api, "trace").mockResolvedValue({ ...trace, recorded: false, spans: [] });
     render(<TraceView caseId={CASE.case_id} />);

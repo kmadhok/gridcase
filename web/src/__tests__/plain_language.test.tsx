@@ -17,7 +17,12 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("plain language", () => {
   it("a case shows no engine ids, tool names or jargon", async () => {
-    vi.spyOn(api, "trace").mockResolvedValue(TRACE as CaseTrace);
+    vi.spyOn(api, "trace").mockResolvedValue({
+      ...(TRACE as CaseTrace),
+      spans: (TRACE as CaseTrace).spans.map((span) => span.name === "explain"
+        ? { ...span, detail: { ...span.detail, model_top_hypothesis: "D1_ONE_MARKET", top_hypothesis: "D6_BROAD_BASED" } }
+        : span),
+    });
     render(<CaseView id={CASE.case_id} initial={CASE} />);
     await userEvent.click(screen.getByRole("button", { name: "Show the timeline" }));
     await screen.findByTestId("trace-timeline");

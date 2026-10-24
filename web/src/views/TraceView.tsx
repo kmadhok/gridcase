@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type CaseTrace, type TraceSpan } from "../api";
 import { Panel } from "../components";
-import { stepQuestion } from "../labels";
+import { hypothesisName, stepQuestion } from "../labels";
 
 const LABELS: Record<string, string> = {
   compare: "Measured the change",
@@ -73,6 +73,7 @@ export function TraceView({ caseId }: { caseId: string }) {
                       <div className={`min-w-0 break-words ${span.parent_seq !== null ? "pl-3" : "font-medium text-ink"}`}>
                         {label(span)}
                         {span.status === "error" && <span className="accent"> · couldn't run</span>}
+                        {span.name === "explain" && span.detail.model_top_hypothesis && <span className="block font-normal text-ink-muted">The model preferred {hypothesisName(span.detail.model_top_hypothesis)}; the ranker's pick, {span.detail.top_hypothesis ? hypothesisName(span.detail.top_hypothesis) : "another driver"}, was used.</span>}
                         {span.name === "verify" && <span className="block font-normal text-ink-muted">kept {span.detail.kept ?? 0}, removed {span.detail.dropped ?? 0}</span>}
                       </div>
                       <div className="relative h-3 min-w-0 overflow-hidden" aria-hidden="true">
