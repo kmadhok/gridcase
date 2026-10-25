@@ -78,9 +78,9 @@ export const CATALOG: CatalogResponse = {
   as_of: "2026-10-05T14:20:00",
   hour: ["2026-10-05T13:00:00", "2026-10-05T14:00:00"],
   kpis: [
-    { id: "volume_usd", label: "Trading volume", description: "Dollars traded (shares x price), summed over trades.", unit: "usd", formula: "Dollars traded (shares x price), summed over trades.", definition: "sum(usd)", watched: true, status: "normal", value: 3_830_000 },
-    { id: "whale_share", label: "Whale share of volume", description: "Share of dollars traded that came from trades of $1,000 or more.", unit: "share", formula: "Whale volume ÷ Trading volume", definition: "whale_volume / volume_usd", watched: true, status: "normal", value: 0.54 },
-    { id: "buy_share", label: "Buy share", description: "Share of dollars traded that bought shares rather than sold them.", unit: "share", formula: "Buy volume ÷ Trading volume", definition: "buy_volume / volume_usd", watched: false, status: null, value: 0.7 },
+    { id: "volume_usd", label: "Trading volume", description: "One-sided (taker) cash-flow volume in dollars (shares × price), summed over trades; not notional volume (contracts traded).", unit: "usd", formula: "Dollars traded (shares x price), summed over trades.", definition: "sum(usd)", watched: true, status: "normal", value: 3_830_000 },
+    { id: "whale_share", label: "Whale share of volume", description: "Share of one-sided (taker) cash-flow volume (shares × price, not notional contracts traded) from trades of $1,000 or more.", unit: "share", formula: "Whale volume ÷ Trading volume", definition: "whale_volume / volume_usd", watched: true, status: "normal", value: 0.54 },
+    { id: "buy_share", label: "Buy share", description: "Share of one-sided (taker) cash-flow volume (shares × price, not notional contracts traded) that bought shares rather than sold them.", unit: "share", formula: "Buy volume ÷ Trading volume", definition: "buy_volume / volume_usd", watched: false, status: null, value: 0.7 },
     { id: "odds_flips", label: "Odds flips", description: "Outcomes whose price crossed 50 cents within the period.", unit: "count", formula: "Worked out for each outcome, then combined", definition: "per asset: min(price) AS lo; then count(*)", watched: true, status: "learning", value: 125 },
   ],
   dimensions: [
@@ -109,9 +109,9 @@ export const TRACE: CaseTrace = {
 // GET /api/definitions, trimmed to what the tests read
 export const DEFINITIONS = {
   kpis: [
-    { id: "volume_usd", label: "Trading volume", description: "Dollars traded (shares x price), summed over trades.", unit: "usd", formula: "Added up over trades", definition: "sum(usd)" },
-    { id: "active_traders", label: "Active traders", description: "Distinct wallets that traded.", unit: "count", formula: "Counted once per distinct item", definition: "count(DISTINCT wallet)" },
-    { id: "whale_share", label: "Whale share of volume", description: "Share of dollars traded that came from trades of $1,000 or more.", unit: "share", formula: "Whale volume ÷ Trading volume", definition: "whale_volume / volume_usd" },
+    { id: "volume_usd", label: "Trading volume", description: "One-sided (taker) cash-flow volume in dollars (shares × price), summed over trades; not notional volume (contracts traded).", unit: "usd", formula: "Added up over trades", definition: "sum(usd)" },
+    { id: "active_traders", label: "Active traders", description: "Distinct wallets that traded in the period (users, active users; DAU for a day, MAU for a month). A monthly figure counts distinct wallets over the whole month, not an average of daily counts. Average DAU means averaging the daily active_traders counts.", unit: "count", formula: "Counted once per distinct item", definition: "count(DISTINCT wallet)" },
+    { id: "whale_share", label: "Whale share of volume", description: "Share of one-sided (taker) cash-flow volume (shares × price, not notional contracts traded) from trades of $1,000 or more.", unit: "share", formula: "Whale volume ÷ Trading volume", definition: "whale_volume / volume_usd" },
     { id: "recurring_share", label: "Recurring-market share", description: "Share of dollars traded in recurring short markets.", unit: "share", formula: "Recurring-market volume ÷ Trading volume", definition: "recurring_volume / volume_usd" },
   ],
   dimensions: [

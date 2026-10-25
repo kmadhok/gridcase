@@ -154,9 +154,20 @@ def catalog() -> dict[str, Any]:
     return {
         "kpis": {k: f"{v.label}: {v.description}" for k, v in kpis.items() if not is_internal(v)},
         "dimensions": {
-            d: {"label": dims[d].label, "values": dims[d].values} for d in filter_dimensions()
+            d: {
+                "label": dims[d].label,
+                "description": dims[d].description,
+                "values": dims[d].values,
+            }
+            for d in filter_dimensions()
         }
-        | {"market": {"label": "Market (group_by only, no filter)", "values": None}},
+        | {
+            "market": {
+                "label": "Market (group_by only, no filter)",
+                "description": dims["market"].description,
+                "values": None,
+            }
+        },
         "windows": WINDOW_HELP,
     }
 

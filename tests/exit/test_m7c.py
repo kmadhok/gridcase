@@ -74,3 +74,22 @@ def test_4_formulas_name_each_part_once(catalog: dict[str, Any]) -> None:
     assert listed["longshot_share"]["formula"] == "Long-shot trades ÷ Trades"
     assert listed["returning_share"]["formula"] == "1 - New traders ÷ Active traders"
     assert listed["volume_usd"]["formula"] == "Added up over trades"
+
+
+def test_dimension_descriptions_reach_catalogs(catalog: dict[str, Any]) -> None:
+    from gridcase.definitions import definitions
+    from gridcase.explore.chat import catalog as explore_catalog
+    from gridcase.semantic.kpis import Dimension
+
+    _, governed = load_kpis()
+    api_dims = {d["id"]: d for d in catalog["dimensions"]}
+    definition_dims = {d["id"]: d for d in definitions()["dimensions"]}
+    explore_dims = explore_catalog()["dimensions"]
+    for key in ("market", "odds_band"):
+        description = governed[key].description
+        assert description
+        assert api_dims[key]["description"] == description
+        assert definition_dims[key]["description"] == description
+        assert explore_dims[key]["description"] == description
+    assert api_dims["outcome"]["description"] == governed["outcome"].description
+    assert Dimension(id="legacy", label="Legacy", sql="title").description is None

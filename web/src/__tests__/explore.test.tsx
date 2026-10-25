@@ -159,7 +159,7 @@ describe("ExploreView", () => {
     await screen.findByTestId("flagged");
     await userEvent.click(screen.getByRole("button", { name: "How is this calculated?" }));
     const panel = await screen.findByTestId("how-calculated");
-    expect(within(panel).getByText(/Dollars traded \(shares x price\), summed over trades/)).toBeInTheDocument();
+    expect(within(panel).getByText(/One-sided \(taker\) cash-flow volume in dollars/)).toBeInTheDocument();
     expect(within(panel).getByText("Category: Sports")).toBeInTheDocument();
     expect(within(panel).getByText(/same hour on up to 28 earlier days/)).toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: /data-api.polymarket.com\/trades/ })).toHaveAttribute("href", "https://data-api.polymarket.com/trades");

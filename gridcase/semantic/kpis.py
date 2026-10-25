@@ -81,6 +81,7 @@ class Nested(BaseModel):
 class Dimension(BaseModel):
     id: str
     label: str
+    description: str | None = None
     sql: str
     values: list[str] | None = None
 

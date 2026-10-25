@@ -52,7 +52,7 @@ describe("morning read", () => {
     const card = screen.getByTestId("card-whales");
     await userEvent.click(within(card).getByRole("button", { name: "How is this calculated?" }));
     const panel = await within(card).findByTestId("how-calculated");
-    expect(within(panel).getByText(/Share of dollars traded that came from trades of \$1,000 or more/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Share of one-sided \(taker\) cash-flow volume .* from trades of \$1,000 or more/)).toBeInTheDocument();
     expect(within(panel).getByText(/Whale volume ÷ Trading volume/)).toBeInTheDocument();
     const ids = DIGEST.cards.find((c) => c.id === "whales")?.sentence.receipt_ids ?? [];
     const sql = DIGEST.receipts.find((r) => ids.includes(r.receipt_id))?.sql[0].sql ?? "missing";

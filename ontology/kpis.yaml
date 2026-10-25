@@ -4,7 +4,7 @@
 measures:
   volume_usd:
     label: Trading volume
-    description: Dollars traded (shares x price), summed over trades.
+    description: One-sided (taker) cash-flow volume in dollars (shares × price), summed over trades; not notional volume (contracts traded).
     unit: usd
     sql: sum(usd)
     additive: true
@@ -16,13 +16,13 @@ measures:
     additive: true
   active_traders:
     label: Active traders
-    description: Distinct wallets that traded.
+    description: Distinct wallets that traded in the period (users, active users; DAU for a day, MAU for a month). A monthly figure counts distinct wallets over the whole month, not an average of daily counts. Average DAU means averaging the daily active_traders counts.
     unit: count
     sql: count(DISTINCT wallet)
     additive: false
   new_traders:
     label: New traders
-    description: Distinct wallets whose first trade in our record was that day.
+    description: Distinct wallets (new traders or new users) whose first trade in our record was that day; new to our record, not necessarily new to the platform.
     unit: count
     sql: count(DISTINCT wallet) FILTER (WHERE d_trader_type = 'new')
     additive: false
@@ -40,35 +40,35 @@ measures:
     additive: false
   whale_volume:
     label: Whale volume
-    description: Dollars traded in trades of $1,000 or more.
+    description: One-sided (taker) cash-flow volume (shares × price, not notional contracts traded) in trades of $1,000 or more.
     unit: usd
     sql: coalesce(sum(usd) FILTER (WHERE d_size_band = '$1k+'), 0)
     additive: true
     internal: true
   sure_thing_volume:
     label: Sure-thing volume
-    description: Dollars traded on outcomes priced above 95 cents.
+    description: One-sided (taker) cash-flow volume (shares × price, not notional contracts traded) on outcomes priced above 95 cents.
     unit: usd
     sql: coalesce(sum(usd) FILTER (WHERE price > 0.95), 0)
     additive: true
     internal: true
   buy_volume:
     label: Buy volume
-    description: Dollars spent buying shares.
+    description: One-sided (taker) cash-flow volume (shares × price, not notional contracts traded) spent buying shares.
     unit: usd
     sql: coalesce(sum(usd) FILTER (WHERE d_side = 'buy'), 0)
     additive: true
     internal: true
   recurring_volume:
     label: Recurring-market volume
-    description: Dollars traded in recurring short markets such as 5-minute crypto Up or Down.
+    description: One-sided (taker) cash-flow volume (shares × price, not notional contracts traded) in recurring short markets such as 5-minute crypto Up or Down.
     unit: usd
     sql: coalesce(sum(usd) FILTER (WHERE d_market_kind = 'recurring'), 0)
     additive: true
     internal: true
   longshot_trades:
     label: Long-shot trades
-    description: Trades on outcomes priced under 10 cents.
+    description: Trades on outcomes priced < 10¢, stricter than the Odds dimension's longshot band (< 20¢).
     unit: count
     sql: count(*) FILTER (WHERE price < 0.10)
     additive: true
@@ -77,7 +77,7 @@ measures:
 derived:
   avg_trade_usd:
     label: Average trade size
-    description: Trading volume divided by trades.
+    description: One-sided (taker) cash-flow volume (shares × price, not notional contracts traded) divided by trades.
     unit: usd
     expr: volume_usd / trades
     weight: trades
@@ -95,31 +95,31 @@ derived:
     weight: active_traders
   whale_share:
     label: Whale share of volume
-    description: Share of dollars traded that came from trades of $1,000 or more.
+    description: Share of one-sided (taker) cash-flow volume (shares × price, not notional contracts traded) from trades of $1,000 or more.
     unit: share
     expr: whale_volume / volume_usd
     weight: volume_usd
   sure_thing_share:
     label: Sure-thing share
-    description: Share of dollars traded on outcomes priced above 95 cents (near-certain).
+    description: Share of one-sided (taker) cash-flow volume (shares × price, not notional contracts traded) on outcomes priced above 95 cents (near-certain).
     unit: share
     expr: sure_thing_volume / volume_usd
     weight: volume_usd
   buy_share:
     label: Buy share
-    description: Share of dollars traded that bought shares rather than sold them.
+    description: Share of one-sided (taker) cash-flow volume (shares × price, not notional contracts traded) that bought shares rather than sold them.
     unit: share
     expr: buy_volume / volume_usd
     weight: volume_usd
   longshot_share:
     label: Long-shot share
-    description: Share of trades on outcomes priced under 10 cents (lottery tickets).
+    description: Share of trades on outcomes priced < 10¢ (lottery tickets), stricter than the Odds dimension's longshot band (< 20¢).
     unit: share
     expr: longshot_trades / trades
     weight: trades
   recurring_share:
     label: Recurring-market share
-    description: Share of dollars traded in recurring short markets (5-minute crypto Up or Down).
+    description: Share of one-sided (taker) cash-flow volume (shares × price, not notional contracts traded) in recurring short markets (5-minute crypto Up or Down).
     unit: share
     expr: recurring_volume / volume_usd
     weight: volume_usd
@@ -128,7 +128,7 @@ derived:
 shares:
   volume_share:
     label: Share of volume
-    description: The slice's share of all dollars traded (for example Sports' share).
+    description: The slice's share of all one-sided (taker) cash-flow volume (shares × price, not notional contracts traded), for example Sports' share.
     unit: share
     of: volume_usd
 
@@ -147,7 +147,7 @@ nested:
     empty_is_zero: true
   whale_count:
     label: Whale wallets
-    description: Wallets that traded $10,000 or more in the period.
+    description: Wallets with $10,000 or more in one-sided (taker) cash-flow volume (shares × price, not notional contracts traded) in the period.
     unit: count
     per: wallet
     inner: {v: sum(usd)}
@@ -155,7 +155,7 @@ nested:
     empty_is_zero: true
   top_market_share:
     label: Top market's share
-    description: The biggest market's share of dollars traded; high means one event dominates.
+    description: The biggest event-title group's share of one-sided (taker) cash-flow volume (shares × price, not notional contracts traded); high means one event dominates.
     unit: share
     per: d_market
     inner: {v: sum(usd)}
@@ -194,6 +194,7 @@ dimensions:
     values: [Sports, Politics, Crypto, Culture, Economy & Finance, Tech & Science, Weather, Other]
   market:
     label: Market
+    description: Groups by event title, falling back to market title when the event title is missing or empty. Use outcome for the per-outcome grain.
     sql: coalesce(nullif(m_event_title, ''), title)
   size_band:
     label: Trade size
@@ -211,6 +212,7 @@ dimensions:
     values: [buy, sell]
   odds_band:
     label: Odds
+    description: Bands by outcome price — longshot < 20¢, toss-up 20–80¢ inclusive, favourite > 80¢. The longshot_trades and longshot_share KPIs use the stricter < 10¢ threshold.
     sql: >-
       CASE WHEN price < 0.2 THEN 'longshot' WHEN price > 0.8 THEN 'favourite'
       ELSE 'toss-up' END
@@ -221,6 +223,7 @@ dimensions:
     values: [event, recurring]
   outcome:
     label: Outcome
+    description: Per-outcome grain, combining market title and outcome; market groups by event title with a market-title fallback.
     sql: title || ' · ' || outcome
   first_seen_day:
     label: First day in our record
