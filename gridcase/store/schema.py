@@ -52,6 +52,17 @@ DDL = [
         action_json     VARCHAR
     )
     """,
+    # A retracted case (gridcase/memory/retractions.py): kept as judged, hidden from the public
+    # lists. A side table, so stores made before it gain it on their next connect.
+    """
+    CREATE TABLE IF NOT EXISTS case_retractions (
+        case_id      VARCHAR PRIMARY KEY,
+        retracted_at TIMESTAMP NOT NULL,
+        reason       VARCHAR NOT NULL,
+        span_from    TIMESTAMP,
+        span_to      TIMESTAMP
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS scheduled_tasks (
         task_id    VARCHAR PRIMARY KEY,

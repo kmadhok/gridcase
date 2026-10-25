@@ -122,6 +122,11 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
           {CASE_STATES[c.state] ?? c.state} · {c.cost_usd > 0 ? `${c.llm_calls} model call${c.llm_calls === 1 ? "" : "s"} · $${c.cost_usd.toFixed(2)}` : "standard playbook, no model"}
         </div>
       </header>
+      {c.retracted && (
+        <p className="accent text-sm" data-testid="retracted" title={`retracted ${fmtTime(c.retracted.at)}`}>
+          <span className="font-medium">Retracted:</span> {c.retracted.reason}
+        </p>
+      )}
       {c.judged_without_data && (
         <p data-testid="judged-without-data" className="warn rounded-xl border border-rule p-3 text-sm">
           Opened while our collector was down: the missing hours read as a drop, so this alarm was judged on missing data. Kept as it was judged; the hours have since been filled.
