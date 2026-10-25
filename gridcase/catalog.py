@@ -94,5 +94,8 @@ def catalog(conn: duckdb.DuckDBPyConnection, as_of: datetime) -> dict[str, Any]:
         "as_of": as_of.isoformat(),
         "hour": [lo.isoformat(), hi.isoformat()],
         "kpis": rows,
-        "dimensions": [{"id": d.id, "label": d.label, "values": d.values} for d in dims.values()],
+        "dimensions": [
+            {"id": d.id, "label": d.label, "description": d.description, "values": d.values}
+            for d in dims.values()
+        ],
     }

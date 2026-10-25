@@ -40,7 +40,13 @@ def definitions() -> dict[str, Any]:
             if not is_internal(k)
         ],
         "dimensions": [
-            {"id": d.id, "label": d.label, "values": d.values, "sql": d.sql.strip()}
+            {
+                "id": d.id,
+                "label": d.label,
+                "description": d.description,
+                "values": d.values,
+                "sql": d.sql.strip(),
+            }
             for d in dims.values()
         ],
         "usual_range": {

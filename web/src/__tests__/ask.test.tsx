@@ -42,7 +42,7 @@ describe("AskPanel", () => {
       ok: true,
       status: 200,
       json: async () => (String(url).includes("/definitions")
-        ? { kpis: [{ id: "volume_usd", label: "Trading volume", description: "Dollars traded (shares x price), summed over trades.", unit: "usd", formula: "Added up over trades", definition: "sum(usd)" }], dimensions: [], usual_range: {}, sources: [], record_start: null }
+        ? { kpis: [{ id: "volume_usd", label: "Trading volume", description: "One-sided (taker) cash-flow volume in dollars (shares × price), summed over trades; not notional volume (contracts traded).", unit: "usd", formula: "Added up over trades", definition: "sum(usd)" }], dimensions: [], usual_range: {}, sources: [], record_start: null }
         : { sentences: [{ text: "Sports traded $450 yesterday.", receipt_ids: ["k1"], tier: "governed" }], refused: false, new_receipts: [kpiReceipt], dropped: 0, cost_usd: 0.002 }),
     })));
     render(<AskPanel target={{ page: "now" }} receipts={{}} />);
@@ -50,7 +50,7 @@ describe("AskPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: /^ask$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /show evidence/i }));
     await userEvent.click(screen.getByTestId("toggle-sql"));
-    expect(await screen.findByTestId("receipt-kpi")).toHaveTextContent("Trading volume: Dollars traded (shares x price), summed over trades.");
+    expect(await screen.findByTestId("receipt-kpi")).toHaveTextContent("Trading volume: One-sided (taker) cash-flow volume in dollars (shares × price), summed over trades; not notional volume (contracts traded).");
   });
 
   it("fills the box from a suggested question", async () => {
