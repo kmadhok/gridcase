@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 
 from gridcase.ledger.schema import Receipt
 from gridcase.memory.cases import CaseRecord
-from gridcase.server.app import _case_summary, judged_without_data, now_cases
+from gridcase.memory.retractions import judged_without_data
+from gridcase.server.app import _case_summary, now_cases
 
 AS_OF = datetime(2026, 10, 21, 1, 45)
 

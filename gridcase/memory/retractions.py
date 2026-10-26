@@ -16,6 +16,9 @@ from pydantic import BaseModel
 from gridcase.memory.cases import CaseRecord, list_cases
 
 HOUR = timedelta(hours=1)
+# A case whose opening data check found the record this far behind was judged on missing data:
+# the collector was down, so the empty hours read as a drop (the 2026-10-21 01:45 alarms).
+STALE_AT_OPENING_MIN = 60.0
 
 
 class Retraction(BaseModel):
@@ -100,6 +103,16 @@ def public_cases(
         return cases
     hidden = retractions(conn)
     return [c for c in cases if c.case_id not in hidden]
+
+
+def judged_without_data(c: CaseRecord) -> bool:
+    """True when the case's own data.coverage, run when it opened, found the record stale."""
+    return any(
+        r.tool == "data.coverage"
+        and r.as_of == c.as_of
+        and (r.output.get("freshness_minutes") or 0) > STALE_AT_OPENING_MIN
+        for r in c.receipts
+    )
 
 
 # --------------------------------------------------------------------------- outage matching
