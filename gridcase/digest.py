@@ -23,6 +23,7 @@ from gridcase.explain.schema import Claim, Conclusion
 from gridcase.explain.verifier import verify
 from gridcase.ledger.schema import Receipt
 from gridcase.memory.cases import get_case
+from gridcase.memory.retractions import judged_without_data, retractions
 from gridcase.semantic.kpis import load_kpis
 from gridcase.tools.base import ToolError, run_tool
 
@@ -321,14 +322,21 @@ CARDS: list[tuple[str, str, str, str]] = [
 def _alarm_cases(
     conn: duckdb.DuckDBPyConnection, lo: datetime, hi: datetime
 ) -> list[dict[str, Any]]:
+    """Cases the watch opened in [lo, hi), leaving out those retracted by the time the digest is
+    built and those judged on missing data, as the Now page does. Stored digests stay as built."""
     kpis, _ = load_kpis()
     rows = conn.execute(
         "SELECT case_id FROM cases WHERE as_of >= ? AND as_of < ? ORDER BY as_of, case_id",
         [lo, hi],
     ).fetchall()
+    hidden = retractions(conn, [cid for (cid,) in rows])
     out = []
     for (cid,) in rows:
+        if cid in hidden:
+            continue
         c = get_case(conn, cid)
+        if judged_without_data(c):
+            continue
         out.append(
             {
                 "case_id": c.case_id,

@@ -87,7 +87,7 @@ def now_context(conn: Any, as_of: datetime) -> tuple[dict[str, Any], dict[str, R
     same hours on previous days, the category breakdown of volume, each watched series' status
     and the latest investigations."""
     from gridcase.market_alarm import check_series, load_watch
-    from gridcase.memory.retractions import public_cases
+    from gridcase.memory.retractions import judged_without_data, public_cases
     from gridcase.planner.context import BASELINE_DAYS, case_window
     from gridcase.semantic.kpis import load_kpis
     from gridcase.tools.base import run_tool
@@ -133,7 +133,8 @@ def now_context(conn: Any, as_of: datetime) -> tuple[dict[str, Any], dict[str, R
             "as_of": c.as_of.isoformat(),
             "best_supported_cause": CAUSES.get(c.top_hypothesis or "", (None, ""))[0],
         }
-        for c in public_cases(conn)[:5]  # as the Now page lists them
+        # as the Now page lists them: no retracted cases, none judged on missing data
+        for c in [x for x in public_cases(conn) if not judged_without_data(x)][:5]
     ]
     evidence = [
         {

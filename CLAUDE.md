@@ -1,6 +1,6 @@
 # MarketCase (repo: gridcase)
 
-A governed analytics agent for Polymarket: a few KPIs a product team owns are defined once in a semantic layer; every hour each is checked against its usual level; when one moves outside its range the agent investigates why (which market, category, trade size, trader type or odds band moved) and writes an answer where every number links to its query. A PM can also ask questions. Plans: one per milestone in docs/plans/ (dated file names); M1–M12 are built and deployed, and the latest docs/DECISIONS.md entries describe the current state. A plan whose status line says superseded or proposed is not to be implemented without the user's go-ahead. The power-grid version (original spec docs/SPEC.md) is kept at tag `v1-power-grid`.
+A governed analytics agent for Polymarket: a few KPIs a product team owns are defined once in a semantic layer; every hour each is checked against its usual level; when one moves outside its range the agent investigates why (which market, category, trade size, trader type or odds band moved) and writes an answer where every number links to its query. A PM can also ask questions. Plans: one per milestone in docs/plans/ (dated file names); M1–M13 are built and deployed, and the latest docs/DECISIONS.md entries describe the current state. A plan whose status line says superseded or proposed is not to be implemented without the user's go-ahead. The power-grid version (original spec docs/SPEC.md) is kept at tag `v1-power-grid`.
 
 ## Stack
 - Python 3.12, uv for env and deps, ruff + mypy --strict, pytest + hypothesis
@@ -32,6 +32,7 @@ A governed analytics agent for Polymarket: a few KPIs a product team owns are de
 - uv run gridcase refresh            # load collected trades + categorise markets once
 - uv run gridcase investigate --kpi volume_usd --segment category=Sports [--as-of ...]
 - uv run gridcase digest [--day YYYY-MM-DD]   # build the morning read (the server does it at 00:30 UTC)
+- uv run gridcase cases retract CASE_ID… --reason TEXT [--span-from --span-to] | unretract CASE_ID… | retract-outage --since --until [--reason] [--dry-run]   # stop gridcase-server first
 - uv run gridcase serve
 - uv run gridcase dbt build          # build and test the local warehouse
 - uv run gridcase dbt docs generate

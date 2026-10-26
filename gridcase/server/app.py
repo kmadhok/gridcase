@@ -50,7 +50,7 @@ from gridcase.investigate import investigate
 from gridcase.market_alarm import WatchedSeries, hourly, load_watch, series_view
 from gridcase.market_watch import watch_markets
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
-from gridcase.memory.retractions import get_retraction, public_cases
+from gridcase.memory.retractions import get_retraction, judged_without_data, public_cases
 from gridcase.planner.llm import LLM, AnthropicLLM, FakeLLM
 from gridcase.semantic.kpis import load_kpis, parse_segment
 from gridcase.server.scheduler import drain_scheduled
@@ -82,20 +82,7 @@ def _parse(t: str) -> datetime:
     )
 
 
-# A case whose opening data check found the record this far behind was judged on missing data:
-# the collector was down, so the empty hours read as a drop (the 2026-10-21 01:45 alarms).
-STALE_AT_OPENING_MIN = 60.0
 NOW_PAGE_CASES = 10
-
-
-def judged_without_data(c: CaseRecord) -> bool:
-    """True when the case's own data.coverage, run when it opened, found the record stale."""
-    return any(
-        r.tool == "data.coverage"
-        and r.as_of == c.as_of
-        and (r.output.get("freshness_minutes") or 0) > STALE_AT_OPENING_MIN
-        for r in c.receipts
-    )
 
 
 def now_cases(cases: list[CaseRecord]) -> list[dict[str, Any]]:
