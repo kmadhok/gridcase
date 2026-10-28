@@ -6,6 +6,7 @@ import { fmtTime, fmtValue, hypothesisName, kpiLabel, segmentName } from "../lab
 import { statusText } from "../nowStatus";
 import { navigate } from "../router";
 import { AskPanel } from "./AskPanel";
+import { MarketField } from "./MarketField";
 
 /** 48 hours of a KPI (line) against its usual range for each hour of the day (band). */
 export function Sparkline({ s }: { s: SeriesView }) {
@@ -95,12 +96,17 @@ export function NowView({ initial }: { initial?: NowResponse }) {
   const categories = now.series.filter((s) => groupOf(s) === "category");
   return (
     <div className="space-y-6">
-      <header className="pb-2">
+      {/* A tall open stage: the market's ridgeline (MarketField, fixed behind the page) fills it before the tiles. */}
+      <header className="flex min-h-[72svh] flex-col pb-2">
         <h1 className="display text-[40px] leading-[1.05] md:text-6xl">Polymarket, right now</h1>
         <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-ink-soft md:text-base">
           Each hour is compared with the same hour on previous days; when a number leaves its usual range, an investigation opens automatically and explains why.
           {" "}Newest trade {fmtTime(now.freshness.newest_trade)}{now.freshness.record_starts ? ` · collecting since ${fmtTime(now.freshness.record_starts)}` : ""}.
         </p>
+        <p className="mt-auto pt-10 text-sm text-ink-muted">
+          Behind this page, every series&apos; last 48 hours as one ridge, checked hour by hour. <span className="text-accent">Accent</span> marks an hour outside its usual range. Hover a tile to find its ridge.
+        </p>
+        <MarketField series={now.series} />
       </header>
       <section aria-label="Team KPIs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {team.map((s) => <Tile key={s.series} minimum={minimum} s={s} caseId={caseFor(s)} />)}
