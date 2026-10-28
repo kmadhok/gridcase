@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { SeriesView } from "../api";
+import { segmentName } from "../labels";
 
 // The Now page's backdrop: every watched series as one ridge of an ASCII ridgeline that fills the whole screen
 // behind the page, nearer ridges hiding the ones behind them (the Unknown Pleasures plot, drawn in type). Each
@@ -41,6 +42,8 @@ const outside = (p: Point) => p.value !== null && p.low !== null && p.high !== n
 
 interface Lane {
   s: SeriesView;
+  /** The name the page's tiles use: the API labels every category series "Trading volume". */
+  name: string;
   /** Values scaled 0..1 to this series' own peak; null where no trades were collected. */
   norm: (number | null)[];
 }
@@ -62,7 +65,8 @@ function startField(canvas: HTMLCanvasElement, series: SeriesView[]) {
       const vals = s.points.map((p) => p.value).filter((v): v is number => v !== null);
       const lo = vals.length ? Math.min(...vals) : 0;
       const hi = vals.length ? Math.max(...vals) : 1;
-      return { s, norm: s.points.map((p) => (p.value === null ? null : 0.12 + 0.88 * ((p.value - lo) / (hi - lo || 1)))) };
+      const name = s.segment === "all" ? s.label : `${segmentName(s.segment)} volume`;
+      return { s, name, norm: s.points.map((p) => (p.value === null ? null : 0.12 + 0.88 * ((p.value - lo) / (hi - lo || 1)))) };
     });
   if (!lanes.length) return null;
   const hours = Math.max(...lanes.map((l) => l.norm.length));
@@ -262,7 +266,7 @@ function startField(canvas: HTMLCanvasElement, series: SeriesView[]) {
     lanes.forEach((lane, li) => {
       if (hovered !== lane.s.series) return;
       const base = top + (li + 1) * spacing;
-      const label = `${lane.s.label} · last 48 hours`;
+      const label = `${lane.name} · last 48 hours`;
       const r = clearRow(Math.max(0, Math.round(base - amp) - 1), 1, label.length);
       if (r >= 0) write(r, 1, label, 0, 0.95);
     });
@@ -337,12 +341,12 @@ function startField(canvas: HTMLCanvasElement, series: SeriesView[]) {
         if (fired.has(key)) continue;
         fired.add(key);
         // One label per lane per sweep keeps the page readable; the ridge still turns accent at every hour.
-        if (flares.length >= 3 || flares.some((f) => f.text.startsWith(lane.s.label) && time - f.t0 < 3)) continue;
+        if (flares.length >= 3 || flares.some((f) => f.text.startsWith(lane.name) && time - f.t0 < 3)) continue;
         const p = pts[i];
         const how = p.usual ? `${(p.value! / p.usual).toFixed(1)}× usual` : p.value! > p.high! ? "above usual" : "below usual";
         const arrow = p.value! > p.high! ? "↑" : "↓";
         const base = top + (li + 1) * spacing;
-        flares.push({ x: c, y: base - (lane.norm[i] ?? 0) * amp, t0: time, text: `${lane.s.label} ${arrow} ${how} · ${hourLabel(p.t)}` });
+        flares.push({ x: c, y: base - (lane.norm[i] ?? 0) * amp, t0: time, text: `${lane.name} ${arrow} ${how} · ${hourLabel(p.t)}` });
       }
     });
   }
