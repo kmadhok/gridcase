@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import time
+import zlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,6 +44,9 @@ FILLED_FILE = (
     "gaps_filled.jsonl"  # gaps later filled from the feed's history; the loader drops them
 )
 FILL_MAX_PAGES = 45_000  # about the month the feed reaches back
+CORRUPT_DIR = "corrupt"  # originals of hour files repaired after a crash
+REPAIR_DAYS = 4.0  # past MAX_PAGES' three days of catch-up, so every file a crash touched
+GZIP_MAGIC = b"\x1f\x8b\x08"
 
 # v2 answers in snake_case; the raw files keep v1's names
 V1_NAMES = {
@@ -88,6 +92,70 @@ def _hour_file(root: Path, ts: int) -> Path:
 def _read_lines(path: Path) -> list[dict[str, Any]]:
     with gzip.open(path, "rt") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+def _complete_lines(data: bytes) -> tuple[list[bytes], bool]:
+    """Every whole JSON line in a file of appended gzip members, and whether anything had to be
+    left out: bytes that are not a member (zeros left by a crash) or a member cut off mid-write,
+    whose last partial line is dropped. Each member's lines are whole (the collector writes one
+    member per append), so only a cut-off member can end mid-line."""
+    lines: list[bytes] = []
+    damaged = False
+    pos = 0
+    while pos < len(data):
+        if data[pos : pos + 3] != GZIP_MAGIC:
+            damaged = True
+            nxt = data.find(GZIP_MAGIC, pos + 1)
+            if nxt < 0:
+                break
+            pos = nxt
+            continue
+        d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        try:
+            out = d.decompress(data[pos:])
+        except zlib.error:
+            out = b""
+        if not d.eof:  # cut off: whatever follows its last newline is a partial line
+            out = out[: out.rfind(b"\n") + 1]
+        lines += [raw for raw in out.split(b"\n") if raw.strip()]
+        if d.eof:
+            pos = len(data) - len(d.unused_data)
+        else:
+            damaged = True
+            nxt = data.find(GZIP_MAGIC, pos + 1)
+            if nxt < 0:
+                break
+            pos = nxt
+    return lines, damaged
+
+
+def repair_hour_file(path: Path, corrupt_dir: Path) -> bool:
+    """Rewrite a damaged hour file with its whole lines, keeping the original in corrupt_dir.
+    Healthy files are not touched. Returns whether the file was repaired."""
+    data = path.read_bytes()
+    lines, damaged = _complete_lines(data)
+    if not damaged:
+        return False
+    corrupt_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    name = "-".join(path.relative_to(path.parents[3]).with_suffix("").parts)  # 2026-10-26-17.jsonl
+    (corrupt_dir / f"{name}.gz.{stamp}.orig").write_bytes(data)
+    tmp = path.with_name(path.name + ".tmp")
+    with gzip.open(tmp, "wb") as f:
+        f.write(b"\n".join(lines) + b"\n" if lines else b"")
+    os.replace(tmp, path)
+    return True
+
+
+def repair_recent(root: Path, days: float = REPAIR_DAYS) -> list[Path]:
+    """Repair hour files changed in the last `days`. Run when the collector starts, before
+    anything appends: a crash is what damages a file, and the collector starts after one."""
+    cutoff = time.time() - days * 86400
+    repaired = []
+    for path in sorted((root / "trades").rglob("*.jsonl.gz")):
+        if path.stat().st_mtime >= cutoff and repair_hour_file(path, root / CORRUPT_DIR):
+            repaired.append(path)
+    return repaired
 
 
 def load_state(root: Path) -> CollectorState:
@@ -286,6 +354,8 @@ def fill_gaps(
 def run_collector(root: Path, interval_s: float = COLLECT_EVERY_S) -> None:
     """Poll forever, starting from where the record on disk is complete. Logs every catch-up,
     gap and error, and a line every 3 polls."""
+    for path in repair_recent(root):
+        log.warning("polymarket: repaired %s after a crash (original in %s/)", path, CORRUPT_DIR)
     state = load_state(root)
     if state.last_ts is not None:
         since = datetime.fromtimestamp(state.last_ts, UTC).isoformat(timespec="seconds")
