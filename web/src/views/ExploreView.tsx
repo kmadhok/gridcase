@@ -10,6 +10,7 @@ import { CASE_STATES, KPIS, fmtTime, fmtValue, kpiLabel } from "../labels";
 import { href } from "../router";
 import { ExploreChart } from "./ExploreChart";
 import { ExploreChat } from "./ExploreChat";
+import { GraphField } from "./fields/GraphField";
 import { HowCalculatedButton, HowCalculatedPanel } from "./HowCalculated";
 
 const DIM_LABELS: Record<string, string> = { category: "Category", size_band: "Trade size", trader_type: "Trader" };
@@ -142,6 +143,7 @@ export function ExploreView({ query = "", pollMs = 1500 }: { query?: string; pol
   return (
     <div className="space-y-4">
       <header className="pb-4">
+        {catalog && <GraphField catalog={catalog} />}
         <h1 className="display text-[40px] leading-[1.05] md:text-6xl">Explore</h1>
         <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-ink-soft md:text-base">
           Pick a number and a slice of the market, draw your own lines, and ask why any hour moved. The chart is free and instant; “Why did this happen?” runs a full investigation of that hour.

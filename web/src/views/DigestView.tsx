@@ -8,6 +8,7 @@ import {
 } from "./DigestCharts";
 import { HowCalculatedButton, HowCalculatedPanel, type Calculation, type Period } from "./HowCalculated";
 import { ReceiptCard } from "./ReceiptCard";
+import { SunriseField } from "./fields/SunriseField";
 
 const PERIOD_WORDS: Record<string, string> = { window: "Period", current: "This period", previous: "Compared with" };
 
@@ -168,6 +169,7 @@ export function DigestView({ day, initial }: { day?: string; initial?: Digest })
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-4">
+        <SunriseField digest={digest} />
         <div className="label flex flex-wrap items-center gap-x-3 gap-y-2">
           <span>Morning read · {longDay(digest.day)} · covers {digest.period_words.current}, to 00:00 UTC</span>
           {days.length > 1 && (

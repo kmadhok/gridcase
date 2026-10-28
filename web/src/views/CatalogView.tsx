@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type CatalogKpi, type CatalogResponse } from "../api";
 import { BASE_PATH } from "../basePath";
 import { fmtTime, fmtValue } from "../labels";
+import { CompilerField } from "./fields/CompilerField";
 
 const STATUS_TEXT: Record<string, string> = {
   normal: "Normal",
@@ -52,6 +53,7 @@ export function CatalogView({ initial }: { initial?: CatalogResponse }) {
   return (
     <div className="space-y-10">
       <header>
+        <CompilerField catalog={cat} />
         <h1 className="display text-[40px] leading-[1.05] md:text-6xl">What each number means</h1>
         <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-ink-soft md:text-base">
           Every KPI is defined once, here, and the investigations and answers use only these definitions.
