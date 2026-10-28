@@ -140,7 +140,11 @@ def load_raw(
         ).fetchone()
         if known and known[0] == st.st_size and known[1] == st.st_mtime:
             continue
-        new += _load_file(conn, path)
+        try:
+            new += _load_file(conn, path)
+        except duckdb.Error as e:  # not recorded, so it is tried again once repaired
+            log.warning("polymarket load skipped %s: %s", path, e)
+            continue
         conn.execute(
             "INSERT OR REPLACE INTO raw_files VALUES (?, ?, ?)",
             [str(path), st.st_size, st.st_mtime],
