@@ -5,6 +5,7 @@ import { CASE_STATES, HYPOTHESES, KPIS, TIERS, fmtTime, fmtValue, kpiLabel, segm
 import { AskPanel } from "./AskPanel";
 import { ReceiptCard } from "./ReceiptCard";
 import { TraceView } from "./TraceView";
+import { TreeField } from "./fields/TreeField";
 
 function ClaimRow({ claim, i, receipts }: { claim: Claim; i: number; receipts: Record<string, Receipt> }) {
   const [open, setOpen] = useState(false);
@@ -115,6 +116,7 @@ export function CaseView({ id, initial }: { id: string; initial?: CaseFull }) {
   return (
     <div className="space-y-4">
       <header className="flex flex-col gap-3 pb-2">
+        <TreeField c={c} />
         <h1 className="display max-w-4xl text-[34px] leading-[1.05] md:text-5xl">
           Why did {kpiLabel(c.metric).toLowerCase()} move? · {segmentName(c.entity)} · {fmtTime(c.as_of)}
         </h1>
