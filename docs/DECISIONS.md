@@ -685,3 +685,22 @@ The Now page's ridgeline (above) now has a sibling on every other view, each a s
 - REVIEW: keep Airflow disabled. Incremental marts and reconciliation of the deployed checkout, DAG, unit and pulse configuration remain prerequisites before any approved restart/unpause. The guard reserves no space and does not make full rebuilds safe. `deploy/install.sh` still enables Airflow and the unit still creates unpaused DAGs; do not use the installer to stage this change before those prerequisites are met. Details: `orchestration/airflow/README.md`. Nothing was deployed or run against live logs/databases, and no kayak checkout or service was changed.
 - Tests were written first; the DagBag test failed on main's missing guard before implementation. Synthetic files and fake wall clocks cover threshold/age boundaries, invalid evidence, tail bounds, explicit configuration and command-time rechecks. In-process Airflow DAG runs with mocked warehouse commands verify complete skip propagation and a build skipping when evidence expires or space falls after source checks. Airflow metadata/logs are isolated inside the clone.
 - Validation: Airflow 3.3.2 DAG/guard tests **71 passed** (two upstream test-client deprecation warnings); full offline Python suite **335 passed, 2 skipped** (web assets not built), **1 live test deselected**. The focused M10/deployment checks also passed (17 tests). Repository ruff, Airflow formatting, project `mypy --strict` (106 files), the DAG's separate strict type check using the Airflow environment, and `git diff --check` pass. dbt was exercised only by the existing offline warehouse tests against temporary fixture databases.
+
+## 2026-11-05 — A memory cap for the server
+
+The server ran with no memory limit and swung between about 1.7 and 4.4 GB (cgroup peak 5.1 GB since the 2026-11-03 restart) on kayak, where swap is usually full. It was the main suspect in the 2026-11-03 evening freeze. This settles the `REVIEW:` of 2026-10-06 ("no DuckDB cap for the server").
+
+- **Cause, measured on a scratch copy of the live store (51M trades):** `SET threads = 1` was the only limit, so DuckDB used its default of 80% of RAM (about 9.3 GiB on kayak) and kept the blocks it read. Every refresh scans columns of the whole table: `enrich_markets`' lookup alone took a fresh process from 361 MB to 1.47 GB in 20 s. Run with a 3.1 GiB limit, the process climbed to about 3 GB and stayed there, so usage follows whatever limit is set. `duckdb_memory()` shows that this is the table cache (BASE_TABLE 997 MB at the new limit), not working memory.
+- **Decision: `SET memory_limit = '1200MB'` in `gridcase/store/db.py`, and `MemoryHigh=1800M`, `MemoryMax=2200M`, `MemorySwapMax=512M` on the unit.** A cap in the unit alone would have worked only by accident: DuckDB takes its default from the cgroup limit.
+
+| Cycle on the 51M-trade store | 3.1 GiB limit | 1200MB limit |
+|---|---|---|
+| Now page, cold (empty hour cache) | 538 s, peak 3.3 GB | 588 s, peak 1.33 GB |
+| Now page, warm | 29 s, peak 3.0 GB | 18 s, peak 1.30 GB |
+| Catalog, warm | 23 s, peak 3.0 GB | 22 s, peak 1.31 GB |
+
+- **Checked at the unit's limits, with no errors:** a digest (80 s), an investigation of `volume_usd` (56 s) and `new_traders` (398 s), both with FakeLLM, and 8 concurrent 7-day Explore charts (174 s, the highest peak: 1.73 GB, close to MemoryHigh).
+- **Not changed:** narrowing `enrich_markets` to read titles only for missing markets. It measured no better at the cap (1143 MB against 1181 MB; 7.0 s against 8.2 s), so it is not worth the extra query.
+- `REVIEW:` a restart recomputes 28 days of hourly values for 18 series (about 9 minutes, mostly `new_traders` and `returning_share`). The cap does not change that, and an OOM kill would repeat it. Persisting settled hours would remove it.
+- `REVIEW:` more than about 8 concurrent heavy Explore queries could reach MemoryHigh and slow down, and past MemoryMax the service restarts. The chart limiter (120 per visitor per 10 minutes) is per visitor, not global.
+- `REVIEW:` the freeze's cause is still not proven: its logs stop before the hang, and night-shift's parallel tasks were running then. This removes one large, measured contributor.
