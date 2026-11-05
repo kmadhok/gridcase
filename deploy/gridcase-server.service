@@ -18,6 +18,13 @@ ExecStart=%h/.local/bin/uv run gridcase serve --host 100.125.186.6 --port 8710
 Restart=on-failure
 RestartSec=10
 Nice=5
+# DuckDB is capped at 1200MB (gridcase/store/db.py) and the process peaks near 1.3 GB (1.7 GB
+# with 8 Explore charts at once). High slows
+# it down before Max kills it; Restart= brings it back. Swap is limited because kayak's is usually
+# full, and a service parked there is what makes the whole host crawl.
+MemoryHigh=1800M
+MemoryMax=2200M
+MemorySwapMax=512M
 
 [Install]
 WantedBy=default.target

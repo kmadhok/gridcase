@@ -610,3 +610,22 @@ kayak went down at 2026-10-26 17:47 UTC while the collector was appending to `tr
 - REVIEW: a skipped file shows only as a log warning every 5 minutes. Its hour counts as having fewer trades rather than being unknown. It is not wired into coverage, because the startup repair should leave nothing to skip.
 - **Tests:** `tests/unit/test_raw_repair.py` (5 tests): zeros between members, a member cut off mid-write, a healthy file left alone, a collector starting on a cut-off newest file (`load_state` raises before the repair and works after it; files older than 4 days are not touched), and the loader skipping and then retrying a bad file. The loader test fails on main with the production error (`IO Error: Input is not a GZIP stream`). Full suite: 328 passed, 1 skipped. ruff and mypy --strict clean.
 - **Deployed 2026-10-28 00:05 UTC** on kayak (`b536e66`, user approval: "go for it"). The collector and server restarted. The collector's startup check ran in about 28 s, repaired nothing, and resumed from 23:59 UTC. The next load took 8,666 trades. The 00:06 watch judged 17 series normal and opened one alarm (Politics volume ×7.6, top driver D1_ONE_MARKET).
+
+## 2026-11-05 — A memory cap for the server
+
+The server ran with no memory limit and swung between about 1.7 and 4.4 GB (cgroup peak 5.1 GB since the 2026-11-03 restart) on kayak, where swap is usually full. It was the main suspect in the 2026-11-03 evening freeze. This settles the `REVIEW:` of 2026-10-06 ("no DuckDB cap for the server").
+
+- **Cause, measured on a scratch copy of the live store (51M trades):** `SET threads = 1` was the only limit, so DuckDB used its default of 80% of RAM (about 9.3 GiB on kayak) and kept the blocks it read. Every refresh scans columns of the whole table: `enrich_markets`' lookup alone took a fresh process from 361 MB to 1.47 GB in 20 s. Run with a 3.1 GiB limit, the process climbed to about 3 GB and stayed there, so usage follows whatever limit is set. `duckdb_memory()` shows that this is the table cache (BASE_TABLE 997 MB at the new limit), not working memory.
+- **Decision: `SET memory_limit = '1200MB'` in `gridcase/store/db.py`, and `MemoryHigh=1800M`, `MemoryMax=2200M`, `MemorySwapMax=512M` on the unit.** A cap in the unit alone would have worked only by accident: DuckDB takes its default from the cgroup limit.
+
+| Cycle on the 51M-trade store | 3.1 GiB limit | 1200MB limit |
+|---|---|---|
+| Now page, cold (empty hour cache) | 538 s, peak 3.3 GB | 588 s, peak 1.33 GB |
+| Now page, warm | 29 s, peak 3.0 GB | 18 s, peak 1.30 GB |
+| Catalog, warm | 23 s, peak 3.0 GB | 22 s, peak 1.31 GB |
+
+- **Checked at the unit's limits, with no errors:** a digest (80 s), an investigation of `volume_usd` (56 s) and `new_traders` (398 s), both with FakeLLM, and 8 concurrent 7-day Explore charts (174 s, the highest peak: 1.73 GB, close to MemoryHigh).
+- **Not changed:** narrowing `enrich_markets` to read titles only for missing markets. It measured no better at the cap (1143 MB against 1181 MB; 7.0 s against 8.2 s), so it is not worth the extra query.
+- `REVIEW:` a restart recomputes 28 days of hourly values for 18 series (about 9 minutes, mostly `new_traders` and `returning_share`). The cap does not change that, and an OOM kill would repeat it. Persisting settled hours would remove it.
+- `REVIEW:` more than about 8 concurrent heavy Explore queries could reach MemoryHigh and slow down, and past MemoryMax the service restarts. The chart limiter (120 per visitor per 10 minutes) is per visitor, not global.
+- `REVIEW:` the freeze's cause is still not proven: its logs stop before the hang, and night-shift's parallel tasks were running then. This removes one large, measured contributor.
