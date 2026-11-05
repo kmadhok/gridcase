@@ -675,3 +675,22 @@ The Now page's ridgeline (above) now has a sibling on every other view, each a s
 - REVIEW: **the catalog's falling tokens include raw definition identifiers** (`buy_volume`, `sum(usd)`); they are the same text the cards show under "Show the exact definition".
 - REVIEW: **labels are drawn whole or not at all**: where the page's text or panels cover a node, the node's name is skipped, so on narrow screens most of the graph and tree labels vanish behind the page. Truncated labels end in "…".
 - **Tests:** `web/src/__tests__/fields.test.tsx` (8 tests): each scene's canvas mounts on its view, fixed, aria-hidden and portalled to `<body>`; and, with a stand-in 2D context under reduced motion, each scene's still frame is reassembled into text and checked against the fixture data (e.g. the tree draws "One market · evidence supports · 68% likely" and "Data problem · ruled out"; the catalog draws "= Dollars traded (shares x price), summed over trades." and "→ sum(usd)"). Web 74 tests, `tsc -b`, oxlint (no new warnings) and the build pass. Not yet seen in a real browser.
+
+## 2026-11-05 — A memory cap for the server
+
+The server ran with no memory limit and swung between about 1.7 and 4.4 GB (cgroup peak 5.1 GB since the 2026-11-03 restart) on kayak, where swap is usually full. It was the main suspect in the 2026-11-03 evening freeze. This settles the `REVIEW:` of 2026-10-06 ("no DuckDB cap for the server").
+
+- **Cause, measured on a scratch copy of the live store (51M trades):** `SET threads = 1` was the only limit, so DuckDB used its default of 80% of RAM (about 9.3 GiB on kayak) and kept the blocks it read. Every refresh scans columns of the whole table: `enrich_markets`' lookup alone took a fresh process from 361 MB to 1.47 GB in 20 s. Run with a 3.1 GiB limit, the process climbed to about 3 GB and stayed there, so usage follows whatever limit is set. `duckdb_memory()` shows that this is the table cache (BASE_TABLE 997 MB at the new limit), not working memory.
+- **Decision: `SET memory_limit = '1200MB'` in `gridcase/store/db.py`, and `MemoryHigh=1800M`, `MemoryMax=2200M`, `MemorySwapMax=512M` on the unit.** A cap in the unit alone would have worked only by accident: DuckDB takes its default from the cgroup limit.
+
+| Cycle on the 51M-trade store | 3.1 GiB limit | 1200MB limit |
+|---|---|---|
+| Now page, cold (empty hour cache) | 538 s, peak 3.3 GB | 588 s, peak 1.33 GB |
+| Now page, warm | 29 s, peak 3.0 GB | 18 s, peak 1.30 GB |
+| Catalog, warm | 23 s, peak 3.0 GB | 22 s, peak 1.31 GB |
+
+- **Checked at the unit's limits, with no errors:** a digest (80 s), an investigation of `volume_usd` (56 s) and `new_traders` (398 s), both with FakeLLM, and 8 concurrent 7-day Explore charts (174 s, the highest peak: 1.73 GB, close to MemoryHigh).
+- **Not changed:** narrowing `enrich_markets` to read titles only for missing markets. It measured no better at the cap (1143 MB against 1181 MB; 7.0 s against 8.2 s), so it is not worth the extra query.
+- `REVIEW:` a restart recomputes 28 days of hourly values for 18 series (about 9 minutes, mostly `new_traders` and `returning_share`). The cap does not change that, and an OOM kill would repeat it. Persisting settled hours would remove it.
+- `REVIEW:` more than about 8 concurrent heavy Explore queries could reach MemoryHigh and slow down, and past MemoryMax the service restarts. The chart limiter (120 per visitor per 10 minutes) is per visitor, not global.
+- `REVIEW:` the freeze's cause is still not proven: its logs stop before the hang, and night-shift's parallel tasks were running then. This removes one large, measured contributor.
