@@ -96,6 +96,7 @@ def test_airflow_schedules_the_warehouse_and_binds_tailscale_only() -> None:
     assert env["AIRFLOW__API__PORT"] == "8711"
     assert env["AIRFLOW__CORE__EXECUTION_API_SERVER_URL"] == "http://100.125.186.6:8711/execution/"
     assert env["GRIDCASE_ROOT"] == root
+    assert env["MARKETCASE_DISK_GUARD_MODE"] == "guarded"
     assert env["TZ"] == "UTC"
     assert env["UV"] == "%h/.local/bin/uv"
     # standalone starts its scheduler, API server and DAG processor as `airflow ...` children.
