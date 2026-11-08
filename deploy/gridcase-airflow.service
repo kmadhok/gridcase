@@ -23,6 +23,11 @@ Environment=AIRFLOW__API__WORKERS=1
 Environment=AIRFLOW__CORE__PARALLELISM=2
 Environment=AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://100.125.186.6:8711/execution/
 Environment=GRIDCASE_ROOT=%h/Documents/Claude/Projects/gridcase
+# Guarded host: an absent pulse path skips the entire warehouse chain.
+Environment=MARKETCASE_DISK_GUARD_MODE=guarded
+# Set MARKETCASE_PULSE_LOG to the existing absolute host-log path in a service drop-in.
+# Keep Airflow disabled until incremental marts and deployment reconciliation are complete;
+# see orchestration/airflow/README.md before installing/restarting this unit.
 Environment=TZ=UTC
 Environment=UV=%h/.local/bin/uv
 # standalone starts its scheduler, API server and DAG processor as `airflow ...` subprocesses.
