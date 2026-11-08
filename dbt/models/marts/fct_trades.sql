@@ -1,4 +1,7 @@
 -- One row per fill, with the semantic layer's dimensions resolved (ontology/kpis.yaml).
+{{ config(materialized='incremental', unique_key='trade_id', incremental_strategy='delete+insert') }}
+
+with resolved as (
 select
     t.trade_id,
     t.ts,
@@ -24,3 +27,17 @@ select
 from {{ ref('stg_polymarket__trades') }} t
 join {{ ref('dim_wallets') }} w using (wallet)
 join {{ ref('dim_markets') }} m using (condition_id)
+)
+
+select * from resolved
+{% if is_incremental() %}
+-- Compare all resolved values, including NULLs (EXCEPT treats two NULLs as equal).
+-- Old trades can arrive late and dimension corrections can affect any historical fact,
+-- so scan the source and target rather than filtering on event/collection timestamps.
+-- Only missing or changed rows reach delete+insert; unchanged runs write no fact rows.
+except
+select
+    trade_id, ts, day, hour, wallet, condition_id, asset, outcome, side, size, price, usd,
+    category, market_name, market_kind, size_band, odds_band, is_new_trader, collected_at
+from {{ this }}
+{% endif %}
