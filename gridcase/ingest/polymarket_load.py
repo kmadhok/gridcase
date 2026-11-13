@@ -6,13 +6,15 @@ price), records collector gaps, less those later filled from the feed's history,
 far the collector's record is complete.
 `enrich_markets` looks up markets not yet known in Polymarket's public metadata API
 (condition id -> event -> tags) and assigns a category from ontology/categories.yaml. Both are
-safe to run repeatedly.
+safe to run repeatedly. `refresh` does both; `refresher` is `refresh` for the server, which
+looks through the whole record for markets without a category only when it has to.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
@@ -43,13 +45,17 @@ class LoadResult:
     files: int
     new: int
     gaps: int
+    span: tuple[datetime, datetime] | None = None  # first and last trade in the files loaded
 
 
 def _naive_utc(ts: str) -> datetime:
     return datetime.fromisoformat(ts).astimezone(UTC).replace(tzinfo=None)
 
 
-def _load_file(conn: duckdb.DuckDBPyConnection, path: Path) -> int:
+def _load_file(
+    conn: duckdb.DuckDBPyConnection, path: Path
+) -> tuple[int, tuple[datetime, datetime] | None]:
+    """Trades added from one file, and the first and last trade time in the file."""
     conn.execute(
         f"""
         CREATE OR REPLACE TEMP TABLE staged AS
@@ -81,8 +87,10 @@ def _load_file(conn: duckdb.DuckDBPyConnection, path: Path) -> int:
         """
     )
     after = conn.execute("SELECT count(*) FROM trades").fetchone()
+    span = conn.execute("SELECT min(ts), max(ts) FROM staged").fetchone()
     conn.execute("DROP TABLE staged")
-    return int(after[0] if after else 0) - int(before[0] if before else 0)
+    new = int(after[0] if after else 0) - int(before[0] if before else 0)
+    return new, (span if span and span[0] is not None else None)
 
 
 def _gap_lines(path: Path) -> list[dict[str, Any]]:
@@ -133,6 +141,7 @@ def load_raw(
     # read the collector's mark before its files: every trade up to the mark is then loaded
     mark = _complete_to(root)
     files = new = 0
+    span: tuple[datetime, datetime] | None = None
     for path in sorted((root / "trades").rglob("*.jsonl.gz")):
         st = path.stat()
         known = conn.execute(
@@ -141,10 +150,13 @@ def load_raw(
         if known and known[0] == st.st_size and known[1] == st.st_mtime:
             continue
         try:
-            new += _load_file(conn, path)
+            added, seen = _load_file(conn, path)
         except duckdb.Error as e:  # not recorded, so it is tried again once repaired
             log.warning("polymarket load skipped %s: %s", path, e)
             continue
+        new += added
+        if seen:
+            span = seen if span is None else (min(span[0], seen[0]), max(span[1], seen[1]))
         conn.execute(
             "INSERT OR REPLACE INTO raw_files VALUES (?, ?, ?)",
             [str(path), st.st_size, st.st_mtime],
@@ -157,7 +169,7 @@ def load_raw(
     if mark is not None and (last is None or last[0] != mark):
         loaded_at = now or datetime.now(UTC).replace(tzinfo=None)
         conn.execute("INSERT INTO collector_marks VALUES (?, ?)", [mark, loaded_at])
-    return LoadResult(files, new, gaps)
+    return LoadResult(files, new, gaps, span)
 
 
 # ------------------------------------------------------------------ categories
@@ -182,16 +194,24 @@ def categorize(tags: list[str], title: str) -> str:
     return default
 
 
-def enrich_markets(conn: duckdb.DuckDBPyConnection, client: httpx.Client) -> int:
-    """Categorise markets seen in trades but not yet in `markets`. Returns markets added."""
+def _enrich(
+    conn: duckdb.DuckDBPyConnection,
+    client: httpx.Client,
+    span: tuple[datetime, datetime] | None,
+) -> tuple[int, bool]:
+    """Categorise markets seen in trades (those traded within `span`, or all) but not yet in
+    `markets`. Returns markets added, and whether a lookup failed and left some for later."""
     todo = conn.execute(
-        """
+        f"""
         SELECT t.condition_id, any_value(t.event_slug), any_value(t.title)
         FROM trades t LEFT JOIN markets m USING (condition_id)
-        WHERE m.condition_id IS NULL GROUP BY 1 ORDER BY 1
-        """
+        WHERE m.condition_id IS NULL{" AND t.ts BETWEEN ? AND ?" if span else ""}
+        GROUP BY 1 ORDER BY 1
+        """,
+        list(span or ()),
     ).fetchall()
     added = 0
+    failed = False
     now = datetime.now(UTC).replace(tzinfo=None)
     for i in range(0, len(todo), BATCH):
         batch = todo[i : i + BATCH]
@@ -210,6 +230,7 @@ def enrich_markets(conn: duckdb.DuckDBPyConnection, client: httpx.Client) -> int
                 found |= {m.get("conditionId"): m for m in resp.json()}
         except (httpx.HTTPError, ValueError) as err:
             log.warning("market lookup failed: %s", err)
+            failed = True
             continue
         event_of: dict[str, str | None] = {}
         for cid, trade_event, _ in batch:
@@ -228,6 +249,7 @@ def enrich_markets(conn: duckdb.DuckDBPyConnection, client: httpx.Client) -> int
                     )
         except (httpx.HTTPError, ValueError) as err:
             log.warning("event lookup failed: %s", err)
+            failed = True
             continue
         for cid, _, trade_title in batch:
             m = found.get(cid) or {}
@@ -240,7 +262,12 @@ def enrich_markets(conn: duckdb.DuckDBPyConnection, client: httpx.Client) -> int
                 [cid, question, slug, event_title, category, "|".join(tags), now],
             )
             added += 1
-    return added
+    return added, failed
+
+
+def enrich_markets(conn: duckdb.DuckDBPyConnection, client: httpx.Client) -> int:
+    """Categorise markets seen in trades but not yet in `markets`. Returns markets added."""
+    return _enrich(conn, client, None)[0]
 
 
 @dataclass
@@ -249,9 +276,36 @@ class RefreshResult:
     new: int
     gaps: int
     markets_added: int
+    lookups_failed: bool = False  # some markets are still without a category
 
 
-def refresh(conn: duckdb.DuckDBPyConnection, root: Path, client: httpx.Client) -> RefreshResult:
-    """What the server runs every few minutes: load new trades, then categorise new markets."""
+def refresh(
+    conn: duckdb.DuckDBPyConnection, root: Path, client: httpx.Client, full: bool = True
+) -> RefreshResult:
+    """Load new trades, then categorise new markets. A full pass looks through the whole record
+    for markets without a category. Otherwise only the hours just loaded are looked through:
+    enough once a full pass has left none, since a new market first shows up in a new file."""
     loaded = load_raw(conn, root)
-    return RefreshResult(loaded.files, loaded.new, loaded.gaps, enrich_markets(conn, client))
+    if full or loaded.span:
+        added, failed = _enrich(conn, client, None if full else loaded.span)
+    else:
+        added, failed = 0, False
+    return RefreshResult(loaded.files, loaded.new, loaded.gaps, added, failed)
+
+
+def refresher(
+    root: Path, client: httpx.Client
+) -> Callable[[duckdb.DuckDBPyConnection], RefreshResult]:
+    """`refresh` for a caller that runs it every few minutes (the server). The first pass is
+    full, and so is the pass after a lookup failed or a pass broke: either can leave a market
+    without a category anywhere in the record. Every other pass looks only at what it loaded."""
+    full = True
+
+    def run(conn: duckdb.DuckDBPyConnection) -> RefreshResult:
+        nonlocal full
+        this, full = full, True  # stays full if this pass raises
+        r = refresh(conn, root, client, full=this)
+        full = r.lookups_failed
+        return r
+
+    return run
