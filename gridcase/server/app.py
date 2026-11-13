@@ -47,7 +47,7 @@ from gridcase.explore.query import ExploreFilter, public_kpis
 from gridcase.ingest.export import export_markets
 from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
 from gridcase.investigate import investigate
-from gridcase.market_alarm import WatchedSeries, hourly, load_watch, series_view
+from gridcase.market_alarm import WatchedSeries, hourly, load_watch, series_view, shared_reads
 from gridcase.market_watch import watch_markets
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
 from gridcase.memory.retractions import get_retraction, judged_without_data, public_cases
@@ -351,7 +351,8 @@ def create_app(
         at = now()
         c = cur()
         try:
-            fresh = {"now": now_payload(c, at), "catalog": jsonable_encoder(catalog(c, at))}
+            with shared_reads():  # both pages check the same series at the same moment
+                fresh = {"now": now_payload(c, at), "catalog": jsonable_encoder(catalog(c, at))}
             for name, body in fresh.items():
                 c.execute(
                     "INSERT OR REPLACE INTO page_snapshots VALUES (?, ?, ?)",
