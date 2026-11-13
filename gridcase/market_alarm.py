@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cache
@@ -112,6 +114,35 @@ def _store(conn: duckdb.DuckDBPyConnection) -> str:
     return str(row[0]) if row else ""
 
 
+# One page refresh checks the same series several times at one as_of (the alarm, the Now chart,
+# the catalog's status) and no trades load meanwhile, so inside shared_reads() a query this
+# thread has already run on the store is answered from memory. Outside it every read is fresh.
+_shared: ContextVar[dict[tuple[Any, ...], list[tuple[Any, ...]]] | None] = ContextVar(
+    "shared_reads", default=None
+)
+
+
+@contextmanager
+def shared_reads() -> Iterator[None]:
+    token = _shared.set({})
+    try:
+        yield
+    finally:
+        _shared.reset(token)
+
+
+def _rows(
+    conn: duckdb.DuckDBPyConnection, sql: str, params: Sequence[Any] = ()
+) -> list[tuple[Any, ...]]:
+    memo = _shared.get()
+    if memo is None:
+        return conn.execute(sql, list(params)).fetchall()
+    key = (_store(conn), sql, *params)
+    if key not in memo:
+        memo[key] = conn.execute(sql, list(params)).fetchall()
+    return memo[key]
+
+
 def _hour_values(
     conn: duckdb.DuckDBPyConnection,
     q: KpiQuery,
@@ -130,7 +161,7 @@ def _hour_values(
     out = {h: _cache[(*key, h)] for h in hours if h < first_missing}
     if first_missing < hi:
         fresh_q = q.model_copy(update={"window": (first_missing, hi)})
-        fresh = {t: v for t, v in conn.execute(compile_kpi(fresh_q).sql).fetchall()}
+        fresh = {t: v for t, v in _rows(conn, compile_kpi(fresh_q).sql)}
         if len(_cache) > _MAX_CACHED:
             _cache.clear()
         for h in hours:
@@ -175,8 +206,8 @@ def hourly(
         minute=0, second=0, microsecond=0
     )
     judged_from = judged_until - timedelta(hours=hours)
-    span = conn.execute("SELECT min(ts), max(ts) FROM trades_as_of(?)", [as_of]).fetchone()
-    first, through = span if span else (None, None)
+    span = _rows(conn, "SELECT min(ts), max(ts) FROM trades_as_of(?)", [as_of])
+    first, through = span[0] if span else (None, None)
     mark = conn.execute(
         "SELECT complete_to FROM collector_marks WHERE loaded_at <= ? "
         "ORDER BY loaded_at DESC LIMIT 1",
