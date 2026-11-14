@@ -33,6 +33,16 @@ def test_server_service_is_the_single_writer_and_binds_tailscale_only() -> None:
     assert not any("KEY" in v or "TOKEN" in v for vals in s.values() for v in vals)
 
 
+def test_server_memory_cap_leaves_room_for_duckdb_and_python() -> None:
+    from gridcase.store.db import MEMORY_LIMIT
+
+    s = _unit("gridcase-server.service")
+    assert s["MemoryHigh"] == ["1800M"]
+    assert s["MemoryMax"] == ["2200M"]
+    assert s["MemorySwapMax"] == ["512M"]  # kayak's swap is usually full; don't park here
+    assert MEMORY_LIMIT == "1200MB"  # measured process peak 1.3 GB, under MemoryHigh
+
+
 def test_install_script_enables_the_server_and_retires_the_grid_ingest_timer() -> None:
     text = (DEPLOY / "install.sh").read_text()
     assert "enable --now gridcase-server.service" in text

@@ -44,10 +44,10 @@ from gridcase.definitions import definitions
 from gridcase.digest import build_digest, due_day, get_digest, latest_digest, list_digests
 from gridcase.explore.chat import ExploreAsk, answer_explore
 from gridcase.explore.query import ExploreFilter, public_kpis
-from gridcase.ingest.export import export_markets
-from gridcase.ingest.polymarket_load import GAMMA_URL, refresh
+from gridcase.ingest.export import export_markets_if_asked
+from gridcase.ingest.polymarket_load import GAMMA_URL, refresher
 from gridcase.investigate import investigate
-from gridcase.market_alarm import WatchedSeries, hourly, load_watch, series_view
+from gridcase.market_alarm import WatchedSeries, hourly, load_watch, series_view, shared_reads
 from gridcase.market_watch import watch_markets
 from gridcase.memory.cases import CaseRecord, get_case, list_cases
 from gridcase.memory.retractions import get_retraction, judged_without_data, public_cases
@@ -351,7 +351,8 @@ def create_app(
         at = now()
         c = cur()
         try:
-            fresh = {"now": now_payload(c, at), "catalog": jsonable_encoder(catalog(c, at))}
+            with shared_reads():  # both pages check the same series at the same moment
+                fresh = {"now": now_payload(c, at), "catalog": jsonable_encoder(catalog(c, at))}
             for name, body in fresh.items():
                 c.execute(
                     "INSERT OR REPLACE INTO page_snapshots VALUES (?, ?, ?)",
@@ -465,16 +466,17 @@ def create_app(
         next_polymarket = time.monotonic()
         last_market_watch = [datetime.min]
         gamma = httpx.Client(base_url=GAMMA_URL, headers={"User-Agent": "marketcase"})
+        refresh = refresher(config.RAW_DIR / "polymarket", gamma)
         while not stop.is_set():
             now = time.monotonic()
             if polymarket_interval_s and now >= next_polymarket:
                 c = cur()
                 try:
-                    r = refresh(c, config.RAW_DIR / "polymarket", gamma)
+                    r = refresh(c)
                     log.info(
                         "polymarket refresh: %d new trades, %d new markets", r.new, r.markets_added
                     )
-                    export_markets(c, config.EXPORT_DIR / "markets.parquet")
+                    export_markets_if_asked(c, config.EXPORT_DIR / "markets.parquet")
                 except Exception as e:  # noqa: BLE001
                     log.warning("polymarket refresh failed: %s", e)
                 finally:

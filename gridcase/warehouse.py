@@ -8,12 +8,18 @@ import time
 import duckdb
 
 from gridcase import config
+from gridcase.ingest.export import ask_for_markets
 
 MARTS = ("metrics_daily", "metrics_hourly_by_category", "dim_markets")
 
 
 def check_sources(max_age_minutes: float = 15) -> int:
-    """Check file mtimes, not trade timestamps: only a live collector can extend history."""
+    """Check file mtimes, not trade timestamps: only a live collector can extend history.
+    Also asks the server for the markets export, which it writes only while asked: after a
+    pause the first check fails on a stale export, and a retry after the server's next refresh
+    finds it."""
+    export = config.EXPORT_DIR / "markets.parquet"
+    ask_for_markets(export)
     raw = config.RAW_DIR / "polymarket" / "trades"
     mtimes = [p.stat().st_mtime for p in raw.glob("*/*/*/*.jsonl.gz") if p.is_file()]
     if not mtimes:
@@ -23,7 +29,6 @@ def check_sources(max_age_minutes: float = 15) -> int:
     if now - max(mtimes) > max_age_minutes * 60:
         print(f"sources stale: raw trade files older than {max_age_minutes:g} minutes")
         return 1
-    export = config.EXPORT_DIR / "markets.parquet"
     if not export.is_file():
         print("sources missing: markets.parquet")
         return 1
