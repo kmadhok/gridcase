@@ -36,41 +36,65 @@ def clear_value_cache() -> None:
     _value_cache = None
 
 
-def _hour_values(
-    conn: duckdb.DuckDBPyConnection, lo: datetime, hi: datetime, as_of: datetime
-) -> dict[str, float | None]:
-    global _value_cache
-    store = _store(conn)
-    # Memory databases all have the same name. A replaced file is a new store too.
-    path = Path(store)
-    if path.is_file():
-        stat = path.stat()
-        identity: Any = (store, stat.st_dev, stat.st_ino)
-    else:
-        identity = conn
+def _fingerprint(
+    conn: duckdb.DuckDBPyConnection, hi: datetime, as_of: datetime
+) -> tuple[Any, ...] | None:
     # Match compile_kpi's second-precision TIMESTAMP literals. Trades are immutable and
     # append-only: count catches added visible rows, including earlier first-trade history.
     # Max also catches an earlier replay cutoff (any excluded row was collected after it),
     # even if new backdated rows leave count unchanged. Trades >= hi cannot lower a window
     # member's first-trade time.
-    # Markets can be replaced without advancing fetched_at, so hash the joined fields of every
-    # row (count + XOR of 64-bit row hashes). An exact snapshot was correct but is tens of MB on
-    # the live store (hundreds of thousands of markets), every five minutes, under the memory cap.
-    fingerprint = conn.execute(
+    # Markets can be replaced without advancing fetched_at, so every row's joined fields are
+    # hashed as ONE JSON string and the row hashes XORed. DuckDB's multi-argument hash(a, b, c)
+    # is not safe here: swapping one column's values between rows cancels in the XOR. An exact
+    # snapshot is safe too but is tens of MB on the live store, every five minutes.
+    return conn.execute(
         """SELECT count(*), max(collected_at),
                   (SELECT count(*) FROM markets),
-                  (SELECT bit_xor(hash(condition_id, category, event_title)) FROM markets)
+                  (SELECT bit_xor(hash(to_json([condition_id, category, event_title])))
+                   FROM markets)
            FROM trades_as_of(?) WHERE ts < ?""",
         [as_of.replace(microsecond=0), hi],
     ).fetchone()
-    key = (identity, lo, hi, fingerprint)
+
+
+def _hour_values(
+    conn: duckdb.DuckDBPyConnection,
+    kids: list[str],
+    lo: datetime,
+    hi: datetime,
+    as_of: datetime,
+) -> dict[str, float | None]:
+    """Each KPI's total over [lo, hi) at as_of, reused while the fingerprint is unchanged.
+    The fingerprint is read before and after computing; values are kept only when both match,
+    so a trade or market loaded by another cursor meanwhile is never stored under inputs that
+    don't describe it (trades only grow, so a load always moves the fingerprint)."""
+    global _value_cache
+    store = _store(conn)
+    # A replaced file is a new store. Memory databases share names and inodes, so they are
+    # told apart by the connection and the database selected on it.
+    path = Path(store)
+    if path.is_file():
+        stat = path.stat()
+        identity: Any = (store, stat.st_dev, stat.st_ino)
+    else:
+        identity = (store, conn)
+    key = (identity, lo, hi, _fingerprint(conn, hi, as_of))
     cached = _value_cache
-    if cached is None or cached[0] != key:
-        cached = (key, {})
-        _value_cache = cached
-    # Keep this generation local so concurrent callers cannot put values under another
-    # caller's key. The server's one writer loads trades before refreshing either page.
-    return cached[1]
+    if cached is not None and cached[0] == key and all(k in cached[1] for k in kids):
+        return dict(cached[1])
+    values = {k: _compute(conn, k, lo, hi, as_of) for k in kids}
+    if (identity, lo, hi, _fingerprint(conn, hi, as_of)) == key:
+        _value_cache = (key, values)
+    return dict(values)
+
+
+def _compute(
+    conn: duckdb.DuckDBPyConnection, kid: str, lo: datetime, hi: datetime, as_of: datetime
+) -> float | None:
+    got = run_kpi(conn, KpiQuery(kpi=kid, grain="total", window=(lo, hi), as_of=as_of))
+    value = got[0][-1] if got else None
+    return None if value is None else float(value)
 
 
 def _formula(kpi: Kpi, kpis: dict[str, Kpi]) -> str:
@@ -115,15 +139,11 @@ def catalog(conn: duckdb.DuckDBPyConnection, as_of: datetime) -> dict[str, Any]:
         minute=0, second=0, microsecond=0
     )
     lo = hi - timedelta(hours=1)
-    values = _hour_values(conn, lo, hi, as_of)
+    values = _hour_values(conn, [k for k, v in kpis.items() if not is_internal(v)], lo, hi, as_of)
     rows = []
     for kid, kpi in kpis.items():
         if is_internal(kpi):
             continue
-        if kid not in values:
-            got = run_kpi(conn, KpiQuery(kpi=kid, grain="total", window=(lo, hi), as_of=as_of))
-            value = got[0][-1] if got else None
-            values[kid] = None if value is None else float(value)
         value = values[kid]
         status = (
             check_series(conn, overall[kid], as_of).output["status"] if kid in overall else None

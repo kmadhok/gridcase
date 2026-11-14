@@ -310,3 +310,88 @@ def test_new_cursor_on_same_file_reuses_values(
     with db.cursor() as cursor:
         assert _bytes(module.catalog(cursor, AS_OF)) == _bytes(first)
     queries.assert_not_called()
+
+
+# ------------------------------------------------------------------ review round 1 (2026-11-14)
+
+
+def test_swapping_event_titles_between_markets_invalidates(
+    db: duckdb.DuckDBPyConnection, queries: Mock
+) -> None:
+    """DuckDB's hash(a, b, c) XORed over rows cancels when one column's values swap between
+    rows. Here the swap regroups volume by event: top_market_share goes from 0.5 to 0.83."""
+    add_market(db, "c3", "Sports", "First event")
+    add_trades(
+        db, [{"ts": LO + timedelta(minutes=3), "wallet": "w3", "usd": 200, "condition_id": "c3"}]
+    )
+    before = _values(module.catalog(db, AS_OF))["top_market_share"]
+    add_market(db, "c1", "Sports", "Second event")
+    add_market(db, "c2", "Crypto", "First event")
+    after = module.catalog(db, AS_OF)
+    assert _values(after)["top_market_share"] != before
+    assert _bytes(after) == _bytes(_fresh(db))
+
+
+def test_trade_loaded_by_another_cursor_mid_catalog_is_not_cached_under_old_inputs(
+    db: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        module, "check_series", Mock(return_value=Mock(output={"status": "normal"}))
+    )
+    writer = db.cursor()
+    fired = []
+
+    def racing_run_kpi(conn: duckdb.DuckDBPyConnection, q: Any) -> Any:
+        if not fired:
+            fired.append(1)
+            add_trades(
+                writer,
+                [
+                    {
+                        "ts": LO + timedelta(minutes=10),
+                        "wallet": "late",
+                        "usd": 700,
+                        "collected_at": AS_OF - timedelta(seconds=1),
+                    }
+                ],
+            )
+        return run_kpi(conn, q)
+
+    monkeypatch.setattr(module, "run_kpi", racing_run_kpi)
+    module.catalog(db, AS_OF)  # the trade lands while this computes
+    replay = AS_OF - timedelta(seconds=30)  # same hour window, before the trade was collected
+    got_replay = module.catalog(db, replay)
+    got_now = module.catalog(db, AS_OF)
+    monkeypatch.setattr(module, "run_kpi", run_kpi)
+    assert _bytes(got_replay) == _bytes(_fresh(db, replay))
+    assert _bytes(got_now) == _bytes(_fresh(db, AS_OF))
+    writer.close()
+
+
+def test_attached_memory_databases_do_not_share_values(queries: Mock) -> None:
+    conn = connect(":memory:")
+    conn.execute("ATTACH ':memory:' AS two")
+    conn.execute("USE two")
+    from gridcase.store.schema import create_schema
+
+    create_schema(conn)
+    for name, usd in (("memory", 100), ("two", 900)):
+        conn.execute(f"USE {name}")
+        add_market(conn, "c1", "Sports", "First event")
+        add_trades(conn, [{"ts": LO + timedelta(minutes=1), "wallet": "w", "usd": usd}])
+    conn.execute("USE memory")
+    one = _values(module.catalog(conn, AS_OF))["volume_usd"]
+    conn.execute("USE two")
+    two = _values(module.catalog(conn, AS_OF))["volume_usd"]
+    assert (one, two) == (100, 900)
+    conn.close()
+
+
+def test_inside_a_callers_transaction_catalog_still_works(
+    db: duckdb.DuckDBPyConnection, queries: Mock
+) -> None:
+    db.execute("BEGIN TRANSACTION")
+    try:
+        assert _bytes(module.catalog(db, AS_OF)) == _bytes(_fresh(db))
+    finally:
+        db.execute("ROLLBACK")
