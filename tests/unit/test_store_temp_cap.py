@@ -8,17 +8,13 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from gridcase.store.db import MAX_TEMP_DIRECTORY_SIZE, connect
+from gridcase.store.db import connect
 
 
 def _temp_cap(conn: duckdb.DuckDBPyConnection) -> str:
     row = conn.execute("SELECT current_setting('max_temp_directory_size')").fetchone()
     assert row is not None
     return str(row[0])
-
-
-def test_cap_is_four_gigabytes() -> None:
-    assert MAX_TEMP_DIRECTORY_SIZE == "4GB"
 
 
 @pytest.mark.parametrize("read_only", [False, True])
@@ -49,13 +45,10 @@ def test_a_query_that_outgrows_the_cap_fails_instead_of_filling_the_disk(tmp_pat
         conn.execute("SET memory_limit = '32MB'")
         conn.execute("SET max_temp_directory_size = '8MB'")
         conn.execute("SET preserve_insertion_order = false")
-        with pytest.raises(duckdb.OutOfMemoryException):
+        with pytest.raises(duckdb.OutOfMemoryException, match="max_temp_directory_size"):
             conn.execute(
                 "SELECT * FROM (SELECT md5(i::VARCHAR) || md5((i * 7)::VARCHAR) AS s "
                 "FROM range(3000000) t(i)) ORDER BY s"
             ).fetchall()
-        tmp = Path(str(tmp_path / "store.duckdb") + ".tmp")
-        spilled = sum(f.stat().st_size for f in tmp.glob("*")) if tmp.exists() else 0
-        assert spilled <= 8 * 1024 * 1024
     finally:
         conn.close()

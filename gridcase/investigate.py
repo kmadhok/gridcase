@@ -59,11 +59,11 @@ def investigate(
     follow its progress."""
     filters = dict(filters or {})
     case = new_case(conn, entity=segment_label(filters), metric=kpi, as_of=as_of)
-    if on_open is not None:
-        on_open(case.case_id)
     tracer = Tracer()
     token = active_tracer.set(tracer)
     try:
+        if on_open is not None:
+            on_open(case.case_id)
         if trigger is not None:  # the alarm that opened this case is its first piece of evidence
             write_receipt(conn, case.case_id, trigger)
         window = window or case_window(as_of, trigger.output if trigger is not None else None)
@@ -161,6 +161,12 @@ def investigate(
             save_case(conn, case)
             advance(conn, case.case_id, "action_taken")
             return get_case(conn, case.case_id)
+    except Exception:
+        try:
+            advance(conn, case.case_id, "failed")
+        except Exception:
+            log.exception("could not mark case %s failed", case.case_id)
+        raise
     finally:
         active_tracer.reset(token)
         try:  # a trace must never break, or hide the error of, the investigation it observes

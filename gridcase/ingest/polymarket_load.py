@@ -26,6 +26,7 @@ import httpx
 import yaml
 
 from gridcase.config import ONTOLOGY_DIR
+from gridcase.market_alarm import forget_from
 
 log = logging.getLogger("gridcase")
 
@@ -46,6 +47,7 @@ class LoadResult:
     new: int
     gaps: int
     span: tuple[datetime, datetime] | None = None  # first and last trade in the files loaded
+    failed_from: datetime | None = None  # earliest skipped raw hour, when its path is known
 
 
 def _naive_utc(ts: str) -> datetime:
@@ -142,6 +144,7 @@ def load_raw(
     mark = _complete_to(root)
     files = new = 0
     span: tuple[datetime, datetime] | None = None
+    failed_paths: list[Path] = []
     for path in sorted((root / "trades").rglob("*.jsonl.gz")):
         st = path.stat()
         known = conn.execute(
@@ -153,6 +156,7 @@ def load_raw(
             added, seen = _load_file(conn, path)
         except duckdb.Error as e:  # not recorded, so it is tried again once repaired
             log.warning("polymarket load skipped %s: %s", path, e)
+            failed_paths.append(path)
             continue
         new += added
         if seen:
@@ -162,6 +166,19 @@ def load_raw(
             [str(path), st.st_size, st.st_mtime],
         )
         files += 1
+    failed_hours: list[datetime] = []
+    for path in failed_paths:
+        try:
+            failed_hours.append(
+                datetime.strptime(
+                    path.relative_to(root / "trades").as_posix(), "%Y/%m/%d/%H.jsonl.gz"
+                )
+            )
+        except ValueError:
+            mark = None  # an unknown skipped hour cannot support any new completeness mark
+    failed_from = min(failed_hours, default=None)
+    if mark is not None and failed_from is not None:
+        mark = min(mark, failed_from)
     gaps = _load_gaps(conn, root / "gaps.jsonl", root / "gaps_filled.jsonl")
     last = conn.execute(
         "SELECT complete_to FROM collector_marks ORDER BY loaded_at DESC LIMIT 1"
@@ -169,7 +186,7 @@ def load_raw(
     if mark is not None and (last is None or last[0] != mark):
         loaded_at = now or datetime.now(UTC).replace(tzinfo=None)
         conn.execute("INSERT INTO collector_marks VALUES (?, ?)", [mark, loaded_at])
-    return LoadResult(files, new, gaps, span)
+    return LoadResult(files, new, gaps, span, failed_from)
 
 
 # ------------------------------------------------------------------ categories
@@ -286,6 +303,13 @@ def refresh(
     for markets without a category. Otherwise only the hours just loaded are looked through:
     enough once a full pass has left none, since a new market first shows up in a new file."""
     loaded = load_raw(conn, root)
+    # Also evict on successful late loads: settled hours may have cached a partial value.
+    # Do this before enrichment, which can raise after the trades have already been loaded.
+    changed_from = [
+        t for t in (loaded.failed_from, loaded.span[0] if loaded.span else None) if t is not None
+    ]
+    if changed_from:
+        forget_from(min(changed_from).replace(minute=0, second=0, microsecond=0))
     if full or loaded.span:
         added, failed = _enrich(conn, client, None if full else loaded.span)
     else:

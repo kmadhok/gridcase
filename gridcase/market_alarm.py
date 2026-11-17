@@ -106,6 +106,12 @@ def clear_cache() -> None:
     _cache.clear()
 
 
+def forget_from(t: datetime) -> None:
+    """Discard settled values from an hour whose raw data failed or changed, in every store."""
+    for key in [key for key in _cache if key[3] >= t]:
+        del _cache[key]
+
+
 def _store(conn: duckdb.DuckDBPyConnection) -> str:
     row = conn.execute(
         "SELECT coalesce(path, database_name) FROM duckdb_databases() "

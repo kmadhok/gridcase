@@ -26,16 +26,18 @@ STATES = [
     "rechecking",
     "closed",
     "reopened",
+    "failed",
 ]
 TRANSITIONS: dict[str, set[str]] = {
-    "detected": {"planned"},
-    "planned": {"executing"},
-    "executing": {"concluded"},
-    "concluded": {"action_taken", "closed"},
-    "action_taken": {"rechecking", "closed"},
+    "detected": {"planned", "failed"},
+    "planned": {"executing", "failed"},
+    "executing": {"concluded", "failed"},
+    "concluded": {"action_taken", "closed", "failed"},
+    "action_taken": {"rechecking", "closed", "failed"},
     "rechecking": {"closed", "reopened"},
     "reopened": {"planned"},
     "closed": set(),
+    "failed": set(),
 }
 
 

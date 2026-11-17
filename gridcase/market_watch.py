@@ -46,6 +46,7 @@ def watch_markets(
         if any(
             c.entity == series.segment
             and c.metric == series.kpi
+            and c.state != "failed"
             and now - timedelta(hours=dedupe_hours) <= c.as_of <= now
             for c in list_cases(conn)
         ):

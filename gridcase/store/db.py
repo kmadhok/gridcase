@@ -20,9 +20,9 @@ MEMORY_LIMIT = "1200MB"
 # Spill files in `<store>.tmp` were unbounded: DuckDB's default allows 90% of the free space it
 # sees, and on kayak Linux reports ~800 GB free while the Windows C: drive holding Linux's disk
 # file has a few GB. A cold start (28 days of watch values, then the page rebuild) wrote ~22 GB
-# on 2026-11-16 and pushed C: toward empty, which has crashed WSL before. With this cap a query
-# that needs more fails with an out-of-memory error instead; the background loop logs it and
-# tries again next cycle. See ~/kayak-ops/notes/disk-space-plan.md on kayak.
+# in total on 2026-11-16 while C: went toward empty, which has crashed WSL before. With this
+# cap a query that needs more fails with an out-of-memory error instead; the background loop
+# logs it and tries again later. See ~/kayak-ops/notes/disk-space-plan.md on kayak.
 MAX_TEMP_DIRECTORY_SIZE = "4GB"
 
 
