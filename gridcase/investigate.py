@@ -163,7 +163,15 @@ def investigate(
             return get_case(conn, case.case_id)
     except Exception:
         try:
-            advance(conn, case.case_id, "failed")
+            # Lifecycle writes may be newer than this in-memory copy. Keep that state
+            # while preserving usage accumulated since the last successful save.
+            case.state = get_case(conn, case.case_id).state
+            save_case(conn, case)
+        except Exception:
+            log.exception("could not save usage for case %s", case.case_id)
+        try:
+            if get_case(conn, case.case_id).state in ("detected", "planned", "executing"):
+                advance(conn, case.case_id, "failed")
         except Exception:
             log.exception("could not mark case %s failed", case.case_id)
         raise
@@ -202,6 +210,9 @@ class RecheckResult:
 
 def recheck(conn: duckdb.DuckDBPyConnection, case_id: str, as_of: datetime) -> RecheckResult:
     case = get_case(conn, case_id)
+    if case.state in ("failed", "closed"):
+        log.info("skipping recheck of %s case %s", case.state, case_id)
+        return RecheckResult(verdicts={})
     if case.plan is None or case.conclusion is None:
         raise ValueError("case has no plan/conclusion to re-check")
     if case.state in ("action_taken", "concluded"):

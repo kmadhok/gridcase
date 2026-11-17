@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from gridcase.digest import build_digest, totals_sentence
+from gridcase.digest import build_digest, due_day, get_digest, totals_sentence
 from gridcase.memory.cases import new_case
 from gridcase.store.db import connect
-from tests.polymarket_synth import START
+from tests.polymarket_synth import START, add_trades
 
 
 def test_alarm_belongs_to_only_one_digest(market_store: Path) -> None:
@@ -27,6 +27,50 @@ def test_alarm_belongs_to_only_one_digest(market_store: Path) -> None:
         found.append([c["case_id"] for c in alarms["data"]["cases"]])
     assert found == [[cases[0].case_id], [cases[1].case_id, cases[2].case_id]]
     conn.close()
+
+
+def test_digest_waits_for_latest_visible_collector_mark_then_stores_full_total(
+    market_store: Path,
+) -> None:
+    with connect(market_store) as conn:
+        midnight = datetime(2026, 10, 10)
+        wall = midnight + timedelta(minutes=30)
+        later = wall + timedelta(minutes=2)
+        settle = timedelta(minutes=30)
+        assert due_day(conn, wall, settle) == midnight.date()  # no marks: legacy behaviour
+        conn.executemany(
+            "INSERT INTO collector_marks VALUES (?, ?)",
+            [
+                (midnight, wall - timedelta(minutes=2)),
+                (midnight - timedelta(hours=6), wall - timedelta(minutes=1)),
+                (midnight, later),  # invisible at wall; latest mark lowers completeness
+            ],
+        )
+        add_trades(
+            conn,
+            [
+                {
+                    "ts": midnight - timedelta(hours=3),
+                    "wallet": "late",
+                    "usd": 50000,
+                    "collected_at": later,
+                }
+            ],
+        )
+        assert due_day(conn, wall, settle) is None
+        assert get_digest(conn, midnight.date()) is None
+        assert due_day(conn, later, settle) == midnight.date()
+        digest = build_digest(conn, midnight.date(), later)
+        lo, hi = [datetime.fromisoformat(t) for t in digest["windows"]["current"]]
+        expected = conn.execute(
+            "SELECT sum(usd) FROM trades_as_of(?) WHERE ts >= ? AND ts < ?", [later, lo, hi]
+        ).fetchone()
+        assert expected is not None
+        volume = next(t for t in digest["totals"]["items"] if t["kpi"] == "volume_usd")
+        assert volume["now"] == pytest.approx(expected[0])
+        assert volume["now"] >= 50000
+        assert get_digest(conn, midnight.date()) == digest
+        assert due_day(conn, later, settle) is None
 
 
 @pytest.mark.parametrize("missing", [None, "current", "previous", "gap"])

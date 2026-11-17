@@ -62,6 +62,19 @@ def values(db: duckdb.DuckDBPyConnection) -> alarm.Hourly:
     return alarm.hourly(db, alarm.WatchedSeries(kpi="volume_usd"), AS_OF, alarm.WatchParams(), 5)
 
 
+def test_forget_from_tolerates_keys_vanishing(monkeypatch: pytest.MonkeyPatch) -> None:
+    class ClearingCache(dict[tuple[str, str, str, datetime], float | None]):
+        def __iter__(self) -> Iterator[tuple[str, str, str, datetime]]:
+            keys = list(super().__iter__())
+            self.clear()  # another refresh cleared these after iteration took its snapshot
+            return iter(keys)
+
+    cache = ClearingCache({("store", "volume_usd", "all", HOUR): 5.0})
+    monkeypatch.setattr(alarm, "_cache", cache)
+    alarm.forget_from(HOUR)
+    assert cache == {}
+
+
 @pytest.mark.parametrize("fails_first", [True, False])
 def test_middle_hour_retry_or_late_load_replaces_cached_zero(
     db: duckdb.DuckDBPyConnection,

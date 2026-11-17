@@ -86,9 +86,11 @@ NOW_PAGE_CASES = 10
 
 
 def now_cases(cases: list[CaseRecord]) -> list[dict[str, Any]]:
-    """The Now page's latest investigations: cases judged on missing data stay on their own page
-    but are left out of the list (user decision 2026-10-23)."""
-    return [_case_summary(x) for x in cases if not judged_without_data(x)][:NOW_PAGE_CASES]
+    """The Now page's latest investigations, leaving out failed cases and those judged on
+    missing data (those stay on their own page; user decision 2026-10-23)."""
+    return [_case_summary(x) for x in cases if x.state != "failed" and not judged_without_data(x)][
+        :NOW_PAGE_CASES
+    ]
 
 
 def _case_summary(c: CaseRecord) -> dict[str, Any]:
@@ -383,10 +385,14 @@ def create_app(
 
     @mcp.tool()
     def list_open_cases() -> dict[str, Any]:
-        """Cases that are not closed or retracted, newest first."""
+        """Cases that are not closed, failed or retracted, newest first."""
         c = cur()
         try:
-            return {"cases": [_case_summary(x) for x in public_cases(c) if x.state != "closed"]}
+            return {
+                "cases": [
+                    _case_summary(x) for x in public_cases(c) if x.state not in ("closed", "failed")
+                ]
+            }
         finally:
             c.close()
 

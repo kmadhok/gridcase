@@ -108,8 +108,9 @@ def clear_cache() -> None:
 
 def forget_from(t: datetime) -> None:
     """Discard settled values from an hour whose raw data failed or changed, in every store."""
-    for key in [key for key in _cache if key[3] >= t]:
-        del _cache[key]
+    for key in list(_cache):
+        if key[3] >= t:
+            _cache.pop(key, None)
 
 
 def _store(conn: duckdb.DuckDBPyConnection) -> str:
