@@ -17,6 +17,14 @@ from gridcase.store.schema import create_schema
 # `<store>.tmp`. Keep this below MemoryHigh in deploy/gridcase-server.service.
 MEMORY_LIMIT = "1200MB"
 
+# Spill files in `<store>.tmp` were unbounded: DuckDB's default allows 90% of the free space it
+# sees, and on kayak Linux reports ~800 GB free while the Windows C: drive holding Linux's disk
+# file has a few GB. A cold start (28 days of watch values, then the page rebuild) wrote ~22 GB
+# on 2026-11-16 and pushed C: toward empty, which has crashed WSL before. With this cap a query
+# that needs more fails with an out-of-memory error instead; the background loop logs it and
+# tries again next cycle. See ~/kayak-ops/notes/disk-space-plan.md on kayak.
+MAX_TEMP_DIRECTORY_SIZE = "4GB"
+
 
 def connect(path: Path | str, read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """Open the store. Timestamps are naive UTC; TimeZone is pinned so nothing shifts."""
@@ -29,6 +37,7 @@ def connect(path: Path | str, read_only: bool = False) -> duckdb.DuckDBPyConnect
     # and receipts must be byte-identical. Our queries are small; this costs nothing visible.
     conn.execute("SET threads = 1")
     conn.execute(f"SET memory_limit = '{MEMORY_LIMIT}'")
+    conn.execute(f"SET max_temp_directory_size = '{MAX_TEMP_DIRECTORY_SIZE}'")
     if not read_only:
         create_schema(conn)
     return conn
