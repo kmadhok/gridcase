@@ -13,8 +13,10 @@ from gridcase.ask.context import now_context
 from gridcase.digest import build_digest
 from gridcase.ledger.schema import Receipt
 from gridcase.ledger.store import write_receipt
-from gridcase.memory.cases import CaseRecord, new_case
+from gridcase.memory.cases import CaseRecord, list_cases, new_case
 from gridcase.memory.retractions import retract_case
+from gridcase.planner.llm import FakeLLM
+from gridcase.server.app import create_app, now_cases
 from gridcase.store.db import connect
 from tests.polymarket_synth import AS_OF
 
@@ -56,3 +58,49 @@ def test_now_context_leaves_out_retracted_and_outage_cases(market_store: Path) -
     ctx, _ = now_context(conn, AS_OF)
     conn.close()
     assert [c["segment"] for c in ctx["recent_investigations"]] == ["Sports"]
+
+
+def test_failed_cases_leave_now_list_with_room_for_older_cases(market_store: Path) -> None:
+    with connect(market_store) as conn:
+        normal = new_case(conn, "Sports", "volume_usd", AS_OF)
+        for offset in range(11):
+            new_case(
+                conn, "Crypto", "volume_usd", AS_OF + timedelta(minutes=offset), state="failed"
+            )
+        assert [c["case_id"] for c in now_cases(list_cases(conn))] == [normal.case_id]
+
+
+def test_digest_alarms_leave_out_failed_cases(market_store: Path) -> None:
+    with connect(market_store) as conn:
+        at = datetime(2026, 10, 9, 14, 45)
+        normal = new_case(conn, "Sports", "volume_usd", at)
+        new_case(conn, "Crypto", "volume_usd", at, state="failed")
+        digest = build_digest(conn, date(2026, 10, 10), datetime(2026, 10, 10, 0, 30))
+        alarms = next(c for c in digest["cards"] if c["id"] == "alarms")
+        assert [c["case_id"] for c in alarms["data"]["cases"]] == [normal.case_id]
+        assert (
+            alarms["sentence"]["text"] == "One investigation opened automatically in the last day."
+        )
+
+
+def test_mcp_open_cases_leaves_out_failed_cases(tmp_path: Path) -> None:
+    market_store = tmp_path / "cases.duckdb"
+    with connect(market_store) as conn:
+        normal = new_case(conn, "Sports", "volume_usd", AS_OF)
+        new_case(conn, "Crypto", "volume_usd", AS_OF, state="failed")
+        new_case(conn, "Politics", "volume_usd", AS_OF, state="closed")
+    app = create_app(
+        db_path=market_store,
+        token="t",
+        llm_factory=FakeLLM,
+        drain_interval_s=None,
+        clock=lambda: AS_OF,
+    )
+
+    tool = app.state.mcp._tool_manager.get_tool("list_open_cases")
+    assert tool is not None
+    try:
+        listed = tool.fn()
+        assert [c["case_id"] for c in listed["cases"]] == [normal.case_id]
+    finally:
+        app.state.conn.close()

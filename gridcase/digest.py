@@ -323,7 +323,7 @@ def _alarm_cases(
     conn: duckdb.DuckDBPyConnection, lo: datetime, hi: datetime
 ) -> list[dict[str, Any]]:
     """Cases the watch opened in [lo, hi), leaving out those retracted by the time the digest is
-    built and those judged on missing data, as the Now page does. Stored digests stay as built."""
+    built, failed cases and those judged on missing data. Stored digests stay as built."""
     kpis, _ = load_kpis()
     rows = conn.execute(
         "SELECT case_id FROM cases WHERE as_of >= ? AND as_of < ? ORDER BY as_of, case_id",
@@ -335,7 +335,7 @@ def _alarm_cases(
         if cid in hidden:
             continue
         c = get_case(conn, cid)
-        if judged_without_data(c):
+        if c.state == "failed" or judged_without_data(c):
             continue
         out.append(
             {
@@ -516,6 +516,13 @@ def due_day(conn: duckdb.DuckDBPyConnection, wall: datetime, settle: timedelta) 
     may have begun mid-day) and it has not been built yet."""
     midnight = datetime.combine(wall.date(), time())
     if wall - midnight < settle:
+        return None
+    mark = conn.execute(
+        "SELECT complete_to FROM collector_marks WHERE loaded_at <= ? "
+        "ORDER BY loaded_at DESC LIMIT 1",
+        [wall],
+    ).fetchone()
+    if mark and mark[0] < midnight:
         return None
     first = _first_full_day(conn, wall)
     if first is None or first > midnight - DAY:  # yesterday is not wholly in our record

@@ -26,16 +26,18 @@ STATES = [
     "rechecking",
     "closed",
     "reopened",
+    "failed",
 ]
 TRANSITIONS: dict[str, set[str]] = {
-    "detected": {"planned"},
-    "planned": {"executing"},
-    "executing": {"concluded"},
+    "detected": {"planned", "failed"},
+    "planned": {"executing", "failed"},
+    "executing": {"concluded", "failed"},
     "concluded": {"action_taken", "closed"},
     "action_taken": {"rechecking", "closed"},
     "rechecking": {"closed", "reopened"},
     "reopened": {"planned"},
     "closed": set(),
+    "failed": set(),
 }
 
 
@@ -213,6 +215,8 @@ def close_case(
     conn: duckdb.DuckDBPyConnection, case_id: str, verdicts: dict[str, str]
 ) -> CaseRecord:
     case = get_case(conn, case_id)
+    if case.state == "failed":
+        raise IllegalTransition("failed -> closed")
     case.verdicts = verdicts
     case.state = "closed"
     confirmed = [h for h, v in verdicts.items() if v == "confirmed"]

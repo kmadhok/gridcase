@@ -58,6 +58,7 @@ export const CASE_STATES: Record<string, string> = {
   action_taken: "published",
   rechecking: "re-checking",
   closed: "closed",
+  failed: "investigation failed",
 };
 
 /** 'category=Sports' -> 'Sports'; 'all' -> 'All markets'. */

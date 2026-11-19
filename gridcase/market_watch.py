@@ -18,6 +18,7 @@ from gridcase.memory.cases import list_cases
 from gridcase.planner.llm import LLM
 
 log = logging.getLogger("gridcase")
+MAX_FAILED_RETRIES = 2
 
 
 def watch_markets(
@@ -43,16 +44,24 @@ def watch_markets(
         verdicts[series.label] = o["status"] if o["status"] != "alarm" else f"ALARM x{o['ratio']}"
         if o["status"] != "alarm":
             continue
-        if any(
-            c.entity == series.segment
+        cases = list_cases(conn)
+        recent = [
+            c
+            for c in cases
+            if c.entity == series.segment
             and c.metric == series.kpi
             and now - timedelta(hours=dedupe_hours) <= c.as_of <= now
-            for c in list_cases(conn)
+        ]
+        if (
+            any(c.state != "failed" for c in recent)
+            or sum(c.state == "failed" for c in recent) >= MAX_FAILED_RETRIES
         ):
             continue
         today = now.date()
         paid_today = sum(
-            1 for c in list_cases(conn) if c.opened_at.date() == today and c.llm_usage.cost_usd > 0
+            1
+            for c in cases
+            if c.opened_at.date() == today and (c.llm_usage.cost_usd > 0 or c.state == "failed")
         )
         factory = paid_factory if paid_today < max_paid_per_day else free_factory
         as_of = now.replace(second=0, microsecond=0)
