@@ -26,9 +26,10 @@ POLYMARKET_LOAD_EVERY_S = 300.0
 PLANNER_MODEL = os.environ.get("GRIDCASE_PLANNER_MODEL", "claude-opus-5")
 CHEAP_MODEL = os.environ.get("GRIDCASE_CHEAP_MODEL", "claude-sonnet-5")
 ASK_MODEL = os.environ.get("GRIDCASE_ASK_MODEL", CHEAP_MODEL)
-# the Explore chat (OpenRouter): picked by experiments/model_pick (DECISIONS 2026-10-05, -06)
-CHAT_MODEL = os.environ.get("GRIDCASE_CHAT_MODEL", "google/gemini-3.1-flash-lite")
-CHAT_FALLBACK_MODEL = os.environ.get("GRIDCASE_CHAT_FALLBACK_MODEL", "deepseek/deepseek-v4-flash")
+# the Explore chat (OpenRouter): picked by experiments/model_pick
+# (DECISIONS 2026-10-05, -06 and 2026-11-21); the fallback is tried once after a provider error
+CHAT_MODEL = os.environ.get("GRIDCASE_CHAT_MODEL", "deepseek/deepseek-v4.1-flash")
+CHAT_FALLBACK_MODEL = os.environ.get("GRIDCASE_CHAT_FALLBACK_MODEL", "google/gemini-3.1-flash-lite")
 MODEL_PRICES: dict[str, tuple[float, float]] = {
     "claude-opus-5": (5.0, 25.0),
     "claude-sonnet-5": (2.0, 10.0),

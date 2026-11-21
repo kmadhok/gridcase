@@ -1,0 +1,606 @@
+{
+ "as_of": "2026-10-10T14:20:00",
+ "store": "synthetic",
+ "page": {
+  "kpi": "volume_usd",
+  "filters": [
+   {
+    "dimension": "category",
+    "values": [
+     "Sports"
+    ]
+   }
+  ],
+  "window": "last_7d"
+ },
+ "models": {
+  "google/gemini-3.1-flash-lite": {
+   "summary": {
+    "kept": 14,
+    "dropped": 0,
+    "fallbacks": 0,
+    "refusals_right": "10 of 10",
+    "p50_seconds": 2.6,
+    "cost_usd": 0.0281
+   },
+   "rows": [
+    {
+     "q": "What was the busiest hour on this chart?",
+     "seconds": 3.0,
+     "cost": 0.00279,
+     "kept": 1,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [],
+     "answer": [
+      "[governed] In Sports over the last 7 days, the busiest hours were from Oct 10 at 08:00 UTC through Oct 10 at 13:00 UTC, each reaching a peak trading volume of $3,540."
+     ]
+    },
+    {
+     "q": "Which Sports markets traded the most this week?",
+     "seconds": 3.1,
+     "cost": 0.00297,
+     "kept": 1,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "group_by": "market",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Sports over the last 7 days, England vs Czechia was the most traded market with $115,080 in volume, followed by Lakers vs Celtics with $100,680."
+     ]
+    },
+    {
+     "q": "Break down Sports volume by trade size over the last 3 days.",
+     "seconds": 2.6,
+     "cost": 0.00326,
+     "kept": 2,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "group_by": "size_band",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        }
+       ],
+       "grain": "day",
+       "window": "last_3d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Sports over the last 3 days, the $100-1k band saw daily volumes of $9,120 on Oct 7, $23,040 on Oct 8, $24,192 on Oct 9, and $27,168 on Oct 10.",
+      "[governed] During the same period, the $10-100 band recorded daily volumes of $2,280 on Oct 7, $5,760 on Oct 8, $6,048 on Oct 9, and $3,192 on Oct 10."
+     ]
+    },
+    {
+     "q": "How many active traders were in Politics yesterday?",
+     "seconds": 2.3,
+     "cost": 0.00291,
+     "kept": 1,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "active_traders",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Politics"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "yesterday",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Politics yesterday, there were 33 active traders."
+     ]
+    },
+    {
+     "q": "Compare Sports and Politics volume over the past week.",
+     "seconds": 2.6,
+     "cost": 0.00334,
+     "kept": 3,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "group_by": "category",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports",
+          "Politics"
+         ]
+        }
+       ],
+       "grain": "day",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[derived] In Sports and Politics over the last 7 days, both categories experienced identical daily trading volumes from Oct 3 to Oct 8.",
+      "[governed] On Oct 9, Politics reached a higher daily volume of $42,740 compared to $30,240 for Sports.",
+      "[governed] On Oct 10, Sports saw a daily volume of $30,360, while Politics recorded $15,960."
+     ]
+    },
+    {
+     "q": "What share of all volume did Crypto have in the last 24 hours?",
+     "seconds": 2.2,
+     "cost": 0.00294,
+     "kept": 1,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_share",
+       "group_by": "category",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Crypto"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_24h",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Crypto over the last 24 hours, the share of total volume was 28.5%."
+     ]
+    },
+    {
+     "q": "How much are the big bettors putting into sports over the past week?",
+     "seconds": 9.2,
+     "cost": 0.00296,
+     "kept": 1,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        },
+        {
+         "dimension": "size_band",
+         "values": [
+          "$1k+"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Sports over the last 7 days, there were no $1k+ trades."
+     ]
+    },
+    {
+     "q": "Are more fresh wallets showing up in Sports lately?",
+     "seconds": 2.1,
+     "cost": 0.00317,
+     "kept": 2,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "new_traders",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        }
+       ],
+       "grain": "day",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Sports over the last 7 days, there were 0 new traders recorded.",
+      "[inferred] New means new to our record, which began on Oct 1 at 00:00 UTC; in its first 7 days, wallets that traded before then still count as new, so these numbers run high."
+     ]
+    },
+    {
+     "q": "and in Politics?",
+     "seconds": 2.5,
+     "cost": 0.00309,
+     "kept": 2,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "group_by": "market",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Politics"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Politics over the last 7 days, the market Fed cuts rates had a trading volume of $113,180.",
+      "[governed] During the same period, the Election winner market saw a trading volume of $100,680."
+     ]
+    },
+    {
+     "q": "Write me a poem about football.",
+     "seconds": 1.0,
+     "cost": 0.0007,
+     "kept": 0,
+     "dropped": 0,
+     "fallback": false,
+     "refused": true,
+     "refusal_ok": true,
+     "queries": [],
+     "answer": []
+    }
+   ]
+  },
+  "deepseek/deepseek-v4.1-flash": {
+   "summary": {
+    "kept": 18,
+    "dropped": 2,
+    "fallbacks": 0,
+    "refusals_right": "10 of 10",
+    "p50_seconds": 4.0,
+    "cost_usd": 0.015
+   },
+   "rows": [
+    {
+     "q": "What was the busiest hour on this chart?",
+     "seconds": 3.4,
+     "cost": 0.00192,
+     "kept": 3,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [],
+     "answer": [
+      "[governed] The busiest hour on the chart was Oct 10 at 08:00 UTC, when Sports trading volume reached $3,540 over the last 7 days (Oct 3 at 14:00 to Oct 10 at 14:00 UTC).",
+      "[governed] The quietest hour was Oct 4 at 00:00 UTC, at $1,140.",
+      "[derived] That $3,540 level also holds for each hour from 08:00 through 13:00 UTC on Oct 10, so the peak reads as a flat block rather than a single spike."
+     ]
+    },
+    {
+     "q": "Which Sports markets traded the most this week?",
+     "seconds": 5.8,
+     "cost": 0.00136,
+     "kept": 2,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "group_by": "market",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Sports over the last 7 days, the England vs Czechia market traded the most with a volume of $115,080.",
+      "[governed] The Lakers vs Celtics market followed with a volume of $100,680."
+     ]
+    },
+    {
+     "q": "Break down Sports volume by trade size over the last 3 days.",
+     "seconds": 2.6,
+     "cost": 0.00156,
+     "kept": 1,
+     "dropped": 1,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "group_by": "size_band",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_3d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Sports over the last 3 days (Oct 7 at 14:00 UTC to Oct 10 at 14:00 UTC), volume came in two trade-size bands: the $100-1k band at $83,520 and the $10-100 band at $17,280."
+     ]
+    },
+    {
+     "q": "How many active traders were in Politics yesterday?",
+     "seconds": 4.0,
+     "cost": 0.00094,
+     "kept": 1,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "active_traders",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Politics"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "explicit",
+       "start": "2026-10-09T00:00:00",
+       "end": "2026-10-10T00:00:00",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] There were 33 active traders in Politics during the period from Oct 9 at 00:00 UTC to Oct 10 at 00:00 UTC."
+     ]
+    },
+    {
+     "q": "Compare Sports and Politics volume over the past week.",
+     "seconds": 3.5,
+     "cost": 0.00187,
+     "kept": 2,
+     "dropped": 1,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "group_by": "category",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports",
+          "Politics"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] Over the last 7 days (Oct 3 at 14:00 UTC to Oct 10 at 14:00 UTC), Sports trading volume was $215,760 and Politics was $213,860, so Sports ran slightly ahead.",
+      "[governed] Within Sports, hourly volume peaked at $3,540 at Oct 10 at 08:00 UTC and bottomed at $1,140 at Oct 4 at 00:00 UTC."
+     ]
+    },
+    {
+     "q": "What share of all volume did Crypto have in the last 24 hours?",
+     "seconds": 8.7,
+     "cost": 0.00157,
+     "kept": 1,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_share",
+       "group_by": "category",
+       "filters": [],
+       "grain": "total",
+       "window": "last_24h",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In the last 24 hours (Oct 9 at 14:00 UTC to Oct 10 at 14:00 UTC), Crypto accounted for 28.5% of all trading volume across the three categories tracked."
+     ]
+    },
+    {
+     "q": "How much are the big bettors putting into sports over the past week?",
+     "seconds": 5.9,
+     "cost": 0.00215,
+     "kept": 3,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        },
+        {
+         "dimension": "size_band",
+         "values": [
+          "$1k+"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_7d",
+       "top_n": 10
+      },
+      {
+       "kpi": "whale_share",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Sports over the last 7 days (Oct 3 at 14:00 UTC to Oct 10 at 14:00 UTC), there were no $1k+ trades, so the big bettors put nothing into that band.",
+      "[governed] The whale share of Sports volume over the same window was 0.0%.",
+      "[governed] Overall Sports trading volume ran at $1,140 an hour at its lowest, at Oct 4 at 00:00 UTC, and peaked at $3,540 an hour at Oct 10 at 08:00 UTC."
+     ]
+    },
+    {
+     "q": "Are more fresh wallets showing up in Sports lately?",
+     "seconds": 7.4,
+     "cost": 0.00247,
+     "kept": 3,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "new_traders",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Sports"
+         ]
+        }
+       ],
+       "grain": "day",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] No \u2014 in Sports over the last 7 days (Oct 3 to Oct 10), the number of new traders was 0 on every single day.",
+      "[governed] One caveat on that count: \"new\" means new to our record, which began on Oct 1, and in its first 7 days wallets that traded before then still count as new, so these numbers run high.",
+      "[governed] For context, Sports trading volume over the same window ran between $1,140 and $3,540 an hour, with the peak at Oct 10 at 08:00 UTC."
+     ]
+    },
+    {
+     "q": "and in Politics?",
+     "seconds": 3.3,
+     "cost": 0.00104,
+     "kept": 2,
+     "dropped": 0,
+     "fallback": false,
+     "refused": false,
+     "refusal_ok": true,
+     "queries": [
+      {
+       "kpi": "volume_usd",
+       "group_by": "market",
+       "filters": [
+        {
+         "dimension": "category",
+         "values": [
+          "Politics"
+         ]
+        }
+       ],
+       "grain": "total",
+       "window": "last_7d",
+       "top_n": 10
+      }
+     ],
+     "answer": [
+      "[governed] In Politics over the last 7 days (Oct 3 at 14:00 UTC to Oct 10 at 14:00 UTC), the top markets by trading volume were \"Fed cuts rates\" at $113,180 and \"Election winner\" at $100,680.",
+      "[derived] Those were the only two Politics markets with volume in that window."
+     ]
+    },
+    {
+     "q": "Write me a poem about football.",
+     "seconds": 0.5,
+     "cost": 9e-05,
+     "kept": 0,
+     "dropped": 0,
+     "fallback": false,
+     "refused": true,
+     "refusal_ok": true,
+     "queries": [],
+     "answer": []
+    }
+   ]
+  }
+ },
+ "total_cost_usd": 0.0431
+}
