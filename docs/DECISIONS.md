@@ -747,3 +747,30 @@ User decisions 2026-11-13: "go ahead and do both" (the two fixes), then "Fixes +
 - **Round 2 — concurrent cache clearing (D).** `forget_from()` iterates over a snapshot of the keys and removes them with `pop(key, None)`, tolerating another refresh clearing a key meanwhile.
 - **Round 2 — case lists (E).** Failed cases are left out of the Now page's latest investigations, the digest's “What the watch caught” cases and MCP `list_open_cases`. Their own pages, evidence and traces remain readable.
 - `REVIEW:` a late/back-filled load evicts cached hour values from its first trade's hour onward. A fill-gaps load of old files therefore makes the next watch recompute those days cold, which the 4 GB spill cap may refuse.
+
+## 2026-11-21 — The Explore chat's default model becomes DeepSeek v4.1 Flash
+
+User decision 2026-11-21, after a re-test: switch the Explore chat to `deepseek/deepseek-v4.1-flash`. `google/gemini-3.1-flash-lite`, the default since 2026-10-06, becomes the fallback (tried once after a provider error). `deepseek/deepseek-v4-flash` is no longer used. Both names stay in `gridcase/config.py` and can be overridden with `GRIDCASE_CHAT_MODEL` and `GRIDCASE_CHAT_FALLBACK_MODEL`; nothing else in the code changes.
+
+- **Why re-test.** The 2026-10-05 and -06 entries rejected v4.1-flash on numbers measured before the writing instructions and the "say which slice" wording existed (1 of 8 follow-ups right; 12 sentences dropped by the verifier). The prompts have changed since, so the old numbers no longer describe today's chat.
+- **Pick step (fills the query form), 2026-11-21.** The same 40 questions as phase A, each run twice at temperature 0 with today's system prompt and form, scored by the same fixed rules (run outside this repo with the `model-pick` tool; 6 models, 3 of them paid through OpenRouter and shown here, $0.084 in total):
+
+| Model | Right, of 80 | Median time | Cost per 1,000 calls |
+|---|---|---|---|
+| **deepseek-v4.1-flash** | **74** | 1.5 s | $0.21 |
+| gemini-3.1-flash-lite | 71 | 1.4 s | $0.76 |
+| deepseek-v4-flash | 71 | 2.5 s (p90 8.4 s) | $0.08 |
+
+- **Whole chat (pick → `kpi.series` → write → verifier), 2026-11-21.** `experiments/model_pick/write_step.py`, the 10 questions of phase C on the synthetic store, each model alone with no fallback. Answers are saved in `experiments/model_pick/results_write_v41.json`.
+
+| Model | Sentences kept | Dropped by the verifier | Refusal decisions right | Middle time (max) | Cost of 10 questions |
+|---|---|---|---|---|---|
+| **deepseek-v4.1-flash** | 18 | 2 | 10 of 10 | 4.0 s (8.7 s) | $0.015 |
+| gemini-3.1-flash-lite | 14 | 0 | 10 of 10 | 2.6 s (9.2 s) | $0.028 |
+
+- **Reading the answers.** DeepSeek's are correct and fuller: they state the window's dates and give more of the breakdown. No question ended in the "cannot answer" text for either model (each ran alone, with no second model behind it). The saved rows do not record whether a step was retried. The middle time is the script's figure, the upper of the two middle values of 10, as in the 2026-10-06 entry; the true medians are 3.75 s and 2.55 s. End to end it costs about $0.0015 a question against $0.0028, roughly half; the pick step alone is about a quarter, but the write step sends more tokens.
+- `REVIEW:` **two sentences in ten questions were dropped by the verifier** ("Break down Sports volume by trade size over the last 3 days", where it gave totals per band, and "Compare Sports and Politics volume over the past week"). Dropped sentences are never shown, so the visitor gets a shorter answer, not a wrong one. Gemini dropped none.
+- `REVIEW:` **one follow-up is still wrong.** For "and in Politics?" after "Which Sports markets traded the most this week?", v4.1-flash returned the query with no category filter both times (all markets, not Politics); Gemini got it right both times. The other three follow-ups were right both times (6 of 8 against 1 of 8 in phase A). The answer names the slice it used, so the miss is visible to the visitor, but it is a wrong slice. If follow-ups matter more than cost, swap the two models back.
+- `REVIEW:` **slower in the middle** (true median 3.75 s against 2.55 s for the whole chat, about 1.5 times). It also sometimes adds a sentence about the hourly peak or low that the question did not ask for ("big bettors", "fresh wallets").
+- `REVIEW:` **measured on the synthetic store only.** The first real questions after the deploy are the live check. To undo the switch without a code change, set both `GRIDCASE_CHAT_MODEL=google/gemini-3.1-flash-lite` and `GRIDCASE_CHAT_FALLBACK_MODEL=deepseek/deepseek-v4.1-flash` in `.env` and restart the server. Setting only the first leaves the chat with no fallback, because both names would then be Gemini and the client drops the duplicate. Neither variable is set on kayak today (checked by name on 2026-11-21).
+- **Spend for this step:** $0.084 for the pick-step run (the 3 paid models; the other 3 ran on subscriptions) and $0.043 for the whole-chat run, about $0.13 in total, from OpenRouter's reported costs.
