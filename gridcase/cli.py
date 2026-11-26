@@ -177,6 +177,10 @@ def cmd_cases_reexplain(args: argparse.Namespace) -> int:
     conn = connect(config.DB_PATH, read_only=args.dry_run)
     failed = False
     try:
+        if args.llm == "auto" and not config.has_claude_key():
+            # auto would pick the template FakeLLM and overwrite cases with the template
+            print("no model key for GRIDCASE_LLM_ROUTE; pass --llm fake to force", file=sys.stderr)
+            return 1
         factory = choose_llm_factory(args.llm, config.has_claude_key())
         for cid in args.case_ids:
             try:

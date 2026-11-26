@@ -5,7 +5,7 @@ store's only writer. Dry runs use a read-only connection supplied by the CLI.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import duckdb
@@ -33,12 +33,13 @@ class Reexplanation:
 def original_receipts(case: CaseRecord) -> list[Receipt]:
     """Exclude evidence appended by the later, deterministic recheck."""
     old = (case.recheck or {}).get("old_receipts")
-    old_ids = set(old) if old is not None else None
-    return [
-        r
-        for r in case.receipts
-        if r.as_of == case.as_of and (old_ids is None or r.receipt_id in old_ids)
-    ]
+    if old is not None:  # the recheck recorded exactly which receipts were the original ones
+        old_ids = set(old)
+        return [r for r in case.receipts if r.receipt_id in old_ids]
+    # The alarm receipt keeps full precision while case.as_of is cut to the minute, and a
+    # recheck runs hours later, so everything before the next minute is original evidence.
+    cutoff = case.as_of + timedelta(minutes=1)
+    return [r for r in case.receipts if r.as_of < cutoff]
 
 
 def rebuild_ranking(

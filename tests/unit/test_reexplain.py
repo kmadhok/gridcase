@@ -57,7 +57,8 @@ class RewriteLLM(FakeLLM):
 @pytest.fixture()
 def saved_case(market_store: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
     monkeypatch.setattr(config, "DB_PATH", market_store)
-    monkeypatch.setattr(config, "has_claude_key", lambda: False)
+    # use_llm swaps the factory, so no real client is built
+    monkeypatch.setattr(config, "has_claude_key", lambda: True)
     conn = connect(market_store)
     case = investigate(conn, FakeLLM(), "volume_usd", AS_OF, filters={"category": "Sports"})
     conn.execute("INSERT INTO learned_priors VALUES ('D1_ONE_MARKET', 'volume_usd', 'all', 2, 3)")
@@ -277,3 +278,42 @@ def test_summary_with_no_verified_claims_changes_nothing_and_fails(
     use_llm(monkeypatch, NoClaimLLM())
     assert cli.main(["cases", "re-explain", cid]) == 1
     assert snapshot(path) == before
+
+
+def test_auto_without_a_model_key_refuses_and_writes_nothing(
+    saved_case: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, cid = saved_case
+    monkeypatch.setattr(config, "has_claude_key", lambda: False)
+    before = snapshot(path)
+    assert cli.main(["cases", "re-explain", cid]) == 1
+    assert snapshot(path) == before
+
+
+def test_original_receipts_keep_the_alarm_stamped_seconds_after_the_case(
+    saved_case: tuple[Path, str],
+) -> None:
+    from datetime import timedelta
+
+    from gridcase.memory.reexplain import original_receipts
+
+    path, cid = saved_case
+    conn = connect(path, read_only=True)
+    case = get_case(conn, cid)
+    conn.close()
+    base = case.receipts[0]
+    alarm = base.model_copy(
+        update={
+            "receipt_id": "alarm",
+            "tool": "kpi.alarm",
+            "as_of": case.as_of + timedelta(seconds=59),
+        }
+    )
+    later = base.model_copy(
+        update={"receipt_id": "recheck", "as_of": case.as_of + timedelta(days=1)}
+    )
+    case = case.model_copy(update={"receipts": [alarm, *case.receipts, later], "recheck": None})
+    ids = [r.receipt_id for r in original_receipts(case)]
+    assert "alarm" in ids and "recheck" not in ids
+    listed = case.model_copy(update={"recheck": {"old_receipts": ["alarm", base.receipt_id]}})
+    assert [r.receipt_id for r in original_receipts(listed)] == ["alarm", base.receipt_id]
