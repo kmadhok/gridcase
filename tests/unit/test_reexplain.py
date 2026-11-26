@@ -257,3 +257,23 @@ def test_batch_continues_after_unknown_case_and_returns_failure(
     use_llm(monkeypatch, llm)
     assert cli.main(["cases", "re-explain", "missing", cid]) == 1
     assert llm.calls == 1
+
+
+class NoClaimLLM(RewriteLLM):
+    def explain(self, case_id, ranked, receipts, context):  # type: ignore[no-untyped-def]
+        self.calls += 1
+        usage = LLMUsage(input_tokens=10, output_tokens=5, cost_usd=0.001, model="test-model")
+        bad = Claim(text="Volume was 987654321 dollars.", receipt_ids=["no-such-receipt"])
+        return Conclusion(
+            case_id=case_id, top_hypothesis=None, ranked=[], claims=[bad], caveats=[]
+        ), usage
+
+
+def test_summary_with_no_verified_claims_changes_nothing_and_fails(
+    saved_case: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, cid = saved_case
+    before = snapshot(path)
+    use_llm(monkeypatch, NoClaimLLM())
+    assert cli.main(["cases", "re-explain", cid]) == 1
+    assert snapshot(path) == before

@@ -149,6 +149,8 @@ def reexplain_case(
         if overruled is not None:
             detail.update(model_top_hypothesis=overruled, top_hypothesis=conclusion.top_hypothesis)
     conclusion = explanation_caveats(conclusion, compare.output, case.plan, case.step_errors)
+    if not conclusion.claims:  # the verifier kept nothing: the template is better than empty
+        raise ValueError(f"model summary kept no verified claims ({len(dropped)} dropped)")
     if not dry_run:
         # Update only these columns: even closed cases may have a newer top_hypothesis
         # from their recheck, which is distinct from the original conclusion's ranking.
