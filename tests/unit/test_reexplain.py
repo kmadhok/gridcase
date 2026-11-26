@@ -317,3 +317,8 @@ def test_original_receipts_keep_the_alarm_stamped_seconds_after_the_case(
     assert "alarm" in ids and "recheck" not in ids
     listed = case.model_copy(update={"recheck": {"old_receipts": ["alarm", base.receipt_id]}})
     assert [r.receipt_id for r in original_receipts(listed)] == ["alarm", base.receipt_id]
+    # a retry after a crash mid-recheck can list recheck receipts as old: time still drops them
+    crashed = case.model_copy(
+        update={"recheck": {"old_receipts": ["alarm", base.receipt_id, "recheck"]}}
+    )
+    assert [r.receipt_id for r in original_receipts(crashed)] == ["alarm", base.receipt_id]

@@ -32,14 +32,18 @@ class Reexplanation:
 
 def original_receipts(case: CaseRecord) -> list[Receipt]:
     """Exclude evidence appended by the later, deterministic recheck."""
-    old = (case.recheck or {}).get("old_receipts")
-    if old is not None:  # the recheck recorded exactly which receipts were the original ones
-        old_ids = set(old)
-        return [r for r in case.receipts if r.receipt_id in old_ids]
-    # The alarm receipt keeps full precision while case.as_of is cut to the minute, and a
-    # recheck runs hours later, so everything before the next minute is original evidence.
+    # The market watch stamps the alarm receipt at full precision and the case at that time cut
+    # to the minute; a recheck runs a day or more later. So the original evidence is everything
+    # before the next minute. The recheck's old_receipts list only narrows that: after a crash
+    # mid-recheck its retry can list recheck receipts as old, and the time bound drops them.
     cutoff = case.as_of + timedelta(minutes=1)
-    return [r for r in case.receipts if r.as_of < cutoff]
+    old = (case.recheck or {}).get("old_receipts")
+    old_ids = set(old) if old is not None else None
+    return [
+        r
+        for r in case.receipts
+        if r.as_of < cutoff and (old_ids is None or r.receipt_id in old_ids)
+    ]
 
 
 def rebuild_ranking(
