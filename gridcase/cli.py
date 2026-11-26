@@ -239,7 +239,7 @@ def _add_serve_args(p: argparse.ArgumentParser) -> None:
         "--llm",
         choices=["auto", "fake", "anthropic"],
         default="auto",
-        help="planner/explainer model; auto = anthropic if ANTHROPIC_API_KEY is set, else fake",
+        help="planner/explainer model; auto = Claude if its route has a key, else fake",
     )
 
 
