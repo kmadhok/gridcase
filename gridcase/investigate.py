@@ -17,6 +17,7 @@ import duckdb
 
 from gridcase.actions.publish import publish_case
 from gridcase.explain.explainer import explain, rank_hypotheses
+from gridcase.explain.schema import Conclusion
 from gridcase.ledger.schema import Receipt
 from gridcase.ledger.store import write_receipt
 from gridcase.memory.cases import (
@@ -34,6 +35,7 @@ from gridcase.planner.executor import ExecutionResult, evaluate_hypotheses, exec
 from gridcase.planner.hypotheses import load_templates
 from gridcase.planner.llm import LLM
 from gridcase.planner.planner import make_plan
+from gridcase.planner.schema import InvestigationPlan
 from gridcase.semantic.kpis import Filters, segment_label
 from gridcase.tools.base import ToolError, run_tool
 from gridcase.trace import Tracer, active_tracer
@@ -133,20 +135,8 @@ def investigate(
                 dropped=len(dropped),
                 interpretation=sum(c.tier == "inferred" for c in conclusion.claims),
             )
-        usual = within_usual_range(compare.output)
-        if usual:
-            conclusion = conclusion.model_copy(update={"caveats": [*conclusion.caveats, usual]})
         case.step_errors = dict(result.errors)
-        if result.errors:
-            failed = ", ".join(
-                f"{sid} ({next((s.tool for s in plan.steps if s.step_id == sid), '?')}): {msg[:80]}"
-                for sid, msg in result.errors.items()
-            )
-            note = (
-                f"{len(result.errors)} of {len(plan.steps)} planned steps failed and produced no "
-                f"evidence: {failed}"
-            )
-            conclusion = conclusion.model_copy(update={"caveats": [*conclusion.caveats, note]})
+        conclusion = explanation_caveats(conclusion, compare.output, plan, case.step_errors)
         case.conclusion = conclusion
         case.top_hypothesis = conclusion.top_hypothesis
         case.llm_usage = case.llm_usage + u2
@@ -181,6 +171,29 @@ def investigate(
             tracer.save(conn, case.case_id)
         except Exception:
             log.exception("could not save the trace of case %s", case.case_id)
+
+
+def explanation_caveats(
+    conclusion: Conclusion,
+    compare_output: dict[str, Any],
+    plan: InvestigationPlan,
+    step_errors: dict[str, str],
+) -> Conclusion:
+    """Evidence limitations applied to both initial and rewritten explanations."""
+    notes = list(conclusion.caveats)
+    usual = within_usual_range(compare_output)
+    if usual:
+        notes.append(usual)
+    if step_errors:
+        failed = ", ".join(
+            f"{sid} ({next((s.tool for s in plan.steps if s.step_id == sid), '?')}): {msg[:80]}"
+            for sid, msg in step_errors.items()
+        )
+        notes.append(
+            f"{len(step_errors)} of {len(plan.steps)} planned steps failed and produced no "
+            f"evidence: {failed}"
+        )
+    return conclusion.model_copy(update={"caveats": notes})
 
 
 def within_usual_range(o: dict[str, Any]) -> str | None:

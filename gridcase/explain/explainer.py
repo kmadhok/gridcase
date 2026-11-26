@@ -245,6 +245,14 @@ HEADLINE_WORDS = (
 )
 
 
+class TemplateFallback(ValueError):
+    """The caller requires a fresh explanation, but the model returned none."""
+
+    def __init__(self, usage: LLMUsage) -> None:
+        super().__init__("template fallback; original conclusion unchanged")
+        self.usage = usage
+
+
 def _is_headline(text: str) -> bool:
     t = text.lower()
     return any(w in t for w in HEADLINE_WORDS)
@@ -256,14 +264,20 @@ def explain(
     ranked: list[HypothesisVerdict],
     receipts: list[Receipt],
     context: dict[str, Any],
+    *,
+    require_model: bool = False,
 ) -> tuple[Conclusion, list[str], LLMUsage, str | None]:
     """The ranker, not the model, picks the headline cause: `top_hypothesis` is always the first
     non-refuted entry of `ranked`. The fourth value is the model's own pick when it named a
     different one (None when it agreed or named none), for the case trace. On a disagreement,
     every model claim worded as a headline is dropped, whatever driver name it uses, and the
-    ranker's headline leads."""
+    ranker's headline leads. With require_model, a missing model answer raises
+    TemplateFallback instead of returning the template, so a repair can leave the case alone.
+    """
     conclusion, usage = llm.explain(case_id, ranked, receipts, context)
     if conclusion is None:
+        if require_model:
+            raise TemplateFallback(usage)
         conclusion = template_conclusion(case_id, ranked, receipts, context)
     top = next((v.id for v in ranked if v.status != "refuted"), None)
     model_top = conclusion.top_hypothesis
