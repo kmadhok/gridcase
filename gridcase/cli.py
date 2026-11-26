@@ -123,6 +123,8 @@ def cmd_cases(args: argparse.Namespace) -> int:
     its next refresh."""
     from gridcase.memory.retractions import outage_cases, retract_case, unretract_case
 
+    if args.cases_cmd == "re-explain":
+        return cmd_cases_reexplain(args)
     dry_run = args.cases_cmd == "retract-outage" and args.dry_run
     conn = connect(config.DB_PATH, read_only=dry_run)
     try:
@@ -160,6 +162,51 @@ def cmd_cases(args: argparse.Namespace) -> int:
             retract_case(conn, m.case_id, args.reason, m.span)
         print(f"{len(todo)} cases retracted ({len(matches) - len(todo)} already were)")
         return 0
+    finally:
+        conn.close()
+
+
+def cmd_cases_reexplain(args: argparse.Namespace) -> int:
+    """Re-run only the explain step from stored evidence. Stop gridcase-server first:
+    the server is the store's only writer. --dry-run calls the model but writes nothing.
+    """
+    from gridcase.explain.explainer import TemplateFallback
+    from gridcase.memory.cases import get_case
+    from gridcase.memory.reexplain import reexplain_case
+
+    conn = connect(config.DB_PATH, read_only=args.dry_run)
+    failed = False
+    try:
+        factory = choose_llm_factory(args.llm, config.has_claude_key())
+        for cid in args.case_ids:
+            try:
+                # Check existence before constructing a real SDK client.
+                get_case(conn, cid)
+            except KeyError:
+                print(f"unknown case {cid}: kept=0 dropped=0 cost=$0.0000", file=sys.stderr)
+                failed = True
+                continue
+            try:
+                result = reexplain_case(conn, factory(), cid, dry_run=args.dry_run)
+            except TemplateFallback as e:
+                print(f"{cid} kept=0 dropped=0 cost=${e.usage.cost_usd:.4f}: {e}")
+                failed = True
+                continue
+            except ValueError as e:
+                print(f"{cid}: kept=0 dropped=0 cost=$0.0000: {e}", file=sys.stderr)
+                failed = True
+                continue
+            print(
+                f"{cid} kept={len(result.conclusion.claims)} dropped={len(result.dropped)} "
+                f"cost=${result.usage.cost_usd:.4f}"
+                + (" (dry run, nothing written)" if args.dry_run else "")
+            )
+            if args.dry_run:
+                for claim in result.conclusion.claims:
+                    print(f"  [{claim.tier}] {claim.text}")
+                for caveat in result.conclusion.caveats:
+                    print(f"  ! {caveat}")
+        return int(failed)
     finally:
         conn.close()
 
@@ -295,9 +342,22 @@ def main(argv: list[str] | None = None) -> int:
     dig = sub.add_parser("digest", help="build the morning read for a day (default today)")
     dig.add_argument("--day", help="YYYY-MM-DD; covers up to that day's 00:00 UTC")
     dig.set_defaults(fn=cmd_digest)
-    cases = sub.add_parser("cases", help="retract cases judged on missing data, or undo that")
+    cases = sub.add_parser("cases", help="edit saved cases; stop gridcase-server first")
     cases.set_defaults(fn=cmd_cases)
     cases_sub = cases.add_subparsers(dest="cases_cmd", required=True)
+    rew = cases_sub.add_parser(
+        "re-explain",
+        help="rewrite a conclusion from saved evidence; stop gridcase-server first",
+        description="Re-run only explain from stored evidence. Stop gridcase-server first: "
+        "the server is the store's only writer.",
+    )
+    rew.add_argument("case_ids", nargs="+", metavar="CASE_ID")
+    rew.add_argument("--llm", choices=["auto", "fake", "anthropic"], default="auto")
+    rew.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="call the model, print claims and caveats, write nothing",
+    )
     ret = cases_sub.add_parser("retract", help="hide cases from the public lists, with a reason")
     ret.add_argument("case_ids", nargs="+", metavar="CASE_ID")
     ret.add_argument("--reason", required=True, help="shown on the case page")
