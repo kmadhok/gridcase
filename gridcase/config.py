@@ -59,6 +59,19 @@ def has_anthropic_api_key() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
 
 
+def llm_route() -> str:
+    """Where the Claude calls (planner, explainer, ask) go: "anthropic" (default, with
+    ANTHROPIC_API_KEY) or "openrouter" (its Anthropic-compatible endpoint, with
+    OPENROUTER_API_KEY; same models, same structured outputs)."""
+    route = os.environ.get("GRIDCASE_LLM_ROUTE", "anthropic").strip().lower()
+    return route if route in ("anthropic", "openrouter") else "anthropic"
+
+
+def has_claude_key() -> bool:
+    """A key for the route the Claude calls take is present. Presence only."""
+    return has_openrouter_api_key() if llm_route() == "openrouter" else has_anthropic_api_key()
+
+
 def has_openrouter_api_key() -> bool:
     """Presence only; the client reads the value itself. Never surface the key."""
     return bool(os.environ.get("OPENROUTER_API_KEY", "").strip())

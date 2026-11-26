@@ -75,7 +75,7 @@ def cmd_investigate(args: argparse.Namespace) -> int:
     from gridcase.investigate import investigate
     from gridcase.semantic.kpis import parse_segment
 
-    llm = choose_llm_factory(args.llm, config.has_anthropic_api_key())()
+    llm = choose_llm_factory(args.llm, config.has_claude_key())()
     as_of = _parse_date(args.as_of) if args.as_of else datetime.now(UTC).replace(tzinfo=None)
     conn = connect(config.DB_PATH)
     case = investigate(conn, llm, args.kpi, as_of, filters=parse_segment(args.segment))
@@ -239,7 +239,7 @@ def _add_serve_args(p: argparse.ArgumentParser) -> None:
         "--llm",
         choices=["auto", "fake", "anthropic"],
         default="auto",
-        help="planner/explainer model; auto = anthropic if ANTHROPIC_API_KEY is set, else fake",
+        help="planner/explainer model; auto = Claude if its route has a key, else fake",
     )
 
 
@@ -249,9 +249,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from gridcase.server.app import create_app
 
     opts = _serve_options_from(args)
-    factory = choose_llm_factory(opts.llm, config.has_anthropic_api_key())
+    factory = choose_llm_factory(opts.llm, config.has_claude_key())
     if factory.__name__ == "FakeLLM":
-        logging.warning("serving with the template FakeLLM (no ANTHROPIC_API_KEY or --llm fake)")
+        logging.warning("serving with the template FakeLLM (no model key, or --llm fake)")
     app = create_app(
         db_path=config.DB_PATH,
         token=config.api_token(),

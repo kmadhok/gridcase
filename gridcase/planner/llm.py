@@ -22,6 +22,29 @@ from gridcase.planner.schema import InvestigationPlan
 from gridcase.semantic.kpis import FilterValue
 
 log = logging.getLogger("gridcase")
+OPENROUTER_ANTHROPIC_URL = "https://openrouter.ai/api"
+
+
+def claude_client(model: str) -> tuple[Any, str]:
+    """An Anthropic SDK client and the model id to send, for the configured route. Through
+    OpenRouter the bare id gets the "anthropic/" prefix; prices still look up the bare id."""
+    import os
+
+    import anthropic
+
+    if config.llm_route() == "openrouter":
+        client = anthropic.Anthropic(
+            base_url=OPENROUTER_ANTHROPIC_URL,
+            api_key="unused",  # OpenRouter authenticates with the bearer token below
+            auth_token=os.environ.get("OPENROUTER_API_KEY", ""),
+            default_headers={"X-Title": "MarketCase"},
+        )
+        return client, model if "/" in model else f"anthropic/{model}"
+    return anthropic.Anthropic(), model
+
+
+def price_of(model: str) -> tuple[float, float]:
+    return config.MODEL_PRICES.get(model.split("/", 1)[-1], (5.0, 25.0))
 
 
 class LLMUsage(BaseModel):
@@ -138,15 +161,13 @@ internal ids (say "one market", "new traders", not D1_ONE_MARKET)."""
 
 class AnthropicLLM:
     def __init__(self, model: str | None = None) -> None:
-        import anthropic
-
         self.model = model or config.PLANNER_MODEL
-        self.client = anthropic.Anthropic()
+        self.client, self.model = claude_client(self.model)
         self.calls = 0
 
     def _usage(self, response: Any) -> LLMUsage:
         inp, out = int(response.usage.input_tokens), int(response.usage.output_tokens)
-        pi, po = config.MODEL_PRICES.get(self.model, (5.0, 25.0))
+        pi, po = price_of(self.model)
         return LLMUsage(
             input_tokens=inp,
             output_tokens=out,
