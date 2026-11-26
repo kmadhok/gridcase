@@ -166,15 +166,17 @@ class AnthropicAsker:
     max_checks = MAX_CHECKS
 
     def __init__(self, model: str | None = None) -> None:
-        import anthropic
+        from gridcase.planner.llm import claude_client
 
         self.model = model or config.ASK_MODEL
-        self.client = anthropic.Anthropic()
+        self.client, self.model = claude_client(self.model)
         self.calls = 0
 
     def _usage(self, response: Any) -> LLMUsage:
         inp, out = int(response.usage.input_tokens), int(response.usage.output_tokens)
-        pi, po = config.MODEL_PRICES.get(self.model, (5.0, 25.0))
+        from gridcase.planner.llm import price_of
+
+        pi, po = price_of(self.model)
         return LLMUsage(
             input_tokens=inp,
             output_tokens=out,
@@ -251,4 +253,4 @@ class AnthropicAsker:
 
 
 def default_asker_factory() -> Callable[[], Any]:
-    return AnthropicAsker if config.has_anthropic_api_key() else FakeAsker
+    return AnthropicAsker if config.has_claude_key() else FakeAsker
